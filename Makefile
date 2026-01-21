@@ -12,3 +12,9 @@ init:
 
 tidy:
 	go mod tidy
+
+gen:
+	go generate ./...
+
+test:
+	go test ./... -v

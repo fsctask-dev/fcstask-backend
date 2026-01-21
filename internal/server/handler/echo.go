@@ -3,24 +3,24 @@ package handler
 import (
 	"io"
 	"net/http"
+
+	"github.com/labstack/echo/v4"
 )
 
-type Handler struct{}
+func Echo(ctx echo.Context) error {
+	req := ctx.Request()
+	res := ctx.Response()
 
-func NewHandler() *Handler {
-	return &Handler{}
-}
+	defer req.Body.Close()
 
-func (h *Handler) Echo(w http.ResponseWriter, r *http.Request) {
-	defer r.Body.Close()
-
-	body, err := io.ReadAll(r.Body)
+	body, err := io.ReadAll(req.Body)
 	if err != nil {
-		http.Error(w, "failed to read body", http.StatusBadRequest)
-		return
+		return echo.NewHTTPError(http.StatusBadRequest, "failed to read body")
 	}
 
-	w.Header().Set("Content-Type", "application/octet-stream")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(body)
+	res.Header().Set(echo.HeaderContentType, "application/octet-stream")
+	res.WriteHeader(http.StatusOK)
+	_, _ = res.Write(body)
+
+	return nil
 }

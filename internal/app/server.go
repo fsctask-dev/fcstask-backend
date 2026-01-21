@@ -3,31 +3,44 @@ package app
 import (
 	"context"
 	"fmt"
-	"log"
+	"github.com/labstack/echo/v4"
+	"time"
 
-	"fcstask/internal/config"
+	"fcstask/internal/api"
 	"fcstask/internal/server"
-	"fcstask/internal/server/handler"
 )
 
-func Run(ctx context.Context, cfg *config.Config) error {
-	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
+type App struct {
+	echo            *echo.Echo
+	shutdownTimeout time.Duration
+}
 
-	h := handler.NewHandler()
+func New(
+	host string,
+	port int,
+	shutdownTimeout time.Duration,
+) *App {
+	e := echo.New()
+	apiServer := &server.Server{}
 
-	router := server.
-		NewRouterBuilder().
-		Version("/v1").
-		WithEcho(h.Echo).
-		Register().
-		Build()
+	api.RegisterHandlers(e, apiServer)
 
-	srv := server.NewServer(addr, router)
+	addr := fmt.Sprintf("%s:%d", host, port)
+
+	e.HideBanner = true
+	e.Server.Addr = addr
+
+	return &App{
+		echo:            e,
+		shutdownTimeout: shutdownTimeout,
+	}
+}
+
+func (a *App) Run(ctx context.Context) error {
 	errCh := make(chan error, 1)
 
 	go func() {
-		log.Println("server started on", addr)
-		errCh <- srv.Start(ctx)
+		errCh <- a.echo.Start(a.echo.Server.Addr)
 	}()
 
 	select {
@@ -35,17 +48,12 @@ func Run(ctx context.Context, cfg *config.Config) error {
 		return err
 
 	case <-ctx.Done():
-		log.Println("shutdown requested")
-
 		shutdownCtx, cancel := context.WithTimeout(
 			context.Background(),
-			cfg.Server.ShutdownTimeout,
+			a.shutdownTimeout,
 		)
 		defer cancel()
 
-		if err := srv.Shutdown(shutdownCtx); err != nil {
-			return err
-		}
-		return <-errCh
+		return a.echo.Shutdown(shutdownCtx)
 	}
 }

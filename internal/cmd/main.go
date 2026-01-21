@@ -14,7 +14,7 @@ import (
 func main() {
 	cfg, err := config.Load("config/config.yaml")
 	if err != nil {
-		log.Fatalf("failed to load config: %v", err)
+		log.Fatal(err)
 	}
 
 	ctx, stop := signal.NotifyContext(
@@ -24,9 +24,13 @@ func main() {
 	)
 	defer stop()
 
-	if err := app.Run(ctx, cfg); err != nil {
-		log.Fatalf("stopped: %v", err)
-	}
+	app := app.New(
+		cfg.Server.Host,
+		cfg.Server.Port,
+		cfg.Server.ShutdownTimeout,
+	)
 
-	log.Println("app start")
+	if err := app.Run(ctx); err != nil {
+		log.Fatal(err)
+	}
 }
