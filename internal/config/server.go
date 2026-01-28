@@ -8,7 +8,8 @@ import (
 )
 
 type Config struct {
-	Server ServerConfig `yaml:"server"`
+	Server   ServerConfig   `yaml:"server"`
+	Database DatabaseConfig `yaml:"database"`
 }
 
 type ServerConfig struct {
@@ -26,6 +27,10 @@ func Load(path string) (*Config, error) {
 	var cfg Config
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, err
+	}
+
+	if cfg.Database.SSLMode == "" {
+		cfg.Database.SSLMode = "disable"
 	}
 
 	return &cfg, nil
