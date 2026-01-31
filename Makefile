@@ -70,7 +70,7 @@ docker-push:
 	@docker push $(DOCKER_IMAGE_NAME):$(DOCKER_IMAGE_TAG)
 	@echo "✅ Pushed: $(DOCKER_IMAGE_NAME):$(DOCKER_IMAGE_TAG)"
 
-ci-local: tidy test docker-build
+ci-local: init tidy test docker-build
 	@echo "✅ Local CI check passed!"
 
 ci: ci-local docker-push
