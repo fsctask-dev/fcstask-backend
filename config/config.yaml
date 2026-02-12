@@ -2,3 +2,19 @@ server:
   host: "0.0.0.0"
   port: 8080
   shutdown_timeout: 5s
+
+kafka:
+  brokers:
+    - "localhost:9092"
+  topic_metrics: "metrics"
+  required_acks: -1
+  compression: "snappy"
+  allow_auto_topic_creation: true
+  dial_timeout: 5s
+  read_timeout: 5s
+  write_timeout: 5s
+  batch_timeout: 10ms
+  batch_size: 100
+  max_attempts: 3
+  min_bytes: 1024
+  max_bytes: 10485760
