@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	KB_to_GB = 1024 << 10
+	KB_to_GB = 1 << 20
 )
 
 type DiskChecker struct{}

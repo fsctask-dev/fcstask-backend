@@ -14,12 +14,14 @@ import (
 
 func main() {
 	var (
-		configPath string
-		runNow     bool
+		configPath  string
+		runNow      bool
+		incremental bool
 	)
 
-	flag.StringVar(&configPath, "config", "config.yaml", "")
-	flag.BoolVar(&runNow, "run-now", false, "")
+	flag.StringVar(&configPath, "config", "config.yaml", "Path to configuration file")
+	flag.BoolVar(&runNow, "run-now", false, "Run backup immediately and exit")
+	flag.BoolVar(&incremental, "incremental", false, "Use incremental backup mode")
 	flag.Parse()
 
 	cfg, err := config.Load(configPath)
@@ -39,6 +41,11 @@ func main() {
 	}
 
 	backuper := backup.NewBackuper(cfg.Postgres, cfg.Backup, logger)
+
+	if incremental {
+		backuper.SetIncrementalMode(true)
+		logger.Info("Incremental backup mode enabled")
+	}
 
 	if runNow {
 		if err := backuper.CreateBackup(); err != nil {

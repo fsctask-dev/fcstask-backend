@@ -13,7 +13,7 @@ backup:
   retention_days: 30
 
 cron:
-  # time format: "minutes(0-59) hours(0-23) date(1-31) month(1-12)  day_of_the_week(0-7, 0=7=sunday"
+  # time format: "minutes(0-59) hours(0-23) date(1-31) month(1-12) day_of_the_week(0-7, 0=7=sunday)"
   # * = any value
   # current: every day at 2am
   schedule: "0 2 * * *"
