@@ -1,11 +1,11 @@
 package main
 
 import (
-	"backup-tool/config"
-	"backup-tool/internal/backup"
-	"backup-tool/internal/cron"
-	"backup-tool/internal/logging"
-	"backup-tool/internal/storage"
+	"fcstask/backup-tool/config"
+	"fcstask/backup-tool/pkg/backup"
+	"fcstask/backup-tool/pkg/cron"
+	"fcstask/backup-tool/pkg/logging"
+	"fcstask/backup-tool/pkg/storage"
 	"flag"
 	"os"
 	"os/signal"

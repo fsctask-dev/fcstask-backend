@@ -1,10 +1,10 @@
 package backup
 
 import (
-	"backup-tool/config"
-	"backup-tool/internal/logging"
 	"bytes"
 	"encoding/json"
+	"fcstask/backup-tool/config"
+	"fcstask/backup-tool/pkg/logging"
 	"fmt"
 	"io"
 	"os"
