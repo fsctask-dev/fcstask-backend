@@ -6,8 +6,8 @@ import (
 	"github.com/labstack/echo/v4"
 	"time"
 
-	"fcstask/internal/api"
-	"fcstask/internal/server"
+	"fcstask-backend/internal/api"
+	"fcstask-backend/internal/server"
 )
 
 type App struct {

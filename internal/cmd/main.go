@@ -7,8 +7,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"fcstask/internal/app"
-	"fcstask/internal/config"
+	"fcstask-backend/internal/app"
+	"fcstask-backend/internal/config"
 )
 
 func main() {

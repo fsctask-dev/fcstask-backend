@@ -1,7 +1,7 @@
 package server
 
 import (
-	"fcstask/internal/server/handler"
+	"fcstask-backend/internal/server/handler"
 	"github.com/labstack/echo/v4"
 )
 

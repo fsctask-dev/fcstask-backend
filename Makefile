@@ -1,6 +1,6 @@
 GOPATH := $(shell go env GOPATH)
 PATH := $(PATH):$(GOPATH)/bin
-MODULE_NAME := fcstask
+MODULE_NAME := fcstask-backend
 BINARY_NAME := fcstask-api
 DOCKER_IMAGE_NAME ?= miruken/$(MODULE_NAME)-backend
 DOCKER_IMAGE_TAG ?= 0.1.0
