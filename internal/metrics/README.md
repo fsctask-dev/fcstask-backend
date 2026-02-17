@@ -1,11 +1,22 @@
+# Система сбора метрик
+
+## Архитектура
+FcsTask → Kafka → Telegraf → Prometheus → Grafana
+
+## Компоненты
+
+- **metrics** — пакет для отправки метрик из кода
+- **middleware** — автоматический сбор HTTP метрик
+- **Telegraf** — читает метрики из Kafka, отдаёт в Prometheus (см. fcstask/config/telegraf.conf)
+
 # Пакет metrics
+
 ```text
 internal/metrics/
 
 metrics/
 ├── client.go     # Клиент для отправки метрик в Kafka
 ├── business.go   # Бизнес-метрики (задачи, пайплайны)
-├── noop.go       # Пустая реализация для тестов
 └── interface.go  # Общие интерфейсы (Producer, MetricsClient)
 ```
 ## Интерфейс MetricsClient
@@ -46,15 +57,6 @@ client.Gauge("active_connections", 42, nil)
 producer должен реализовывать интерфейс Producer (метод PublishMetric)
 
 Kafka топик должен существовать или AllowAutoTopicCreation: true
-
-### NoopMetricsClient
-Пустая реализация для тестов. Ничего не делает, не падает.
-
-``` go
-// В тестах
-client := metrics.NoopMetricsClient{}
-service := NewMyService(client)  // метрики игнорируются
-```
 
 ## BusinessMetrics
 Готовые бизнес-метрики для системы проверки задач.
