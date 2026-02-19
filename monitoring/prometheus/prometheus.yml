@@ -1,0 +1,20 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager:9093
+
+rule_files:
+  - "rules.yml"
+
+scrape_configs:
+  - job_name: "fcstask-backend"
+    static_configs:
+      - targets:
+          - "host.docker.internal:8080"
+          - "fcstask-backend:8080"
+    metrics_path: "/metrics"

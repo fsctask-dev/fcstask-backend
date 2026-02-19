@@ -2,12 +2,13 @@ package app
 
 import (
 	"context"
+	"fcstask-backend/internal/api"
+	"fcstask-backend/internal/metrics"
+	"fcstask-backend/internal/server"
 	"fmt"
-	"github.com/labstack/echo/v4"
 	"time"
 
-	"fcstask-backend/internal/api"
-	"fcstask-backend/internal/server"
+	"github.com/labstack/echo/v4"
 )
 
 type App struct {
@@ -21,9 +22,11 @@ func New(
 	shutdownTimeout time.Duration,
 ) *App {
 	e := echo.New()
-	apiServer := &server.Server{}
 
+	apiServer := &server.Server{}
 	api.RegisterHandlers(e, apiServer)
+
+	metrics.EchoPrometheus(e)
 
 	addr := fmt.Sprintf("%s:%d", host, port)
 
