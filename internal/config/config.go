@@ -8,13 +8,18 @@ import (
 )
 
 type Config struct {
-	Server ServerConfig `yaml:"server"`
+	Server  ServerConfig  `yaml:"server"`
+	Metrics MetricsConfig `yaml:"metrics"`
 }
 
 type ServerConfig struct {
 	Host            string        `yaml:"host"`
 	Port            int           `yaml:"port"`
 	ShutdownTimeout time.Duration `yaml:"shutdown_timeout"`
+}
+
+type MetricsConfig struct {
+	Address string `yaml:"address"`
 }
 
 func Load(path string) (*Config, error) {
