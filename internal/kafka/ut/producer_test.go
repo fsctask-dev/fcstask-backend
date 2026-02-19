@@ -74,7 +74,8 @@ func TestProducerPublishErrors(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if err := producer.Publish(context.Background(), "metrics", nil, []byte("x")); err == nil {
+	metric := kafka.NewMetric("test", 1, nil, time.Time{})
+	if err := producer.PublishMetric(context.Background(), metric); err == nil {
 		t.Fatalf("expected error")
 	}
 }

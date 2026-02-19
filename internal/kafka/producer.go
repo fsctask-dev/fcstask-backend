@@ -14,7 +14,6 @@ import (
 
 // Producer publishes messages to Kafka.
 type Producer interface {
-	Publish(ctx context.Context, topic string, key []byte, payload []byte) error
 	PublishMetric(ctx context.Context, metric Metric) error
 	Close() error
 }
@@ -88,7 +87,7 @@ func newProducer(w Writer, metricsTopic string) *KafkaProducer {
 	}
 }
 
-func (p *KafkaProducer) Publish(ctx context.Context, topic string, key []byte, payload []byte) error {
+func (p *KafkaProducer) publish(ctx context.Context, topic string, key []byte, payload []byte) error {
 	if strings.TrimSpace(topic) == "" {
 		return errors.New("kafka topic is empty")
 	}
@@ -119,7 +118,7 @@ func (p *KafkaProducer) PublishMetric(ctx context.Context, metric Metric) error 
 		return err
 	}
 
-	return p.Publish(ctx, p.metricsTopic, []byte(metric.Name), payload)
+	return p.publish(ctx, p.metricsTopic, []byte(metric.Name), payload)
 }
 
 func (p *KafkaProducer) Close() error {
