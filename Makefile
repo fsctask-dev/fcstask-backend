@@ -5,7 +5,7 @@ BINARY_NAME := fcstask-api
 DOCKER_IMAGE_NAME ?= miruken/$(MODULE_NAME)-backend
 DOCKER_IMAGE_TAG ?= 0.1.0
 
-.PHONY: init tidy build gen test install-tools docker-build docker-run
+.PHONY: init tidy gen test migrate docker-up docker-down docker-logs clean
 
 init:
 	@echo "🔧 Initializing repo: $(MODULE_NAME)..."
@@ -21,57 +21,45 @@ tidy:
 	@go mod tidy
 	@echo "✅ go.mod & go.sum updated"
 
-install-tools:
-	@echo "📦 Installing tools..."
-	@which oapi-codegen || go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest
-	@which mockgen || go install github.com/golang/mock/mockgen@latest
-	@go get github.com/golang/mock/gomock
-	@echo "✅ Tools installed"
-
-gen: install-tools
-	@echo "🔄 Generating code..."
-	@go generate ./...
-	@echo "✅ Code generation completed"
-
-build: gen
-	@echo "⚙️  Building backend binary..."
-	@go build -o $(BINARY_NAME) internal/cmd/main.go
-	@echo "✅ Built: ./$(BINARY_NAME)"
-
-test: gen
-	@echo "🧪 Running tests..."
-	@go test ./... -v
-	@echo "✅ Tests completed"
-
-docker-build:
-	@echo "🐳 Building Docker image..."
-	@docker build -t $(DOCKER_IMAGE_NAME):$(DOCKER_IMAGE_TAG) .
-	@echo "✅ Docker image built"
-
-docker-run: docker-build
-	@echo "🚀 Running container on http://localhost:8080"
-	@docker run --rm -p 8080:8080 $(DOCKER_IMAGE_NAME):$(DOCKER_IMAGE_TAG)
-
-docker-test:
-	@echo "🧪 Running tests inside container..."
-	docker run --rm \
-		-v "$(PWD):/app" \
-		-w /app \
-		golang:1.25-alpine \
-		go test ./... -v
-
-docker-push:
-	@if [ -z "$$CI" ] && [ -z "$$FORCE_PUSH" ]; then \
-		echo "🛑 ERROR: Refusing to push from local machine."; \
-		echo "💡 Run with FORCE_PUSH=1 to override (not recommended)."; \
-		exit 1; \
+# Генерация API кода
+gen:
+	@echo "Generating API code from OpenAPI..."
+	@if command -v oapi-codegen >/dev/null 2>&1; then \
+		echo "oapi-codegen is already installed"; \
+	else \
+		echo "Installing oapi-codegen..."; \
+		go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest; \
 	fi
-	@echo "📤 Pushing image to registry..."
-	@docker push $(DOCKER_IMAGE_NAME):$(DOCKER_IMAGE_TAG)
-	@echo "✅ Pushed: $(DOCKER_IMAGE_NAME):$(DOCKER_IMAGE_TAG)"
+	@echo "Generating types..."
+	oapi-codegen -generate types -package api -o internal/api/types.gen.go api/openapi.yaml
+	@echo "Generating server..."
+	oapi-codegen -generate server -package api -o internal/api/server.gen.go api/openapi.yaml
+	@echo "Code generation completed!"
 
-ci-local: init tidy test docker-build
-	@echo "✅ Local CI check passed!"
+test:
+	go test ./... -v
 
-ci: ci-local docker-push
-	@echo "✅ Full CI pipeline completed!"
+# Миграции БД
+migrate:
+	@echo "Running database migrations..."
+	go run ./cmd/migrate/main.go
+
+run:
+	go run ./internal/cmd/main.go
+
+build:
+	go build -o bin/server ./internal/cmd/main.go
+
+# Docker команды
+docker-up:
+	docker-compose up -d
+
+docker-down:
+	docker-compose down
+
+docker-logs:
+	docker-compose logs -f
+
+# Очистка сгенерированных файлов
+clean:
+	rm -f internal/api/*.gen.go
