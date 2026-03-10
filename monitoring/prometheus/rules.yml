@@ -1,0 +1,12 @@
+groups:
+  - name: fcstask-alerts
+    rules:
+      - alert: HighHTTP500Errors
+        expr: sum(rate(echo_requests_total{code="500"}[1m])) > 0 # дебаг/тест
+        #expr: sum(rate(echo_requests_total{code="500"}[5m])) / sum(rate(echo_requests_total[5m])) > 0.1 #прод
+        for: 10s
+        labels:
+          severity: critical
+        annotations:
+          summary: "HTTP 500 errors detected on {{ $labels.instance }}"
+          description: "Service {{ $labels.instance }} has returned HTTP 500 errors. Current value: {{ $value }}"
