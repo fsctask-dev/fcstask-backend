@@ -16,12 +16,18 @@ type Config struct {
 type SessionConfig struct {
 	TTL             time.Duration `yaml:"ttl"`
 	CleanupInterval time.Duration `yaml:"cleanup_interval"`
+	Server  ServerConfig  `yaml:"server"`
+	Metrics MetricsConfig `yaml:"metrics"`
 }
 
 type ServerConfig struct {
 	Host            string        `yaml:"host"`
 	Port            int           `yaml:"port"`
 	ShutdownTimeout time.Duration `yaml:"shutdown_timeout"`
+}
+
+type MetricsConfig struct {
+	Address string `yaml:"address"`
 }
 
 func Load(path string) (*Config, error) {
