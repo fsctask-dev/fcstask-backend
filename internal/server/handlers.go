@@ -1,8 +1,7 @@
 package server
 
 import (
-	"fcstask/internal/server/handler"
-
+	"fcstask-backend/internal/server/handler"
 	"github.com/labstack/echo/v4"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
