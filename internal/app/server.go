@@ -6,14 +6,8 @@ import (
 	"log"
 	"time"
 
-	"github.com/labstack/echo/v4"
-
-	"fcstask/internal/api"
-	"fcstask/internal/config"
-	"fcstask/internal/db"
-	"fcstask/internal/db/model"
-	"fcstask/internal/server"
-	authmw "fcstask/internal/server/middleware"
+	"fcstask-backend/internal/api"
+	"fcstask-backend/internal/server"
 )
 
 type App struct {
