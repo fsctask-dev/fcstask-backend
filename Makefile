@@ -5,7 +5,7 @@ BINARY_NAME := fcstask-api
 DOCKER_IMAGE_NAME ?= miruken/$(MODULE_NAME)-backend
 DOCKER_IMAGE_TAG ?= 0.1.0
 
-.PHONY: init tidy build gen test install-tools docker-build docker-run
+.PHONY: init tidy migrate migrate install-tools gen test docker-build docker-run docker-test docker-push ci-local ci
 
 init:
 	@echo "🔧 Initializing repo: $(MODULE_NAME)..."
@@ -21,6 +21,11 @@ tidy:
 	@go mod tidy
 	@echo "✅ go.mod & go.sum updated"
 
+# Миграции БД
+migrate:
+	@echo "Running database migrations..."
+	go run ./cmd/migrate/main.go
+
 install-tools:
 	@echo "📦 Installing tools..."
 	@which oapi-codegen || go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest
@@ -29,14 +34,21 @@ install-tools:
 	@echo "✅ Tools installed"
 
 gen: install-tools
+	@echo "Generating API code from OpenAPI..."
+	@if command -v oapi-codegen >/dev/null 2>&1; then \
+		echo "oapi-codegen is already installed"; \
+	else \
+		echo "Installing oapi-codegen..."; \
+		go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest; \
+	fi
+	@echo "Generating types..."
+	oapi-codegen -generate types -package api -o internal/api/types.gen.go api/openapi.yaml
+	@echo "Generating server..."
+	oapi-codegen -generate server -package api -o internal/api/server.gen.go api/openapi.yaml
+	@echo "Code generation completed!"
 	@echo "🔄 Generating code..."
 	@go generate ./...
 	@echo "✅ Code generation completed"
-
-build: gen
-	@echo "⚙️  Building backend binary..."
-	@go build -o $(BINARY_NAME) internal/cmd/main.go
-	@echo "✅ Built: ./$(BINARY_NAME)"
 
 test: gen
 	@echo "🧪 Running tests..."
