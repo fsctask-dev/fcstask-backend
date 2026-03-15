@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"gorm.io/gorm"
 
+	"fcstask/internal/db"
 	"fcstask/internal/db/model"
 )
 
@@ -23,22 +23,22 @@ type SessionRepositoryInterface interface {
 }
 
 type SessionRepository struct {
-	db *gorm.DB
+	rw db.ReadWriter
 }
 
 var _ SessionRepositoryInterface = (*SessionRepository)(nil)
 
-func NewSessionRepository(db *gorm.DB) SessionRepositoryInterface {
-	return &SessionRepository{db: db}
+func NewSessionRepository(rw db.ReadWriter) SessionRepositoryInterface {
+	return &SessionRepository{rw: rw}
 }
 
 func (r *SessionRepository) Create(ctx context.Context, session *model.Session) error {
-	return r.db.WithContext(ctx).Create(session).Error
+	return r.rw.WriteDB().WithContext(ctx).Create(session).Error
 }
 
 func (r *SessionRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.Session, error) {
 	var session model.Session
-	err := r.db.WithContext(ctx).First(&session, "id = ?", id).Error
+	err := r.rw.ReadDB().WithContext(ctx).First(&session, "id = ?", id).Error
 	if err != nil {
 		return nil, err
 	}
@@ -47,7 +47,7 @@ func (r *SessionRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.S
 
 func (r *SessionRepository) GetByUserID(ctx context.Context, userID uuid.UUID) ([]model.Session, error) {
 	var sessions []model.Session
-	err := r.db.WithContext(ctx).Where("user_id = ?", userID).Find(&sessions).Error
+	err := r.rw.ReadDB().WithContext(ctx).Where("user_id = ?", userID).Find(&sessions).Error
 	if err != nil {
 		return nil, err
 	}
@@ -56,7 +56,7 @@ func (r *SessionRepository) GetByUserID(ctx context.Context, userID uuid.UUID) (
 
 func (r *SessionRepository) GetAllWithUser(ctx context.Context, limit, offset int) ([]model.Session, error) {
 	var sessions []model.Session
-	err := r.db.WithContext(ctx).
+	err := r.rw.ReadDB().WithContext(ctx).
 		Preload("User").
 		Order("created_at DESC").
 		Limit(limit).
@@ -70,25 +70,25 @@ func (r *SessionRepository) GetAllWithUser(ctx context.Context, limit, offset in
 
 func (r *SessionRepository) CountAll(ctx context.Context) (int64, error) {
 	var count int64
-	err := r.db.WithContext(ctx).Model(&model.Session{}).Count(&count).Error
+	err := r.rw.ReadDB().WithContext(ctx).Model(&model.Session{}).Count(&count).Error
 	return count, err
 }
 
 func (r *SessionRepository) TouchAccessedAt(ctx context.Context, id uuid.UUID) error {
-	return r.db.WithContext(ctx).Model(&model.Session{}).Where("id = ?", id).Update("accessed_at", time.Now()).Error
+	return r.rw.WriteDB().WithContext(ctx).Model(&model.Session{}).Where("id = ?", id).Update("accessed_at", time.Now()).Error
 }
 
 func (r *SessionRepository) Delete(ctx context.Context, id uuid.UUID) error {
-	return r.db.WithContext(ctx).Delete(&model.Session{}, "id = ?", id).Error
+	return r.rw.WriteDB().WithContext(ctx).Delete(&model.Session{}, "id = ?", id).Error
 }
 
 func (r *SessionRepository) DeleteByUserID(ctx context.Context, userID uuid.UUID) error {
-	return r.db.WithContext(ctx).Where("user_id = ?", userID).Delete(&model.Session{}).Error
+	return r.rw.WriteDB().WithContext(ctx).Where("user_id = ?", userID).Delete(&model.Session{}).Error
 }
 
 // CleanOutdated removes sessions older than the given TTL and returns the number of deleted rows.
 func (r *SessionRepository) CleanOutdated(ctx context.Context, ttl time.Duration) (int64, error) {
 	cutoff := time.Now().UTC().Add(-ttl)
-	result := r.db.WithContext(ctx).Where("accessed_at < ?", cutoff).Delete(&model.Session{})
+	result := r.rw.WriteDB().WithContext(ctx).Where("accessed_at < ?", cutoff).Delete(&model.Session{})
 	return result.RowsAffected, result.Error
 }

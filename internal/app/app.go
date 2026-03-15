@@ -2,13 +2,19 @@ package app
 
 import (
 	"context"
-	"fcstask-backend/internal/api"
-	"fcstask-backend/internal/metrics"
-	"fcstask-backend/internal/server"
 	"fmt"
 	"log"
 	"time"
+
 	"github.com/labstack/echo/v4"
+
+	"fcstask-backend/internal/api"
+	"fcstask-backend/internal/config"
+	"fcstask-backend/internal/db"
+	"fcstask-backend/internal/db/model"
+	"fcstask-backend/internal/metrics"
+	"fcstask-backend/internal/server"
+	authmw "fcstask-backend/internal/server/middleware/auth"
 )
 
 type App struct {
@@ -40,9 +46,6 @@ func New(cfg *config.Config) (*App, error) {
 		"/v1/sessions",
 		"/v1/users/sessions",
 	}))
->>>>>>> 5bc57e9 (add metrics, prometheus, alertmanager):internal/app/app.go
-
-	apiServer := &server.Server{}
 	api.RegisterHandlers(e, apiServer)
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
