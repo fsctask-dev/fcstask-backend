@@ -12,8 +12,8 @@ type APIServer struct {
 }
 
 func NewAPIServer(db *db.Client) *APIServer {
-	userRepo := repo.NewUserRepository(db.DB())
-	sessionRepo := repo.NewSessionRepository(db.DB())
+	userRepo := repo.NewUserRepository(db)
+	sessionRepo := repo.NewSessionRepository(db)
 
 	return &APIServer{
 		db:          db,

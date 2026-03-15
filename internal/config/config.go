@@ -44,6 +44,20 @@ func Load(path string) (*Config, error) {
 	if cfg.Database.SSLMode == "" {
 		cfg.Database.SSLMode = "disable"
 	}
+	for i := range cfg.Database.Replicas {
+		if cfg.Database.Replicas[i].SSLMode == "" {
+			cfg.Database.Replicas[i].SSLMode = "disable"
+		}
+	}
+	if cfg.Database.MaxOpenConns <= 0 {
+		cfg.Database.MaxOpenConns = 25
+	}
+	if cfg.Database.MaxIdleConns <= 0 {
+		cfg.Database.MaxIdleConns = 25
+	}
+	if cfg.Database.ConnMaxLifetime <= 0 {
+		cfg.Database.ConnMaxLifetime = 5 * time.Minute
+	}
 
 	if cfg.Session.TTL == 0 {
 		cfg.Session.TTL = 24 * time.Hour
