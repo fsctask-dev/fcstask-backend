@@ -3,12 +3,15 @@ package app
 import (
 	"context"
 	"fcstask-backend/internal/api"
+	"fcstask-backend/internal/config"
+	"fcstask-backend/internal/db"
 	"fcstask-backend/internal/metrics"
 	"fcstask-backend/internal/server"
+	authmw "fcstask-backend/internal/server/middleware"
 	"fmt"
+	"github.com/labstack/echo/v4"
 	"log"
 	"time"
-	"github.com/labstack/echo/v4"
 )
 
 type App struct {
@@ -28,10 +31,6 @@ func New(cfg *config.Config) (*App, error) {
 		return nil, fmt.Errorf("failed to init database: %w", err)
 	}
 
-	if err := dbClient.AutoMigrate(&model.User{}, &model.Session{}); err != nil {
-		log.Printf("Warning: failed to run migrations: %v", err)
-	}
-
 	apiServer := server.NewAPIServer(dbClient)
 
 	e.Use(authmw.Auth(apiServer.UserRepo(), apiServer.SessionRepo(), []string{
@@ -40,14 +39,11 @@ func New(cfg *config.Config) (*App, error) {
 		"/v1/sessions",
 		"/v1/users/sessions",
 	}))
->>>>>>> 5bc57e9 (add metrics, prometheus, alertmanager):internal/app/app.go
 
-	apiServer := &server.Server{}
 	api.RegisterHandlers(e, apiServer)
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 	metrics.EchoPrometheus(e)
-
 
 	httpServer := server.NewHTTPServer(addr, e)
 

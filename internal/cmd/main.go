@@ -9,6 +9,7 @@ import (
 
 	"fcstask-backend/internal/app"
 	"fcstask-backend/internal/config"
+	"fcstask-backend/internal/db"
 )
 
 func main() {
@@ -23,6 +24,10 @@ func main() {
 		syscall.SIGTERM,
 	)
 	defer stop()
+
+	if err := db.Migrate(&cfg.Database); err != nil {
+		log.Fatal("Failed to run migrations:", err)
+	}
 
 	app, err := app.New(cfg)
 	if err != nil {

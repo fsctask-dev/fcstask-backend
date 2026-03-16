@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"fcstask/internal/config"
+	"fcstask/internal/db/model"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -44,11 +45,11 @@ func New(cfg *config.DatabaseConfig) (*Client, error) {
 		return nil, fmt.Errorf("failed to get sql.DB: %w", err)
 	}
 
-	sqlDB.SetMaxOpenConns(25)
-	sqlDB.SetMaxIdleConns(25)
-	sqlDB.SetConnMaxLifetime(5 * time.Minute)
+	sqlDB.SetMaxOpenConns(cfg.MaxOpenConns)
+	sqlDB.SetMaxIdleConns(cfg.MaxIdleConns)
+	sqlDB.SetConnMaxLifetime(cfg.ConnMaxLifetime)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.PingTimeout)
 	defer cancel()
 
 	if err := sqlDB.PingContext(ctx); err != nil {
@@ -57,6 +58,16 @@ func New(cfg *config.DatabaseConfig) (*Client, error) {
 	}
 
 	return &Client{db: db}, nil
+}
+
+func Migrate(cfg *config.DatabaseConfig) error {
+	client, err := New(cfg)
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+
+	return client.db.AutoMigrate(&model.User{}, &model.Session{})
 }
 
 func (c *Client) DB() *gorm.DB {
@@ -74,10 +85,6 @@ func (c *Client) Close() error {
 	}
 
 	return sqlDB.Close()
-}
-
-func (c *Client) AutoMigrate(models ...interface{}) error {
-	return c.db.AutoMigrate(models...)
 }
 
 func (c *Client) WithContext(ctx context.Context) *gorm.DB {

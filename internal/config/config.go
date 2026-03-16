@@ -16,18 +16,12 @@ type Config struct {
 type SessionConfig struct {
 	TTL             time.Duration `yaml:"ttl"`
 	CleanupInterval time.Duration `yaml:"cleanup_interval"`
-	Server  ServerConfig  `yaml:"server"`
-	Metrics MetricsConfig `yaml:"metrics"`
 }
 
 type ServerConfig struct {
 	Host            string        `yaml:"host"`
 	Port            int           `yaml:"port"`
 	ShutdownTimeout time.Duration `yaml:"shutdown_timeout"`
-}
-
-type MetricsConfig struct {
-	Address string `yaml:"address"`
 }
 
 func Load(path string) (*Config, error) {
@@ -39,18 +33,6 @@ func Load(path string) (*Config, error) {
 	var cfg Config
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, err
-	}
-
-	if cfg.Database.SSLMode == "" {
-		cfg.Database.SSLMode = "disable"
-	}
-
-	if cfg.Session.TTL == 0 {
-		cfg.Session.TTL = 24 * time.Hour
-	}
-
-	if cfg.Session.CleanupInterval == 0 {
-		cfg.Session.CleanupInterval = 5 * time.Second
 	}
 
 	return &cfg, nil

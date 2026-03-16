@@ -111,7 +111,7 @@ func (m *MockUserRepository) CountUsersWithSessions(ctx context.Context) (int64,
 }
 
 // Проверяем что мок реализует интерфейс
-var _ repo.UserRepositoryInterface = (*MockUserRepository)(nil)
+var _ repo.IUserRepo = (*MockUserRepository)(nil)
 
 var testUserID = uuid.MustParse("11111111-1111-1111-1111-111111111111")
 var testUserID2 = uuid.MustParse("99999999-9999-9999-9999-999999999999")
