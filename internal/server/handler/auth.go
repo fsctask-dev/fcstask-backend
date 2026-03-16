@@ -17,7 +17,7 @@ import (
 	"fcstask/internal/db/repo"
 )
 
-func SignUpHandler(userRepo repo.UserRepositoryInterface, sessionRepo repo.SessionRepositoryInterface, ctx echo.Context) error {
+func SignUpHandler(userRepo repo.IUserRepo, sessionRepo repo.SessionRepositoryInterface, ctx echo.Context) error {
 	var req api.SignUpRequest
 	if err := ctx.Bind(&req); err != nil {
 		return badRequest(ctx, "Invalid request body")
@@ -84,7 +84,7 @@ func SignUpHandler(userRepo repo.UserRepositoryInterface, sessionRepo repo.Sessi
 	})
 }
 
-func SignInHandler(userRepo repo.UserRepositoryInterface, sessionRepo repo.SessionRepositoryInterface, ctx echo.Context) error {
+func SignInHandler(userRepo repo.IUserRepo, sessionRepo repo.SessionRepositoryInterface, ctx echo.Context) error {
 	var req api.SignInRequest
 	if err := ctx.Bind(&req); err != nil {
 		return badRequest(ctx, "Invalid request body")
@@ -146,7 +146,7 @@ func SignInHandler(userRepo repo.UserRepositoryInterface, sessionRepo repo.Sessi
 const UserContextKey = "user"
 const SessionContextKey = "session"
 
-func GetMeHandler(userRepo repo.UserRepositoryInterface, sessionRepo repo.SessionRepositoryInterface, ctx echo.Context) error {
+func GetMeHandler(userRepo repo.IUserRepo, sessionRepo repo.SessionRepositoryInterface, ctx echo.Context) error {
 	user, ok := ctx.Get(UserContextKey).(*models.User)
 	if !ok || user == nil {
 		return unauthorized(ctx, "Not authenticated")

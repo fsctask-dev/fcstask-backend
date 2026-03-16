@@ -1,0 +1,11 @@
+allOf:
+  - $ref: "./SessionBase.yaml"
+  - type: object
+    required:
+      - id
+    properties:
+      id:
+        type: string
+        format: uuid
+        description: Session ID
+

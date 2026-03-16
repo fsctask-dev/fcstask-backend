@@ -109,7 +109,7 @@ func (m *MockUserRepository) CountUsersWithSessions(ctx context.Context) (int64,
 	return args.Get(0).(int64), args.Error(1)
 }
 
-var _ repo.UserRepositoryInterface = (*MockUserRepository)(nil)
+var _ repo.IUserRepo = (*MockUserRepository)(nil)
 
 type MockSessionRepository struct {
 	mock.Mock

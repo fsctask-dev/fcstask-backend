@@ -7,7 +7,7 @@ import (
 
 type APIServer struct {
 	db          *db.Client
-	userRepo    repo.UserRepositoryInterface
+	userRepo    repo.IUserRepo
 	sessionRepo repo.SessionRepositoryInterface
 }
 
@@ -22,7 +22,7 @@ func NewAPIServer(db *db.Client) *APIServer {
 	}
 }
 
-func (s *APIServer) UserRepo() repo.UserRepositoryInterface {
+func (s *APIServer) UserRepo() repo.IUserRepo {
 	return s.userRepo
 }
 

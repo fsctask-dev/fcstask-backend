@@ -21,7 +21,7 @@ func authError(ctx echo.Context, message string) error {
 	})
 }
 
-func Auth(userRepo repo.UserRepositoryInterface, sessionRepo repo.SessionRepositoryInterface, protectedPaths []string) echo.MiddlewareFunc {
+func Auth(userRepo repo.IUserRepo, sessionRepo repo.SessionRepositoryInterface, protectedPaths []string) echo.MiddlewareFunc {
 	protected := make(map[string]bool, len(protectedPaths))
 	for _, p := range protectedPaths {
 		protected[p] = true

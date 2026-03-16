@@ -1,0 +1,12 @@
+type: object
+required:
+  - password
+properties:
+  email:
+    type: string
+    format: email
+  username:
+    type: string
+  password:
+    type: string
+

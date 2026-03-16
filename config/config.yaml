@@ -10,6 +10,10 @@ database:
   password: "postgres"
   database: "fcstask"
   ssl_mode: "disable"
+  max_open_conns: 25
+  max_idle_conns: 25
+  conn_max_lifetime: 5m
+  ping_timeout: 5s
 
 session:
   ttl: 24h
