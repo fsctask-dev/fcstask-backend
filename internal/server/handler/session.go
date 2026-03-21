@@ -6,8 +6,8 @@ import (
 	"github.com/labstack/echo/v4"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
-	"fcstask/internal/api"
-	"fcstask/internal/db/repo"
+	"fcstask-backend/internal/api"
+	"fcstask-backend/internal/db/repo"
 )
 
 func parsePagination(limit, offset *int) (int, int, error) {

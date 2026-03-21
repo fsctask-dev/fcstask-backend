@@ -17,9 +17,9 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 
-	"fcstask/internal/api"
-	models "fcstask/internal/db/model"
-	"fcstask/internal/db/repo"
+	"fcstask-backend/internal/api"
+	models "fcstask-backend/internal/db/model"
+	"fcstask-backend/internal/db/repo"
 )
 
 // MockSessionRepository мок для репозитория сессий

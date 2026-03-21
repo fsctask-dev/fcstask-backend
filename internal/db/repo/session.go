@@ -6,8 +6,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"fcstask/internal/db"
-	"fcstask/internal/db/model"
+	"fcstask-backend/internal/db"
+	"fcstask-backend/internal/db/model"
 )
 
 type SessionRepositoryInterface interface {

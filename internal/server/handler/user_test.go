@@ -17,9 +17,9 @@ import (
 	"github.com/stretchr/testify/mock"
 	"gorm.io/gorm"
 
-	"fcstask/internal/api"
-	models "fcstask/internal/db/model"
-	"fcstask/internal/db/repo"
+	"fcstask-backend/internal/api"
+	models "fcstask-backend/internal/db/model"
+	"fcstask-backend/internal/db/repo"
 )
 
 // MockUserRepository мок для репозитория пользователей

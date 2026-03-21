@@ -14,7 +14,7 @@ import (
 	"fcstask-backend/internal/db/model"
 	"fcstask-backend/internal/metrics"
 	"fcstask-backend/internal/server"
-	authmw "fcstask-backend/internal/server/middleware/auth"
+	authmw "fcstask-backend/internal/server/middleware"
 )
 
 type App struct {

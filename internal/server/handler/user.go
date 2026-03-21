@@ -2,7 +2,7 @@ package handler
 
 import (
 	"errors"
-	models "fcstask/internal/db/model"
+	models "fcstask-backend/internal/db/model"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -10,8 +10,8 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 	"gorm.io/gorm"
 
-	"fcstask/internal/api"
-	"fcstask/internal/db/repo"
+	"fcstask-backend/internal/api"
+	"fcstask-backend/internal/db/repo"
 )
 
 func CreateUserHandler(userRepo repo.UserRepositoryInterface, ctx echo.Context) error {

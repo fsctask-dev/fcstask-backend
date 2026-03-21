@@ -6,7 +6,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"fcstask/internal/config"
+	"fcstask-backend/internal/config"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -16,6 +16,8 @@ import (
 type ReadWriter interface {
 	ReadDB() *gorm.DB
 	WriteDB() *gorm.DB
+	ReadMasterDB() *gorm.DB
+	Transaction(ctx context.Context, fn func(tx *gorm.DB) error) error
 }
 
 type Client struct {
@@ -89,6 +91,10 @@ func (c *Client) ReadDB() *gorm.DB {
 }
 
 func (c *Client) WriteDB() *gorm.DB {
+	return c.master
+}
+
+func (c *Client) ReadMasterDB() *gorm.DB {
 	return c.master
 }
 
