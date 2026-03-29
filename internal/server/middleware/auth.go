@@ -7,9 +7,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 
-	"fcstask/internal/api"
-	"fcstask/internal/db/repo"
-	"fcstask/internal/server/handler"
+	"fcstask-backend/internal/api"
+	"fcstask-backend/internal/db/repo"
+	"fcstask-backend/internal/server/handler"
 )
 
 func authError(ctx echo.Context, message string) error {

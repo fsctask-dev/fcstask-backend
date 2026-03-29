@@ -7,7 +7,7 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
-	"fcstask/internal/db/model"
+	"fcstask-backend/internal/db/model"
 )
 
 type SessionRepositoryInterface interface {
