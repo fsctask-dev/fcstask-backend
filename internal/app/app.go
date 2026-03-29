@@ -7,9 +7,11 @@ import (
 	"fcstask-backend/internal/db"
 	"fcstask-backend/internal/metrics"
 	"fcstask-backend/internal/server"
+	"fcstask-backend/internal/server/handler"
 	authmw "fcstask-backend/internal/server/middleware"
 	"fmt"
 	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 	"log"
 	"time"
 )
@@ -33,6 +35,12 @@ func New(cfg *config.Config) (*App, error) {
 
 	apiServer := server.NewAPIServer(dbClient)
 
+	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
+		AllowOrigins: []string{"http://localhost:5173", "http://localhost:3000"},
+		AllowMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowHeaders: []string{"Content-Type", "Authorization"},
+	}))
+
 	e.Use(authmw.Auth(apiServer.UserRepo(), apiServer.SessionRepo(), []string{
 		"/v1/api/me",
 		"/api/signout",
@@ -41,6 +49,13 @@ func New(cfg *config.Config) (*App, error) {
 	}))
 
 	api.RegisterHandlers(e, apiServer)
+
+	// Course and board routes (in-memory storage)
+	e.GET("/api/courses", handler.GetCoursesHandler)
+	e.POST("/api/courses", handler.CreateCourseHandler)
+	e.GET("/api/courses/:courseId", handler.GetCourseHandler)
+	e.PUT("/api/courses/:courseId", handler.UpdateCourseHandler)
+	e.GET("/api/courses/:courseId/board", handler.GetCourseBoardHandler)
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 	metrics.EchoPrometheus(e)

@@ -14,10 +14,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
-	"fcstask/internal/api"
-	models "fcstask/internal/db/model"
-	"fcstask/internal/db/repo"
-	"fcstask/internal/server/handler"
+	"fcstask-backend/internal/api"
+	models "fcstask-backend/internal/db/model"
+	"fcstask-backend/internal/db/repo"
+	"fcstask-backend/internal/server/handler"
 )
 
 // --- Mocks ---

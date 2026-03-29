@@ -1,8 +1,8 @@
 package server
 
 import (
-	"fcstask/internal/db"
-	"fcstask/internal/db/repo"
+	"fcstask-backend/internal/db"
+	"fcstask-backend/internal/db/repo"
 )
 
 type APIServer struct {
