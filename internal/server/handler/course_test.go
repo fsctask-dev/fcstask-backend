@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/labstack/echo/v4"
+	"github.com/stretchr/testify/assert"
 )
 
 func setupEcho() *echo.Echo {
@@ -23,7 +24,6 @@ func setupEcho() *echo.Echo {
 	return e
 }
 
-// plainReq - запрос БЕЗ авторизации
 func plainReq(method, path string, body []byte) *http.Request {
 	req := httptest.NewRequest(method, path, bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -91,9 +91,10 @@ func TestGetCourses_EmptyFilterResult(t *testing.T) {
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
-	var courses []Course
-	json.Unmarshal(rec.Body.Bytes(), &courses)
-
+	var response PaginatedResponse
+	json.Unmarshal(rec.Body.Bytes(), &response)
+	
+	courses := response.Data.([]interface{})
 	if len(courses) != 0 {
 		t.Fatalf("expected 0 courses, got %d", len(courses))
 	}
@@ -121,11 +122,12 @@ func TestGetCourses_Filter(t *testing.T) {
 
 	e.ServeHTTP(rec, req)
 
-	var courses []Course
-	_ = json.Unmarshal(rec.Body.Bytes(), &courses)
-
+	var response PaginatedResponse
+	_ = json.Unmarshal(rec.Body.Bytes(), &response)
+	
+	courses := response.Data.([]interface{})
 	if len(courses) != 1 {
-		t.Fatalf("expected 1 filtered course")
+		t.Fatalf("expected 1 filtered course, got %d", len(courses))
 	}
 }
 
@@ -138,11 +140,12 @@ func TestGetCourses_NoFilterAllVisible(t *testing.T) {
 
 	e.ServeHTTP(rec, req)
 
-	var courses []Course
-	_ = json.Unmarshal(rec.Body.Bytes(), &courses)
-
+	var response PaginatedResponse
+	_ = json.Unmarshal(rec.Body.Bytes(), &response)
+	
+	courses := response.Data.([]interface{})
 	if len(courses) != 2 {
-		t.Fatalf("expected 2 courses without filter")
+		t.Fatalf("expected 2 courses without filter, got %d", len(courses))
 	}
 }
 
@@ -643,4 +646,225 @@ func TestIsValidDateRange_EqualDates(t *testing.T) {
 	if isValidDateRange("2024-01-01", "2024-01-01") {
 		t.Fatal("expected false when dates are equal")
 	}
+}
+
+
+func TestGetCourses_WithPagination(t *testing.T) {
+	resetDB()
+	courseMu.Lock()
+	for i := 1; i <= 25; i++ {
+		courseDB[fmt.Sprintf("course-%d", i)] = Course{
+			ID:           fmt.Sprintf("course-%d", i),
+			Name:         fmt.Sprintf("Course %d", i),
+			Status:       "created",
+			StartDate:    "2024-01-01",
+			EndDate:      "2024-02-01",
+			RepoTemplate: "git@test/repo.git",
+			Description:  "test",
+			URL:          fmt.Sprintf("/course/course-%d", i),
+		}
+	}
+	courseMu.Unlock()
+	
+	e := setupEcho()
+	
+	tests := []struct {
+		name           string
+		limit          string
+		offset         string
+		expectedCount  int
+		expectedTotal  int
+		expectedStatus int
+	}{
+		{
+			name:           "default pagination (limit 20, offset 0)",
+			limit:          "",
+			offset:         "",
+			expectedCount:  20,
+			expectedTotal:  27, // 2 из resetDB + 25 добавленных
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:           "custom limit 5",
+			limit:          "5",
+			offset:         "0",
+			expectedCount:  5,
+			expectedTotal:  27,
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:           "custom limit 5 offset 10",
+			limit:          "5",
+			offset:         "10",
+			expectedCount:  5,
+			expectedTotal:  27,
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:           "offset beyond total",
+			limit:          "10",
+			offset:         "100",
+			expectedCount:  0,
+			expectedTotal:  27,
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:           "limit exceeds max (should be capped at 100)",
+			limit:          "200",
+			offset:         "0",
+			expectedCount:  27, // всего 27 курсов
+			expectedTotal:  27,
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:           "invalid limit (should use default)",
+			limit:          "invalid",
+			offset:         "0",
+			expectedCount:  20,
+			expectedTotal:  27,
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:           "negative offset (should use 0)",
+			limit:          "10",
+			offset:         "-5",
+			expectedCount:  10,
+			expectedTotal:  27,
+			expectedStatus: http.StatusOK,
+		},
+	}
+	
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			url := "/api/courses"
+			if tt.limit != "" || tt.offset != "" {
+				url += "?"
+				if tt.limit != "" {
+					url += "limit=" + tt.limit
+				}
+				if tt.offset != "" {
+					if tt.limit != "" {
+						url += "&"
+					}
+					url += "offset=" + tt.offset
+				}
+			}
+			
+			req := plainReq(http.MethodGet, url, nil)
+			rec := httptest.NewRecorder()
+			e.ServeHTTP(rec, req)
+			
+			assert.Equal(t, tt.expectedStatus, rec.Code)
+			
+			var response PaginatedResponse
+			err := json.Unmarshal(rec.Body.Bytes(), &response)
+			assert.NoError(t, err)
+			
+			data, ok := response.Data.([]interface{})
+			assert.True(t, ok, "response should have 'data' field")
+			assert.Equal(t, tt.expectedCount, len(data), "unexpected data count")
+			
+			assert.Equal(t, tt.expectedTotal, response.Pagination.Total, "unexpected total")
+			
+			if tt.limit == "200" {
+				assert.Equal(t, 100, response.Pagination.Limit, "limit should be capped at 100")
+			} else if tt.limit == "invalid" {
+				assert.Equal(t, 20, response.Pagination.Limit, "invalid limit should use default 20")
+			} else if tt.limit != "" {
+				expectedLimit := tt.expectedCount
+				if tt.expectedCount > 20 && tt.limit != "200" {
+					expectedLimit, _ = strconv.Atoi(tt.limit)
+				}
+				if expectedLimit <= 100 {
+					assert.Equal(t, expectedLimit, response.Pagination.Limit)
+				}
+			}
+		})
+	}
+}
+
+func TestGetCourses_WithPaginationAndFilter(t *testing.T) {
+	resetDB()
+	e := setupEcho()
+	
+	courseMu.Lock()
+	courseDB["filtered-1"] = Course{
+		ID:           "filtered-1",
+		Name:         "Filtered 1",
+		Status:       "in_progress",
+		StartDate:    "2024-01-01",
+		EndDate:      "2024-02-01",
+		RepoTemplate: "git@test/repo.git",
+		Description:  "test",
+		URL:          "/course/filtered-1",
+	}
+	courseDB["filtered-2"] = Course{
+		ID:           "filtered-2",
+		Name:         "Filtered 2",
+		Status:       "in_progress",
+		StartDate:    "2024-01-01",
+		EndDate:      "2024-02-01",
+		RepoTemplate: "git@test/repo.git",
+		Description:  "test",
+		URL:          "/course/filtered-2",
+	}
+	courseMu.Unlock()
+	
+	req := plainReq(http.MethodGet, "/api/courses?status=in_progress&limit=1&offset=1", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+	
+	assert.Equal(t, http.StatusOK, rec.Code)
+	
+	var response PaginatedResponse
+	err := json.Unmarshal(rec.Body.Bytes(), &response)
+	assert.NoError(t, err)
+	
+	data := response.Data.([]interface{})
+	assert.Equal(t, 1, len(data), "should return 1 course with offset=1")
+	assert.Equal(t, 3, response.Pagination.Total, "total should be 3 courses with status 'in_progress'")
+}
+
+func TestGetCourses_PaginationNextPrev(t *testing.T) {
+	resetDB()
+	courseMu.Lock()
+	for i := 1; i <= 15; i++ {
+		courseDB[fmt.Sprintf("pagination-test-%d", i)] = Course{
+			ID:           fmt.Sprintf("pagination-test-%d", i),
+			Name:         fmt.Sprintf("Pagination Test %d", i),
+			Status:       "created",
+			StartDate:    "2024-01-01",
+			EndDate:      "2024-02-01",
+			RepoTemplate: "git@test/repo.git",
+			Description:  "test",
+			URL:          fmt.Sprintf("/course/pagination-test-%d", i),
+		}
+	}
+	courseMu.Unlock()
+	
+	e := setupEcho()
+	
+	// Тест для первой страницы (next должен быть)
+	req := plainReq(http.MethodGet, "/api/courses?limit=5&offset=0", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+	
+	var response PaginatedResponse
+	json.Unmarshal(rec.Body.Bytes(), &response)
+	
+	assert.NotNil(t, response.Pagination.Next, "next should exist for first page")
+	assert.Nil(t, response.Pagination.Prev, "prev should be nil for first page")
+	assert.Equal(t, 5, *response.Pagination.Next, "next offset should be 5")
+	
+	// Тест для последней страницы (next должен быть nil)
+	req2 := plainReq(http.MethodGet, "/api/courses?limit=5&offset=15", nil)
+	rec2 := httptest.NewRecorder()
+	e.ServeHTTP(rec2, req2)
+	
+	var response2 PaginatedResponse
+	json.Unmarshal(rec2.Body.Bytes(), &response2)
+	
+	assert.Nil(t, response2.Pagination.Next, "next should be nil for last page")
+	assert.NotNil(t, response2.Pagination.Prev, "prev should exist for last page")
+	assert.Equal(t, 10, *response2.Pagination.Prev, "prev offset should be 10")
 }

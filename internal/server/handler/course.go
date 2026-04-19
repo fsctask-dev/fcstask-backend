@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -35,6 +36,21 @@ type PostCourseRequest struct {
 type ValidationError struct {
 	Field   string `json:"field"`
 	Message string `json:"message"`
+}
+
+// PaginationResponse - структура для метаинформации пагинации
+type PaginationResponse struct {
+	Limit  int  `json:"limit"`
+	Offset int  `json:"offset"`
+	Total  int  `json:"total"`
+	Next   *int `json:"next,omitempty"`
+	Prev   *int `json:"prev,omitempty"`
+}
+
+// PaginatedResponse - общая структура ответа с пагинацией
+type PaginatedResponse struct {
+	Data       interface{}       `json:"data"`
+	Pagination PaginationResponse `json:"pagination"`
 }
 
 // In-memory storage
@@ -175,22 +191,88 @@ func (req *PostCourseRequest) Validate() []ValidationError {
 	return errs
 }
 
+// Вспомогательные функции для пагинации
+
+func getPaginationParams(c echo.Context) (limit, offset int) {
+	// Парсим limit (по умолчанию 20, максимум 100)
+	limit = 20
+	if limitStr := c.QueryParam("limit"); limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
+			limit = l
+			if limit > 100 {
+				limit = 100
+			}
+		}
+	}
+
+	offset = 0
+	if offsetStr := c.QueryParam("offset"); offsetStr != "" {
+		if o, err := strconv.Atoi(offsetStr); err == nil && o >= 0 {
+			offset = o
+		}
+	}
+
+	return limit, offset
+}
+
+func getNextOffset(offset, limit, total int) *int {
+	next := offset + limit
+	if next < total {
+		return &next
+	}
+	return nil
+}
+
+func getPrevOffset(offset, limit int) *int {
+	prev := offset - limit
+	if prev >= 0 {
+		return &prev
+	}
+	return nil
+}
+
 // Хендлеры
 
 func GetCoursesHandler(c echo.Context) error {
 	statusFilter := c.QueryParam("status")
-
+	
+	limit, offset := getPaginationParams(c)
+	
 	courseMu.RLock()
 	defer courseMu.RUnlock()
-
-	courses := make([]Course, 0, len(courseDB))
+	
+	allCourses := make([]Course, 0, len(courseDB))
 	for _, course := range courseDB {
 		if statusFilter == "" || course.Status == statusFilter {
-			courses = append(courses, course)
+			allCourses = append(allCourses, course)
 		}
 	}
-
-	return c.JSON(http.StatusOK, courses)
+	
+	total := len(allCourses)
+	start := offset
+	end := offset + limit
+	
+	if start > total {
+		start = total
+	}
+	if end > total {
+		end = total
+	}
+	
+	paginatedCourses := allCourses[start:end]
+	
+	response := PaginatedResponse{
+		Data: paginatedCourses,
+		Pagination: PaginationResponse{
+			Limit:  limit,
+			Offset: offset,
+			Total:  total,
+			Next:   getNextOffset(offset, limit, total),
+			Prev:   getPrevOffset(offset, limit),
+		},
+	}
+	
+	return c.JSON(http.StatusOK, response)
 }
 
 func GetCourseHandler(c echo.Context) error {
