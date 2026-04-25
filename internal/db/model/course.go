@@ -16,7 +16,7 @@ type Course struct {
 	Name         string     `json:"name"`
 	Slug         string     `gorm:"uniqueIndex" json:"slug"`
 	Status       string     `json:"status"`
-	Type         CourseType `gorm:"default:private" json:"type"` // новое поле
+	Type         CourseType `gorm:"default:private" json:"type"`
 	StartDate    string     `json:"startDate"`
 	EndDate      string     `json:"endDate"`
 	RepoTemplate string     `json:"repoTemplate"`
