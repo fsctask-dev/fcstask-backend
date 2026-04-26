@@ -114,6 +114,9 @@ func SignInHandler(userRepo repo.IUserRepo, sessionRepo repo.SessionRepositoryIn
 		return internalError(ctx, "Failed to find user")
 	}
 
+	if user.PasswordHash == "" {
+		return unauthorized(ctx, "Invalid credentials")
+	}
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
 		return unauthorized(ctx, "Invalid credentials")
 	}

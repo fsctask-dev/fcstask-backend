@@ -11,6 +11,7 @@ type Config struct {
 	Server   ServerConfig   `yaml:"server"`
 	Database DatabaseConfig `yaml:"database"`
 	Session  SessionConfig  `yaml:"session"`
+	OAuth    OAuthConfig    `yaml:"oauth"`
 }
 
 type SessionConfig struct {

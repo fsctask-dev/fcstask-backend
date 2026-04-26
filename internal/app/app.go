@@ -10,10 +10,11 @@ import (
 	"fcstask-backend/internal/server/handler"
 	authmw "fcstask-backend/internal/server/middleware"
 	"fmt"
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
 	"log"
 	"time"
+
+	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 )
 
 type App struct {
@@ -33,7 +34,7 @@ func New(cfg *config.Config) (*App, error) {
 		return nil, fmt.Errorf("failed to init database: %w", err)
 	}
 
-	apiServer := server.NewAPIServer(dbClient)
+	apiServer := server.NewAPIServer(dbClient, cfg.OAuth)
 
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
 		AllowOrigins: []string{"http://localhost:5173", "http://localhost:3000"},

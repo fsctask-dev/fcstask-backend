@@ -1,0 +1,27 @@
+type: object
+required:
+  - status
+properties:
+  status:
+    type: string
+    enum:
+      - ok
+      - registration_required
+    description: |
+      ok — identity is linked to a user, AuthResponse is in `auth`.
+      registration_required — first OAuth login, frontend should show a signup form
+      pre-filled from `suggested` and POST /api/oauth/complete-signup with `registration_token`.
+  auth:
+    $ref: "./AuthResponse.yaml"
+  registration_token:
+    type: string
+    format: uuid
+    description: Identifier of the pending OAuth identity (use it in /api/oauth/complete-signup)
+  suggested:
+    $ref: "./OAuthSuggestedProfile.yaml"
+  provider:
+    type: string
+    enum:
+      - gitlab
+      - google
+      - telegram
