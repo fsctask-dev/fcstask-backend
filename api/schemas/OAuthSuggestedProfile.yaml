@@ -1,0 +1,12 @@
+type: object
+description: Profile fields pulled from the OAuth provider; the frontend can pre-fill the registration form with these.
+properties:
+  email:
+    type: string
+    format: email
+  username:
+    type: string
+  first_name:
+    type: string
+  last_name:
+    type: string

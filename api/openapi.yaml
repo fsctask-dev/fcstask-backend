@@ -325,6 +325,79 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/oauth/{provider}/exchange:
+    post:
+      operationId: OAuthExchange
+      summary: Exchange OAuth provider payload for a session or a registration token
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          description: One of `gitlab`, `google`, `telegram`
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OAuthExchangeRequest"
+      responses:
+        "200":
+          description: Either signed in (status=ok) or registration required (status=registration_required)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OAuthExchangeResponse"
+        "400":
+          description: Invalid payload or signature
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Provider unknown or disabled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/oauth/complete-signup:
+    post:
+      operationId: OAuthCompleteSignUp
+      summary: Finish registration started by an OAuth exchange and create the user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OAuthCompleteSignUpRequest"
+      responses:
+        "201":
+          description: User created and signed in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Registration token not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Username/email already taken or identity already linked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
 security:
   - BearerAuth: []
 
@@ -361,3 +434,11 @@ components:
       $ref: "./schemas/UserWithSessions.yaml"
     PaginatedUsersWithSessionsResponse:
       $ref: "./schemas/PaginatedUsersWithSessionsResponse.yaml"
+    OAuthExchangeRequest:
+      $ref: "./schemas/OAuthExchangeRequest.yaml"
+    OAuthExchangeResponse:
+      $ref: "./schemas/OAuthExchangeResponse.yaml"
+    OAuthSuggestedProfile:
+      $ref: "./schemas/OAuthSuggestedProfile.yaml"
+    OAuthCompleteSignUpRequest:
+      $ref: "./schemas/OAuthCompleteSignUpRequest.yaml"

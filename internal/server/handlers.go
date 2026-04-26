@@ -68,3 +68,11 @@ func (s *APIServer) CreateCourse(ctx echo.Context) error {
 func (s *APIServer) UpdateCourse(ctx echo.Context, courseId string) error {
 	return s.courseHandler.UpdateCourseHandler(ctx)
 }
+
+func (s *APIServer) OAuthExchange(ctx echo.Context, provider string) error {
+	return s.oauthHandler.Exchange(ctx, provider)
+}
+
+func (s *APIServer) OAuthCompleteSignUp(ctx echo.Context) error {
+	return s.oauthHandler.CompleteSignUp(ctx)
+}
