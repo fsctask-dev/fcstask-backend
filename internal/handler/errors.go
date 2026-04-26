@@ -9,6 +9,14 @@ import (
 	"fcstask-backend/internal/service"
 )
 
+const (
+	errorCodeBadRequest   = "bad_request"
+	errorCodeUnauthorized = "unauthorized"
+	errorCodeNotFound     = "not_found"
+	errorCodeConflict     = "conflict"
+	errorCodeInternal     = "internal_error"
+)
+
 func apiError(ctx echo.Context, status int, code, message string) error {
 	return ctx.JSON(status, api.Error{
 		Error: struct {
@@ -19,19 +27,19 @@ func apiError(ctx echo.Context, status int, code, message string) error {
 }
 
 func badRequest(ctx echo.Context, message string) error {
-	return apiError(ctx, http.StatusBadRequest, "bad_request", message)
+	return apiError(ctx, http.StatusBadRequest, errorCodeBadRequest, message)
 }
 
 func unauthorized(ctx echo.Context, message string) error {
-	return apiError(ctx, http.StatusUnauthorized, "unauthorized", message)
+	return apiError(ctx, http.StatusUnauthorized, errorCodeUnauthorized, message)
 }
 
 func conflict(ctx echo.Context, message string) error {
-	return apiError(ctx, http.StatusConflict, "conflict", message)
+	return apiError(ctx, http.StatusConflict, errorCodeConflict, message)
 }
 
 func internalError(ctx echo.Context, message string) error {
-	return apiError(ctx, http.StatusInternalServerError, "internal_error", message)
+	return apiError(ctx, http.StatusInternalServerError, errorCodeInternal, message)
 }
 
 func serviceError(ctx echo.Context, err error) error {
@@ -41,13 +49,13 @@ func serviceError(ctx echo.Context, err error) error {
 
 	if serviceErr, ok := err.(*service.Error); ok {
 		switch serviceErr.Code {
-		case "bad_request":
+		case errorCodeBadRequest:
 			return badRequest(ctx, serviceErr.Message)
-		case "unauthorized":
+		case errorCodeUnauthorized:
 			return unauthorized(ctx, serviceErr.Message)
-		case "not_found":
-			return apiError(ctx, http.StatusNotFound, "not_found", serviceErr.Message)
-		case "conflict":
+		case errorCodeNotFound:
+			return apiError(ctx, http.StatusNotFound, errorCodeNotFound, serviceErr.Message)
+		case errorCodeConflict:
 			return conflict(ctx, serviceErr.Message)
 		default:
 			return internalError(ctx, serviceErr.Message)

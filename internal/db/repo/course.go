@@ -2,7 +2,6 @@ package repo
 
 import (
 	"context"
-	"errors"
 
 	"gorm.io/gorm"
 
@@ -40,9 +39,6 @@ func (r *CourseRepository) GetCourseByID(ctx context.Context, courseID string) (
 		Where("id = ? OR slug = ?", courseID, courseID).
 		First(&course).Error
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil
-		}
 		return nil, err
 	}
 	return &course, nil
@@ -70,7 +66,7 @@ func (r *CourseRepository) UpdateCourse(ctx context.Context, courseID string, co
 
 func (r *CourseRepository) DeleteCourse(ctx context.Context, courseID string) error {
 	return r.db.WithContext(ctx).
-		Where("id = ? OR slug = ?", courseID, courseID).
+		Where("id = ?", courseID).
 		Delete(&models.Course{}).Error
 }
 

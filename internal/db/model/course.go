@@ -38,15 +38,15 @@ type BoardTask struct {
 	Score       int     `json:"score"`
 	ScoreEarned int     `json:"scoreEarned"`
 	Stats       float64 `json:"stats"`
-	IsBonus     bool    `json:"isBonus,omitempty"`
-	IsSpecial   bool    `json:"isSpecial,omitempty"`
+	IsBonus     *bool   `json:"isBonus,omitempty"`
+	IsSpecial   *bool   `json:"isSpecial,omitempty"`
 	URL         string  `json:"url,omitempty"`
 }
 
 type BoardGroup struct {
 	ID        string          `json:"id"`
 	Name      string          `json:"name"`
-	IsSpecial bool            `json:"isSpecial,omitempty"`
+	IsSpecial *bool           `json:"isSpecial,omitempty"`
 	StartedAt string          `json:"startedAt"`
 	EndsAt    string          `json:"endsAt"`
 	Deadlines []BoardDeadline `json:"deadlines"`
