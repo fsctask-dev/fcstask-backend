@@ -20,6 +20,7 @@ import (
 	"fcstask-backend/internal/api"
 	models "fcstask-backend/internal/db/model"
 	"fcstask-backend/internal/db/repo"
+	"fcstask-backend/internal/service"
 )
 
 // MockUserRepository мок для репозитория пользователей
@@ -27,12 +28,12 @@ type MockUserRepository struct {
 	mock.Mock
 }
 
-func (m *MockUserRepository) Create(ctx context.Context, user *models.User) error {
+func (m *MockUserRepository) CreateUser(ctx context.Context, user *models.User) error {
 	args := m.Called(ctx, user)
 	return args.Error(0)
 }
 
-func (m *MockUserRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.User, error) {
+func (m *MockUserRepository) GetUserByID(ctx context.Context, id uuid.UUID) (*models.User, error) {
 	args := m.Called(ctx, id)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -40,7 +41,7 @@ func (m *MockUserRepository) GetByID(ctx context.Context, id uuid.UUID) (*models
 	return args.Get(0).(*models.User), args.Error(1)
 }
 
-func (m *MockUserRepository) GetByEmail(ctx context.Context, email string) (*models.User, error) {
+func (m *MockUserRepository) GetUserByEmail(ctx context.Context, email string) (*models.User, error) {
 	args := m.Called(ctx, email)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -48,7 +49,7 @@ func (m *MockUserRepository) GetByEmail(ctx context.Context, email string) (*mod
 	return args.Get(0).(*models.User), args.Error(1)
 }
 
-func (m *MockUserRepository) GetByUsername(ctx context.Context, username string) (*models.User, error) {
+func (m *MockUserRepository) GetUserByUsername(ctx context.Context, username string) (*models.User, error) {
 	args := m.Called(ctx, username)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -56,7 +57,7 @@ func (m *MockUserRepository) GetByUsername(ctx context.Context, username string)
 	return args.Get(0).(*models.User), args.Error(1)
 }
 
-func (m *MockUserRepository) GetByUserID(ctx context.Context, userID uuid.UUID) (*models.User, error) {
+func (m *MockUserRepository) GetUserByUserID(ctx context.Context, userID uuid.UUID) (*models.User, error) {
 	args := m.Called(ctx, userID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -64,7 +65,7 @@ func (m *MockUserRepository) GetByUserID(ctx context.Context, userID uuid.UUID) 
 	return args.Get(0).(*models.User), args.Error(1)
 }
 
-func (m *MockUserRepository) GetByTgUID(ctx context.Context, tgUID int64) (*models.User, error) {
+func (m *MockUserRepository) GetUserByTgUID(ctx context.Context, tgUID int64) (*models.User, error) {
 	args := m.Called(ctx, tgUID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -72,32 +73,32 @@ func (m *MockUserRepository) GetByTgUID(ctx context.Context, tgUID int64) (*mode
 	return args.Get(0).(*models.User), args.Error(1)
 }
 
-func (m *MockUserRepository) Update(ctx context.Context, user *models.User) error {
+func (m *MockUserRepository) UpdateUser(ctx context.Context, user *models.User) error {
 	args := m.Called(ctx, user)
 	return args.Error(0)
 }
 
-func (m *MockUserRepository) Delete(ctx context.Context, id uuid.UUID) error {
+func (m *MockUserRepository) DeleteUser(ctx context.Context, id uuid.UUID) error {
 	args := m.Called(ctx, id)
 	return args.Error(0)
 }
 
-func (m *MockUserRepository) ExistsByEmail(ctx context.Context, email string) (bool, error) {
+func (m *MockUserRepository) ExistsUserByEmail(ctx context.Context, email string) (bool, error) {
 	args := m.Called(ctx, email)
 	return args.Bool(0), args.Error(1)
 }
 
-func (m *MockUserRepository) ExistsByUsername(ctx context.Context, username string) (bool, error) {
+func (m *MockUserRepository) ExistsUserByUsername(ctx context.Context, username string) (bool, error) {
 	args := m.Called(ctx, username)
 	return args.Bool(0), args.Error(1)
 }
 
-func (m *MockUserRepository) Count(ctx context.Context) (int64, error) {
+func (m *MockUserRepository) CountUsers(ctx context.Context) (int64, error) {
 	args := m.Called(ctx)
 	return args.Get(0).(int64), args.Error(1)
 }
 
-func (m *MockUserRepository) GetAllWithSessions(ctx context.Context, limit, offset int) ([]models.User, error) {
+func (m *MockUserRepository) GetUsersWithSessions(ctx context.Context, limit, offset int) ([]models.User, error) {
 	args := m.Called(ctx, limit, offset)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -117,8 +118,8 @@ var testUserID = uuid.MustParse("11111111-1111-1111-1111-111111111111")
 var testUserID2 = uuid.MustParse("99999999-9999-9999-9999-999999999999")
 var testInternalUserID = uuid.MustParse("55555555-5555-5555-5555-555555555555")
 
-// TestCreateUserHandler_Success тест успешного создания пользователя
-func TestCreateUserHandler_Success(t *testing.T) {
+// TestUserHandler_CreateUser_Success тест успешного создания пользователя
+func TestUserHandler_CreateUser_Success(t *testing.T) {
 	// Настройка
 	e := echo.New()
 	mockRepo := new(MockUserRepository)
@@ -135,9 +136,9 @@ func TestCreateUserHandler_Success(t *testing.T) {
 	reqJSON, _ := json.Marshal(reqBody)
 
 	// Ожидания мока
-	mockRepo.On("ExistsByEmail", mock.Anything, string(reqBody.Email)).Return(false, nil)
-	mockRepo.On("ExistsByUsername", mock.Anything, reqBody.Username).Return(false, nil)
-	mockRepo.On("Create", mock.Anything, mock.MatchedBy(func(user *models.User) bool {
+	mockRepo.On("ExistsUserByEmail", mock.Anything, string(reqBody.Email)).Return(false, nil)
+	mockRepo.On("ExistsUserByUsername", mock.Anything, reqBody.Username).Return(false, nil)
+	mockRepo.On("CreateUser", mock.Anything, mock.MatchedBy(func(user *models.User) bool {
 		return user.Email == string(reqBody.Email) &&
 			user.Username == reqBody.Username &&
 			user.UserID == testInternalUserID
@@ -154,8 +155,8 @@ func TestCreateUserHandler_Success(t *testing.T) {
 	rec := httptest.NewRecorder()
 	ctx := e.NewContext(req, rec)
 
-	// Выполняем хендлер
-	err := CreateUserHandler(mockRepo, ctx)
+	// Выполняем handler
+	err := NewUserHandler(service.NewUserService(mockRepo)).CreateUser(ctx)
 
 	// Проверяем результат
 	assert.NoError(t, err)
@@ -173,8 +174,8 @@ func TestCreateUserHandler_Success(t *testing.T) {
 	mockRepo.AssertExpectations(t)
 }
 
-// TestCreateUserHandler_InvalidRequest тест с невалидным запросом
-func TestCreateUserHandler_InvalidRequest(t *testing.T) {
+// TestUserHandler_CreateUser_InvalidRequest тест с невалидным запросом
+func TestUserHandler_CreateUser_InvalidRequest(t *testing.T) {
 	// Настройка
 	e := echo.New()
 	mockRepo := new(MockUserRepository)
@@ -185,8 +186,8 @@ func TestCreateUserHandler_InvalidRequest(t *testing.T) {
 	rec := httptest.NewRecorder()
 	ctx := e.NewContext(req, rec)
 
-	// Выполняем хендлер
-	err := CreateUserHandler(mockRepo, ctx)
+	// Выполняем handler
+	err := NewUserHandler(service.NewUserService(mockRepo)).CreateUser(ctx)
 
 	// Проверяем результат
 	assert.NoError(t, err)
@@ -200,8 +201,8 @@ func TestCreateUserHandler_InvalidRequest(t *testing.T) {
 	mockRepo.AssertExpectations(t)
 }
 
-// TestCreateUserHandler_MissingRequiredFields тест с отсутствующими обязательными полями
-func TestCreateUserHandler_MissingRequiredFields(t *testing.T) {
+// TestUserHandler_CreateUser_MissingRequiredFields тест с отсутствующими обязательными полями
+func TestUserHandler_CreateUser_MissingRequiredFields(t *testing.T) {
 	tests := []struct {
 		name     string
 		reqBody  api.CreateUserRequest
@@ -246,8 +247,8 @@ func TestCreateUserHandler_MissingRequiredFields(t *testing.T) {
 			rec := httptest.NewRecorder()
 			ctx := e.NewContext(req, rec)
 
-			// Выполняем хендлер
-			err := CreateUserHandler(mockRepo, ctx)
+			// Выполняем handler
+			err := NewUserHandler(service.NewUserService(mockRepo)).CreateUser(ctx)
 
 			// Проверяем результат
 			assert.NoError(t, err)
@@ -263,8 +264,8 @@ func TestCreateUserHandler_MissingRequiredFields(t *testing.T) {
 	}
 }
 
-// TestCreateUserHandler_DatabaseError тест с ошибкой базы данных
-func TestCreateUserHandler_DatabaseError(t *testing.T) {
+// TestUserHandler_CreateUser_DatabaseError тест с ошибкой базы данных
+func TestUserHandler_CreateUser_DatabaseError(t *testing.T) {
 	// Настройка
 	e := echo.New()
 	mockRepo := new(MockUserRepository)
@@ -279,17 +280,17 @@ func TestCreateUserHandler_DatabaseError(t *testing.T) {
 	reqJSON, _ := json.Marshal(reqBody)
 
 	// Ожидания мока - ошибка при создании
-	mockRepo.On("ExistsByEmail", mock.Anything, string(reqBody.Email)).Return(false, nil)
-	mockRepo.On("ExistsByUsername", mock.Anything, reqBody.Username).Return(false, nil)
-	mockRepo.On("Create", mock.Anything, mock.Anything).Return(errors.New("database error"))
+	mockRepo.On("ExistsUserByEmail", mock.Anything, string(reqBody.Email)).Return(false, nil)
+	mockRepo.On("ExistsUserByUsername", mock.Anything, reqBody.Username).Return(false, nil)
+	mockRepo.On("CreateUser", mock.Anything, mock.Anything).Return(errors.New("database error"))
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/users", bytes.NewBuffer(reqJSON))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	ctx := e.NewContext(req, rec)
 
-	// Выполняем хендлер
-	err := CreateUserHandler(mockRepo, ctx)
+	// Выполняем handler
+	err := NewUserHandler(service.NewUserService(mockRepo)).CreateUser(ctx)
 
 	// Проверяем результат
 	assert.NoError(t, err)
@@ -303,8 +304,8 @@ func TestCreateUserHandler_DatabaseError(t *testing.T) {
 	mockRepo.AssertExpectations(t)
 }
 
-// TestGetUserByIDHandler_Success тест успешного получения пользователя по ID
-func TestGetUserByIDHandler_Success(t *testing.T) {
+// TestUserHandler_GetUserByID_Success тест успешного получения пользователя по ID
+func TestUserHandler_GetUserByID_Success(t *testing.T) {
 	// Настройка
 	e := echo.New()
 	mockRepo := new(MockUserRepository)
@@ -323,14 +324,14 @@ func TestGetUserByIDHandler_Success(t *testing.T) {
 	}
 
 	// Ожидания мока
-	mockRepo.On("GetByID", mock.Anything, testUserID).Return(testUser, nil)
+	mockRepo.On("GetUserByID", mock.Anything, testUserID).Return(testUser, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/users/"+testUserID.String(), nil)
 	rec := httptest.NewRecorder()
 	ctx := e.NewContext(req, rec)
 
-	// Выполняем хендлер
-	err := GetUserByIDHandler(mockRepo, ctx, testUserID)
+	// Выполняем handler
+	err := NewUserHandler(service.NewUserService(mockRepo)).GetUserByID(ctx, openapi_types.UUID(testUserID))
 
 	// Проверяем результат
 	assert.NoError(t, err)
@@ -347,21 +348,21 @@ func TestGetUserByIDHandler_Success(t *testing.T) {
 	mockRepo.AssertExpectations(t)
 }
 
-// TestGetUserByIDHandler_NotFound тест когда пользователь не найден
-func TestGetUserByIDHandler_NotFound(t *testing.T) {
+// TestUserHandler_GetUserByID_NotFound тест когда пользователь не найден
+func TestUserHandler_GetUserByID_NotFound(t *testing.T) {
 	// Настройка
 	e := echo.New()
 	mockRepo := new(MockUserRepository)
 
 	// Ожидания мока - пользователь не найден
-	mockRepo.On("GetByID", mock.Anything, testUserID2).Return(nil, gorm.ErrRecordNotFound)
+	mockRepo.On("GetUserByID", mock.Anything, testUserID2).Return(nil, gorm.ErrRecordNotFound)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/users/"+testUserID2.String(), nil)
 	rec := httptest.NewRecorder()
 	ctx := e.NewContext(req, rec)
 
-	// Выполняем хендлер
-	err := GetUserByIDHandler(mockRepo, ctx, testUserID2)
+	// Выполняем handler
+	err := NewUserHandler(service.NewUserService(mockRepo)).GetUserByID(ctx, openapi_types.UUID(testUserID2))
 
 	// Проверяем результат
 	assert.NoError(t, err)
@@ -375,21 +376,21 @@ func TestGetUserByIDHandler_NotFound(t *testing.T) {
 	mockRepo.AssertExpectations(t)
 }
 
-// TestGetUserByIDHandler_DatabaseError тест с ошибкой базы данных
-func TestGetUserByIDHandler_DatabaseError(t *testing.T) {
+// TestUserHandler_GetUserByID_DatabaseError тест с ошибкой базы данных
+func TestUserHandler_GetUserByID_DatabaseError(t *testing.T) {
 	// Настройка
 	e := echo.New()
 	mockRepo := new(MockUserRepository)
 
 	// Ожидания мока - ошибка базы данных
-	mockRepo.On("GetByID", mock.Anything, testUserID).Return(nil, errors.New("database error"))
+	mockRepo.On("GetUserByID", mock.Anything, testUserID).Return(nil, errors.New("database error"))
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/users/"+testUserID.String(), nil)
 	rec := httptest.NewRecorder()
 	ctx := e.NewContext(req, rec)
 
-	// Выполняем хендлер
-	err := GetUserByIDHandler(mockRepo, ctx, testUserID)
+	// Выполняем handler
+	err := NewUserHandler(service.NewUserService(mockRepo)).GetUserByID(ctx, openapi_types.UUID(testUserID))
 
 	// Проверяем результат
 	assert.NoError(t, err)
@@ -403,8 +404,8 @@ func TestGetUserByIDHandler_DatabaseError(t *testing.T) {
 	mockRepo.AssertExpectations(t)
 }
 
-// TestGetUserByUsernameHandler_Success тест успешного получения пользователя по username
-func TestGetUserByUsernameHandler_Success(t *testing.T) {
+// TestUserHandler_GetUserByUsername_Success тест успешного получения пользователя по username
+func TestUserHandler_GetUserByUsername_Success(t *testing.T) {
 	// Настройка
 	e := echo.New()
 	mockRepo := new(MockUserRepository)
@@ -423,14 +424,14 @@ func TestGetUserByUsernameHandler_Success(t *testing.T) {
 	}
 
 	// Ожидания мока
-	mockRepo.On("GetByUsername", mock.Anything, "testuser").Return(testUser, nil)
+	mockRepo.On("GetUserByUsername", mock.Anything, "testuser").Return(testUser, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/users/username/testuser", nil)
 	rec := httptest.NewRecorder()
 	ctx := e.NewContext(req, rec)
 
-	// Выполняем хендлер
-	err := GetUserByUsernameHandler(mockRepo, ctx, "testuser")
+	// Выполняем handler
+	err := NewUserHandler(service.NewUserService(mockRepo)).GetUserByUsername(ctx, "testuser")
 
 	// Проверяем результат
 	assert.NoError(t, err)
@@ -446,8 +447,8 @@ func TestGetUserByUsernameHandler_Success(t *testing.T) {
 	mockRepo.AssertExpectations(t)
 }
 
-// TestGetUserByEmailHandler_Success тест успешного получения пользователя по email
-func TestGetUserByEmailHandler_Success(t *testing.T) {
+// TestUserHandler_GetUserByEmail_Success тест успешного получения пользователя по email
+func TestUserHandler_GetUserByEmail_Success(t *testing.T) {
 	// Настройка
 	e := echo.New()
 	mockRepo := new(MockUserRepository)
@@ -466,14 +467,14 @@ func TestGetUserByEmailHandler_Success(t *testing.T) {
 	}
 
 	// Ожидания мока
-	mockRepo.On("GetByEmail", mock.Anything, "test@example.com").Return(testUser, nil)
+	mockRepo.On("GetUserByEmail", mock.Anything, "test@example.com").Return(testUser, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/users/email/test@example.com", nil)
 	rec := httptest.NewRecorder()
 	ctx := e.NewContext(req, rec)
 
-	// Выполняем хендлер
-	err := GetUserByEmailHandler(mockRepo, ctx, "test@example.com")
+	// Выполняем handler
+	err := NewUserHandler(service.NewUserService(mockRepo)).GetUserByEmail(ctx, openapi_types.Email("test@example.com"))
 
 	// Проверяем результат
 	assert.NoError(t, err)
@@ -489,21 +490,21 @@ func TestGetUserByEmailHandler_Success(t *testing.T) {
 	mockRepo.AssertExpectations(t)
 }
 
-// TestGetUserByEmailHandler_NotFound тест когда пользователь не найден по email
-func TestGetUserByEmailHandler_NotFound(t *testing.T) {
+// TestUserHandler_GetUserByEmail_NotFound тест когда пользователь не найден по email
+func TestUserHandler_GetUserByEmail_NotFound(t *testing.T) {
 	// Настройка
 	e := echo.New()
 	mockRepo := new(MockUserRepository)
 
 	// Ожидания мока - пользователь не найден
-	mockRepo.On("GetByEmail", mock.Anything, "notfound@example.com").Return(nil, gorm.ErrRecordNotFound)
+	mockRepo.On("GetUserByEmail", mock.Anything, "notfound@example.com").Return(nil, gorm.ErrRecordNotFound)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/users/email/notfound@example.com", nil)
 	rec := httptest.NewRecorder()
 	ctx := e.NewContext(req, rec)
 
-	// Выполняем хендлер
-	err := GetUserByEmailHandler(mockRepo, ctx, "notfound@example.com")
+	// Выполняем handler
+	err := NewUserHandler(service.NewUserService(mockRepo)).GetUserByEmail(ctx, openapi_types.Email("notfound@example.com"))
 
 	// Проверяем результат
 	assert.NoError(t, err)

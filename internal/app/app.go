@@ -4,11 +4,14 @@ import (
 	"context"
 	"fcstask-backend/internal/api"
 	"fcstask-backend/internal/config"
+	"fcstask-backend/internal/controller"
 	"fcstask-backend/internal/db"
+	"fcstask-backend/internal/db/repo"
+	"fcstask-backend/internal/handler"
 	"fcstask-backend/internal/metrics"
+	authmw "fcstask-backend/internal/middleware"
 	"fcstask-backend/internal/server"
-	"fcstask-backend/internal/server/handler"
-	authmw "fcstask-backend/internal/server/middleware"
+	"fcstask-backend/internal/service"
 	"fmt"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -19,7 +22,7 @@ import (
 type App struct {
 	echo            *echo.Echo
 	db              *db.Client
-	apiServer       *server.APIServer
+	sessionRepo     repo.SessionRepositoryInterface
 	httpServer      server.HTTPServer
 	shutdownTimeout time.Duration
 	sessionCfg      config.SessionConfig
@@ -33,7 +36,21 @@ func New(cfg *config.Config) (*App, error) {
 		return nil, fmt.Errorf("failed to init database: %w", err)
 	}
 
-	apiServer := server.NewAPIServer(dbClient)
+	userRepo := repo.NewUserRepository(dbClient.DB())
+	sessionRepo := repo.NewSessionRepository(dbClient.DB())
+	courseRepo := repo.NewCourseRepository(dbClient.DB())
+
+	userService := service.NewUserService(userRepo)
+	authService := service.NewAuthService(userRepo, sessionRepo)
+	sessionService := service.NewSessionService(sessionRepo)
+	courseService := service.NewCourseService(courseRepo)
+
+	apiController := controller.NewAPIController(
+		handler.NewAuthHandler(authService),
+		handler.NewUserHandler(userService),
+		handler.NewSessionHandler(sessionService, userService),
+		handler.NewCourseHandler(courseService),
+	)
 
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
 		AllowOrigins: []string{"http://localhost:5173", "http://localhost:3000"},
@@ -41,21 +58,15 @@ func New(cfg *config.Config) (*App, error) {
 		AllowHeaders: []string{"Content-Type", "Authorization"},
 	}))
 
-	e.Use(authmw.Auth(apiServer.UserRepo(), apiServer.SessionRepo(), []string{
+	e.Use(authmw.Auth(userRepo, sessionRepo, []string{
 		"/v1/api/me",
 		"/api/signout",
 		"/v1/sessions",
 		"/v1/users/sessions",
 	}))
 
-	api.RegisterHandlers(e, apiServer)
-
-	// Course and board routes (in-memory storage)
-	e.GET("/api/courses", handler.GetCoursesHandler)
-	e.POST("/api/courses", handler.CreateCourseHandler)
-	e.GET("/api/courses/:courseId", handler.GetCourseHandler)
-	e.PUT("/api/courses/:courseId", handler.UpdateCourseHandler)
-	e.GET("/api/courses/:courseId/board", handler.GetCourseBoardHandler)
+	api.RegisterHandlers(e, apiController)
+	apiController.RegisterCourseRoutes(e)
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 	metrics.EchoPrometheus(e)
@@ -65,7 +76,7 @@ func New(cfg *config.Config) (*App, error) {
 	return &App{
 		echo:            e,
 		db:              dbClient,
-		apiServer:       apiServer,
+		sessionRepo:     sessionRepo,
 		httpServer:      httpServer,
 		shutdownTimeout: cfg.Server.ShutdownTimeout,
 		sessionCfg:      cfg.Session,
@@ -112,7 +123,7 @@ func (a *App) runSessionCleanup(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			deleted, err := a.apiServer.SessionRepo().CleanOutdated(ctx, a.sessionCfg.TTL)
+			deleted, err := a.sessionRepo.CleanOutdatedSessions(ctx, a.sessionCfg.TTL)
 			if err != nil {
 				log.Printf("Session cleanup error: %v", err)
 			} else if deleted > 0 {

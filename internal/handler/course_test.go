@@ -1,0 +1,754 @@
+package handler
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"github.com/labstack/echo/v4"
+
+	models "fcstask-backend/internal/db/model"
+	"fcstask-backend/internal/service"
+)
+
+type testCourseRepository struct {
+	courses map[string]models.Course
+	boards  map[string]models.TaskBoardSummary
+}
+
+func (r *testCourseRepository) GetCourses(ctx context.Context) ([]models.Course, error) {
+	courses := make([]models.Course, 0, len(r.courses))
+	for _, course := range r.courses {
+		courses = append(courses, course)
+	}
+	return courses, nil
+}
+
+func (r *testCourseRepository) GetCourseByID(ctx context.Context, courseID string) (*models.Course, error) {
+	course, ok := r.courses[courseID]
+	if !ok {
+		return nil, nil
+	}
+	return &course, nil
+}
+
+func (r *testCourseRepository) CreateCourse(ctx context.Context, course models.Course) (*models.Course, error) {
+	r.courses[course.ID] = course
+	return &course, nil
+}
+
+func (r *testCourseRepository) UpdateCourse(ctx context.Context, courseID string, course models.Course) (*models.Course, error) {
+	r.courses[courseID] = course
+	return &course, nil
+}
+
+func (r *testCourseRepository) DeleteCourse(ctx context.Context, courseID string) error {
+	delete(r.courses, courseID)
+	return nil
+}
+
+func (r *testCourseRepository) GetCourseBoard(ctx context.Context, courseID string) (*models.TaskBoardSummary, bool, error) {
+	board, ok := r.boards[courseID]
+	if !ok {
+		return nil, false, nil
+	}
+	return &board, true, nil
+}
+
+var testCourses *testCourseRepository
+
+func setupEcho() *echo.Echo {
+	e := echo.New()
+	api := e.Group("/api")
+	if testCourses == nil {
+		resetDB()
+	}
+	courseHandler := NewCourseHandler(service.NewCourseService(testCourses))
+
+	api.GET("/courses", courseHandler.GetCourses)
+	api.GET("/courses/:courseId", courseHandler.GetCourse)
+	api.POST("/courses", courseHandler.CreateCourse)
+	api.PUT("/courses/:courseId", courseHandler.UpdateCourse)
+
+	return e
+}
+
+// plainReq - запрос БЕЗ авторизации
+func plainReq(method, path string, body []byte) *http.Request {
+	req := httptest.NewRequest(method, path, bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	return req
+}
+
+func resetDB() {
+	testCourses = &testCourseRepository{
+		courses: map[string]models.Course{
+			"algorithms": {
+				ID:           "algorithms",
+				Name:         "Algorithms",
+				Slug:         "algorithms",
+				Status:       "created",
+				Type:         models.CourseTypePublic,
+				StartDate:    "2024-01-01",
+				EndDate:      "2024-02-01",
+				RepoTemplate: "git@test/repo.git",
+				Description:  "test",
+				URL:          "/course/algorithms",
+			},
+			"hidden": {
+				ID:           "hidden",
+				Name:         "Hidden",
+				Slug:         "hidden",
+				Status:       "hidden",
+				Type:         models.CourseTypePrivate,
+				StartDate:    "2024-01-01",
+				EndDate:      "2024-02-01",
+				RepoTemplate: "git@test/repo.git",
+				Description:  "hidden",
+				URL:          "/course/hidden",
+			},
+		},
+		boards: map[string]models.TaskBoardSummary{},
+	}
+}
+
+func TestCourseValidation(t *testing.T) {
+	tests := []struct {
+		name     string
+		fn       func() bool
+		expected bool
+	}{
+		{"valid status", func() bool { return isValidCourseStatus("created") }, true},
+		{"invalid status", func() bool { return isValidCourseStatus("broken") }, false},
+
+		{"valid date", func() bool { return isValidDate("2024-01-01") }, true},
+		{"invalid date format", func() bool { return isValidDate("01-01-2024") }, false},
+
+		{"valid date range", func() bool { return isValidDateRange("2024-01-01", "2024-01-02") }, true},
+		{"invalid date range", func() bool { return isValidDateRange("2024-01-02", "2024-01-01") }, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.fn(); got != tt.expected {
+				t.Errorf("expected %v, got %v", tt.expected, got)
+			}
+		})
+	}
+}
+
+func TestCourseHandler_GetCourses_EmptyFilterResult(t *testing.T) {
+	resetDB()
+	e := setupEcho()
+
+	req := plainReq(http.MethodGet, "/api/courses?status=finished", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	var courses []Course
+	json.Unmarshal(rec.Body.Bytes(), &courses)
+
+	if len(courses) != 0 {
+		t.Fatalf("expected 0 courses, got %d", len(courses))
+	}
+}
+
+func TestCourseHandler_GetCourses(t *testing.T) {
+	resetDB()
+	e := setupEcho()
+
+	req := plainReq(http.MethodGet, "/api/courses", nil)
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200")
+	}
+}
+
+func TestCourseHandler_GetCourses_Filter(t *testing.T) {
+	resetDB()
+	e := setupEcho()
+
+	req := plainReq(http.MethodGet, "/api/courses?status=hidden", nil)
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	var courses []Course
+	_ = json.Unmarshal(rec.Body.Bytes(), &courses)
+
+	if len(courses) != 1 {
+		t.Fatalf("expected 1 filtered course")
+	}
+}
+
+func TestCourseHandler_GetCourses_NoFilterAllVisible(t *testing.T) {
+	resetDB()
+	e := setupEcho()
+
+	req := plainReq(http.MethodGet, "/api/courses", nil)
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	var courses []Course
+	_ = json.Unmarshal(rec.Body.Bytes(), &courses)
+
+	if len(courses) != 2 {
+		t.Fatalf("expected 2 courses without filter")
+	}
+}
+
+func TestCourseHandler_GetCourse_OK(t *testing.T) {
+	resetDB()
+	e := setupEcho()
+
+	req := plainReq(http.MethodGet, "/api/courses/algorithms", nil)
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200")
+	}
+}
+
+func TestCourseHandler_GetCourse_NotFound(t *testing.T) {
+	resetDB()
+	e := setupEcho()
+
+	req := plainReq(http.MethodGet, "/api/courses/unknown", nil)
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404")
+	}
+}
+
+func TestCourseHandler_CreateCourse_EmptyRepoTemplate(t *testing.T) {
+	resetDB()
+	e := setupEcho()
+
+	body := []byte(`{
+		"name":"Test",
+		"slug":"test",
+		"status":"created",
+		"startDate":"2025-01-01",
+		"endDate":"2025-02-01",
+		"description":"x"
+	}`)
+
+	req := plainReq(http.MethodPost, "/api/courses", body)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestCourseHandler_CreateCourse_Success(t *testing.T) {
+	resetDB()
+	e := setupEcho()
+
+	body := []byte(`{
+		"name":"Go Course",
+		"slug":"go-course",
+		"status":"created",
+		"startDate":"2024-03-01",
+		"endDate":"2024-04-01",
+		"repoTemplate":"git@test/go.git",
+		"description":"Go basics"
+	}`)
+
+	req := plainReq(http.MethodPost, "/api/courses", body)
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d", rec.Code)
+	}
+}
+
+func TestCourseHandler_CreateCourse_DefaultsTypeToPrivate(t *testing.T) {
+	resetDB()
+	e := setupEcho()
+
+	body := []byte(`{
+		"name":"Private Course",
+		"slug":"private-course",
+		"status":"created",
+		"startDate":"2024-03-01",
+		"endDate":"2024-04-01",
+		"repoTemplate":"git@test/private.git",
+		"description":"Private by default"
+	}`)
+
+	req := plainReq(http.MethodPost, "/api/courses", body)
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d", rec.Code)
+	}
+
+	var course Course
+	json.Unmarshal(rec.Body.Bytes(), &course)
+	if course.Type != models.CourseTypePrivate {
+		t.Fatalf("expected private type by default, got %q", course.Type)
+	}
+}
+
+func TestCourseHandler_CreateCourse_PublicType(t *testing.T) {
+	resetDB()
+	e := setupEcho()
+
+	body := []byte(`{
+		"name":"Public Course",
+		"slug":"public-course",
+		"status":"created",
+		"type":"public",
+		"startDate":"2024-03-01",
+		"endDate":"2024-04-01",
+		"repoTemplate":"git@test/public.git",
+		"description":"Public course"
+	}`)
+
+	req := plainReq(http.MethodPost, "/api/courses", body)
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d", rec.Code)
+	}
+
+	var course Course
+	json.Unmarshal(rec.Body.Bytes(), &course)
+	if course.Type != models.CourseTypePublic {
+		t.Fatalf("expected public type, got %q", course.Type)
+	}
+}
+
+func TestCourseHandler_CreateCourse_ValidationError(t *testing.T) {
+	resetDB()
+	e := setupEcho()
+
+	req := plainReq(http.MethodPost, "/api/courses", []byte(`{"slug":"a"}`))
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400")
+	}
+}
+
+func TestCourseHandler_CreateCourse_Conflict(t *testing.T) {
+	resetDB()
+	e := setupEcho()
+
+	body := []byte(`{
+		"name":"Algorithms",
+		"slug":"algorithms",
+		"status":"created",
+		"startDate":"2024-01-01",
+		"endDate":"2024-02-01",
+		"repoTemplate":"git@test",
+		"description":"dup"
+	}`)
+
+	req := plainReq(http.MethodPost, "/api/courses", body)
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("expected 409")
+	}
+}
+
+func TestCourseHandler_CreateCourse_InvalidDateRange(t *testing.T) {
+	resetDB()
+	e := setupEcho()
+
+	body := []byte(`{
+		"name":"Bad",
+		"slug":"bad-course",
+		"status":"created",
+		"startDate":"2024-02-01",
+		"endDate":"2024-01-01",
+		"repoTemplate":"git@test",
+		"description":"x"
+	}`)
+
+	req := plainReq(http.MethodPost, "/api/courses", body)
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400")
+	}
+}
+
+func TestCourseHandler_CreateCourse_MissingRequiredFields(t *testing.T) {
+	resetDB()
+	e := setupEcho()
+
+	cases := []struct {
+		name         string
+		body         string
+		wantErrField string
+	}{
+		{"no name", `{"slug":"test","status":"created","startDate":"2025-01-01","endDate":"2025-02-01","repoTemplate":"git@a","description":"x"}`, "name"},
+		{"no slug", `{"name":"Test","status":"created","startDate":"2025-01-01","endDate":"2025-02-01","repoTemplate":"git@a","description":"x"}`, "slug"},
+		{"no status", `{"name":"Test","slug":"test","startDate":"2025-01-01","endDate":"2025-02-01","repoTemplate":"git@a","description":"x"}`, "status"},
+		{"no repoTemplate", `{"name":"Test","slug":"test","status":"created","startDate":"2025-01-01","endDate":"2025-02-01","description":"x"}`, "repoTemplate"},
+		{"no description", `{"name":"Test","slug":"test","status":"created","startDate":"2025-01-01","endDate":"2025-02-01","repoTemplate":"git@a"}`, "description"},
+		{"no startDate", `{"name":"Test","slug":"test","status":"created","endDate":"2025-02-01","repoTemplate":"git@a","description":"x"}`, "startDate"},
+		{"no endDate", `{"name":"Test","slug":"test","status":"created","startDate":"2025-01-01","repoTemplate":"git@a","description":"x"}`, "endDate"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := plainReq(http.MethodPost, "/api/courses", []byte(tc.body))
+			rec := httptest.NewRecorder()
+			e.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("expected 400, got %d", rec.Code)
+			}
+
+			var resp map[string]struct {
+				Code    string `json:"code"`
+				Message string `json:"message"`
+			}
+			json.Unmarshal(rec.Body.Bytes(), &resp)
+			if resp["error"].Code != "bad_request" {
+				t.Fatalf("expected bad_request, got %q", resp["error"].Code)
+			}
+			if !strings.Contains(resp["error"].Message, tc.wantErrField) {
+				t.Errorf("expected validation error for field %q", tc.wantErrField)
+			}
+		})
+	}
+}
+
+func TestCourseHandler_CreateCourse_InvalidDates(t *testing.T) {
+	resetDB()
+	e := setupEcho()
+
+	badDates := []struct {
+		name      string
+		startDate string
+		endDate   string
+	}{
+		{"invalid start format", "01-01-2025", "2025-02-01"},
+		{"invalid end format", "2025-01-01", "01-02-2025"},
+		{"end before start", "2025-02-01", "2025-01-01"},
+	}
+
+	for _, tc := range badDates {
+		t.Run(tc.name, func(t *testing.T) {
+			body := fmt.Sprintf(`{"name":"Test","slug":"test","status":"created","startDate":"%s","endDate":"%s","repoTemplate":"git@a","description":"x"}`, tc.startDate, tc.endDate)
+			req := plainReq(http.MethodPost, "/api/courses", []byte(body))
+			rec := httptest.NewRecorder()
+			e.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("expected 400, got %d", rec.Code)
+			}
+		})
+	}
+}
+
+func TestCourseHandler_CreateCourse_InvalidStatus(t *testing.T) {
+	resetDB()
+	e := setupEcho()
+
+	body := []byte(`{"name":"Test","slug":"test","status":"invalid","startDate":"2025-01-01","endDate":"2025-02-01","repoTemplate":"git@a","description":"x"}`)
+	req := plainReq(http.MethodPost, "/api/courses", body)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestCourseHandler_CreateCourse_InvalidJSON(t *testing.T) {
+	resetDB()
+	e := setupEcho()
+
+	body := []byte(`{ "name": "test"`) // malformed
+	req := plainReq(http.MethodPost, "/api/courses", body)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestCourseHandler_CreateCourse_ExtraFieldsIgnored(t *testing.T) {
+	resetDB()
+	e := setupEcho()
+
+	body := []byte(`{
+		"name":"Extra",
+		"slug":"extra",
+		"status":"created",
+		"startDate":"2024-03-01",
+		"endDate":"2024-04-01",
+		"repoTemplate":"git@test",
+		"description":"test",
+		"id":"should-ignore",
+		"url":"should-ignore"
+	}`)
+
+	req := plainReq(http.MethodPost, "/api/courses", body)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d", rec.Code)
+	}
+
+	var course Course
+	json.Unmarshal(rec.Body.Bytes(), &course)
+	if course.ID != "extra" {
+		t.Error("ID should be set from slug")
+	}
+	if course.URL != "/course/extra" {
+		t.Error("URL should be generated")
+	}
+}
+
+func TestCourseHandler_UpdateCourse_UpdateRepoTemplate(t *testing.T) {
+	resetDB()
+	e := setupEcho()
+
+	body := []byte(`{"repoTemplate":"git@updated"}`)
+	req := plainReq(http.MethodPut, "/api/courses/algorithms", body)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	var updated Course
+	json.Unmarshal(rec.Body.Bytes(), &updated)
+
+	if updated.RepoTemplate != "git@updated" {
+		t.Fatalf("repoTemplate not updated")
+	}
+}
+
+func TestCourseHandler_UpdateCourse_DateRangeValidAfterPartial(t *testing.T) {
+	resetDB()
+	e := setupEcho()
+
+	body := []byte(`{"endDate":"2024-03-01"}`)
+	req := plainReq(http.MethodPut, "/api/courses/algorithms", body)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+}
+
+func TestCourseHandler_UpdateCourse_AllFields(t *testing.T) {
+	resetDB()
+	e := setupEcho()
+
+	body := []byte(`{
+		"name":"Updated",
+		"status":"finished",
+		"startDate":"2024-01-10",
+		"endDate":"2024-02-10",
+		"repoTemplate":"git@new",
+		"description":"updated"
+	}`)
+
+	req := plainReq(http.MethodPut, "/api/courses/algorithms", body)
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200")
+	}
+}
+
+func TestCourseHandler_UpdateCourse_InvalidStatus(t *testing.T) {
+	resetDB()
+	e := setupEcho()
+
+	req := plainReq(http.MethodPut, "/api/courses/algorithms", []byte(`{"status":"bad"}`))
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400")
+	}
+}
+
+func TestCourseHandler_UpdateCourse_NotFound(t *testing.T) {
+	resetDB()
+	e := setupEcho()
+
+	req := plainReq(http.MethodPut, "/api/courses/unknown", []byte(`{"name":"x"}`))
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404")
+	}
+}
+
+func TestCourseHandler_UpdateCourse_PartialUpdate(t *testing.T) {
+	resetDB()
+	e := setupEcho()
+
+	original := testCourses.courses["algorithms"]
+
+	body := []byte(`{
+        "name": "New Name Only",
+        "description": "New desc only"
+    }`)
+
+	req := plainReq(http.MethodPut, "/api/courses/algorithms", body)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	var updated Course
+	json.Unmarshal(rec.Body.Bytes(), &updated)
+
+	if updated.Name != "New Name Only" {
+		t.Errorf("name not updated, got %q", updated.Name)
+	}
+	if updated.Description != "New desc only" {
+		t.Errorf("description not updated, got %q", updated.Description)
+	}
+	if updated.Status != original.Status {
+		t.Errorf("status changed unexpectedly: %q → %q", original.Status, updated.Status)
+	}
+	if updated.StartDate != original.StartDate {
+		t.Error("startDate should not change")
+	}
+}
+
+func TestCourseHandler_UpdateCourse_EmptyFieldsIgnored(t *testing.T) {
+	resetDB()
+	e := setupEcho()
+
+	body := []byte(`{
+		"name":"",
+		"status":"",
+		"description":""
+	}`)
+
+	req := plainReq(http.MethodPut, "/api/courses/algorithms", body)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	var updated Course
+	json.Unmarshal(rec.Body.Bytes(), &updated)
+
+	if updated.Name == "" {
+		t.Error("name should not be updated to empty")
+	}
+	if updated.Status == "" {
+		t.Error("status should not be updated to empty")
+	}
+	if updated.Description == "" {
+		t.Error("description should not be updated to empty")
+	}
+}
+
+func TestCourseHandler_UpdateCourse_InvalidDateRange(t *testing.T) {
+	resetDB()
+	e := setupEcho()
+
+	body := []byte(`{
+		"startDate": "2025-03-01",
+		"endDate":   "2025-02-01"
+	}`)
+
+	req := plainReq(http.MethodPut, "/api/courses/algorithms", body)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestCourseHandler_UpdateCourse_InvalidDateFormat(t *testing.T) {
+	resetDB()
+	e := setupEcho()
+
+	cases := []string{
+		`{"startDate": "01-03-2025"}`,
+		`{"endDate": "01-04-2025"}`,
+	}
+
+	for _, bodyStr := range cases {
+		req := plainReq(http.MethodPut, "/api/courses/algorithms", []byte(bodyStr))
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("expected 400, got %d", rec.Code)
+		}
+	}
+}
+
+func TestCourseHandler_UpdateCourse_IgnoreSlugChange(t *testing.T) {
+	resetDB()
+	e := setupEcho()
+
+	body := []byte(`{"slug": "new-slug"}`)
+
+	req := plainReq(http.MethodPut, "/api/courses/algorithms", body)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	course := testCourses.courses["algorithms"]
+
+	if course.ID != "algorithms" {
+		t.Error("ID should not change")
+	}
+}
+
+func TestCourseHandler_UpdateCourse_InvalidJSON(t *testing.T) {
+	resetDB()
+	e := setupEcho()
+
+	body := []byte(`{ "name": "test"`)
+	req := plainReq(http.MethodPut, "/api/courses/algorithms", body)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestCourseValidation_IsValidDateRange_EqualDates(t *testing.T) {
+	if isValidDateRange("2024-01-01", "2024-01-01") {
+		t.Fatal("expected false when dates are equal")
+	}
+}

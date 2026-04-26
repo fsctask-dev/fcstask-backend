@@ -70,7 +70,10 @@ func Migrate(cfg *config.DatabaseConfig) error {
 	if err := client.db.AutoMigrate(&model.User{}); err != nil {
 		return err
 	}
-	return client.db.AutoMigrate(&model.Session{})
+	if err := client.db.AutoMigrate(&model.Session{}); err != nil {
+		return err
+	}
+	return client.db.AutoMigrate(&model.Course{})
 }
 
 func (c *Client) DB() *gorm.DB {

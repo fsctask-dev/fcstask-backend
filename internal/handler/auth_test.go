@@ -20,6 +20,7 @@ import (
 	"fcstask-backend/internal/api"
 	models "fcstask-backend/internal/db/model"
 	"fcstask-backend/internal/db/repo"
+	"fcstask-backend/internal/service"
 )
 
 // MockSessionRepository мок для репозитория сессий
@@ -27,12 +28,12 @@ type MockSessionRepository struct {
 	mock.Mock
 }
 
-func (m *MockSessionRepository) Create(ctx context.Context, session *models.Session) error {
+func (m *MockSessionRepository) CreateSession(ctx context.Context, session *models.Session) error {
 	args := m.Called(ctx, session)
 	return args.Error(0)
 }
 
-func (m *MockSessionRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.Session, error) {
+func (m *MockSessionRepository) GetSessionByID(ctx context.Context, id uuid.UUID) (*models.Session, error) {
 	args := m.Called(ctx, id)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -40,7 +41,7 @@ func (m *MockSessionRepository) GetByID(ctx context.Context, id uuid.UUID) (*mod
 	return args.Get(0).(*models.Session), args.Error(1)
 }
 
-func (m *MockSessionRepository) GetByUserID(ctx context.Context, userID uuid.UUID) ([]models.Session, error) {
+func (m *MockSessionRepository) GetSessionsByUserID(ctx context.Context, userID uuid.UUID) ([]models.Session, error) {
 	args := m.Called(ctx, userID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -48,22 +49,22 @@ func (m *MockSessionRepository) GetByUserID(ctx context.Context, userID uuid.UUI
 	return args.Get(0).([]models.Session), args.Error(1)
 }
 
-func (m *MockSessionRepository) TouchAccessedAt(ctx context.Context, id uuid.UUID) error {
+func (m *MockSessionRepository) TouchSessionAccessedAt(ctx context.Context, id uuid.UUID) error {
 	args := m.Called(ctx, id)
 	return args.Error(0)
 }
 
-func (m *MockSessionRepository) Delete(ctx context.Context, id uuid.UUID) error {
+func (m *MockSessionRepository) DeleteSession(ctx context.Context, id uuid.UUID) error {
 	args := m.Called(ctx, id)
 	return args.Error(0)
 }
 
-func (m *MockSessionRepository) DeleteByUserID(ctx context.Context, userID uuid.UUID) error {
+func (m *MockSessionRepository) DeleteSessionsByUserID(ctx context.Context, userID uuid.UUID) error {
 	args := m.Called(ctx, userID)
 	return args.Error(0)
 }
 
-func (m *MockSessionRepository) GetAllWithUser(ctx context.Context, limit, offset int) ([]models.Session, error) {
+func (m *MockSessionRepository) GetSessionsWithUser(ctx context.Context, limit, offset int) ([]models.Session, error) {
 	args := m.Called(ctx, limit, offset)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -71,12 +72,12 @@ func (m *MockSessionRepository) GetAllWithUser(ctx context.Context, limit, offse
 	return args.Get(0).([]models.Session), args.Error(1)
 }
 
-func (m *MockSessionRepository) CountAll(ctx context.Context) (int64, error) {
+func (m *MockSessionRepository) CountSessions(ctx context.Context) (int64, error) {
 	args := m.Called(ctx)
 	return args.Get(0).(int64), args.Error(1)
 }
 
-func (m *MockSessionRepository) CleanOutdated(ctx context.Context, ttl time.Duration) (int64, error) {
+func (m *MockSessionRepository) CleanOutdatedSessions(ctx context.Context, ttl time.Duration) (int64, error) {
 	args := m.Called(ctx, ttl)
 	return args.Get(0).(int64), args.Error(1)
 }
@@ -94,7 +95,7 @@ var (
 
 // === SignUp ===
 
-func TestSignUpHandler_Success(t *testing.T) {
+func TestAuthHandler_SignUp_Success(t *testing.T) {
 	e := echo.New()
 	mockUserRepo := new(MockUserRepository)
 	mockSessionRepo := new(MockSessionRepository)
@@ -106,9 +107,9 @@ func TestSignUpHandler_Success(t *testing.T) {
 	}
 	reqJSON, _ := json.Marshal(reqBody)
 
-	mockUserRepo.On("ExistsByEmail", mock.Anything, string(reqBody.Email)).Return(false, nil)
-	mockUserRepo.On("ExistsByUsername", mock.Anything, reqBody.Username).Return(false, nil)
-	mockUserRepo.On("Create", mock.Anything, mock.MatchedBy(func(user *models.User) bool {
+	mockUserRepo.On("ExistsUserByEmail", mock.Anything, string(reqBody.Email)).Return(false, nil)
+	mockUserRepo.On("ExistsUserByUsername", mock.Anything, reqBody.Username).Return(false, nil)
+	mockUserRepo.On("CreateUser", mock.Anything, mock.MatchedBy(func(user *models.User) bool {
 		return user.Email == string(reqBody.Email) &&
 			user.Username == reqBody.Username &&
 			user.PasswordHash != "" &&
@@ -119,7 +120,7 @@ func TestSignUpHandler_Success(t *testing.T) {
 		user.CreatedAt = time.Now()
 		user.UpdatedAt = time.Now()
 	})
-	mockSessionRepo.On("Create", mock.Anything, mock.MatchedBy(func(s *models.Session) bool {
+	mockSessionRepo.On("CreateSession", mock.Anything, mock.MatchedBy(func(s *models.Session) bool {
 		return s.UserID == testUserUUID1
 	})).Return(nil).Run(func(args mock.Arguments) {
 		s := args.Get(1).(*models.Session)
@@ -131,7 +132,7 @@ func TestSignUpHandler_Success(t *testing.T) {
 	rec := httptest.NewRecorder()
 	ctx := e.NewContext(req, rec)
 
-	err := SignUpHandler(mockUserRepo, mockSessionRepo, ctx)
+	err := NewAuthHandler(service.NewAuthService(mockUserRepo, mockSessionRepo)).SignUp(ctx)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusCreated, rec.Code)
@@ -147,7 +148,7 @@ func TestSignUpHandler_Success(t *testing.T) {
 	mockSessionRepo.AssertExpectations(t)
 }
 
-func TestSignUpHandler_InvalidJSON(t *testing.T) {
+func TestAuthHandler_SignUp_InvalidJSON(t *testing.T) {
 	e := echo.New()
 	mockUserRepo := new(MockUserRepository)
 	mockSessionRepo := new(MockSessionRepository)
@@ -157,7 +158,7 @@ func TestSignUpHandler_InvalidJSON(t *testing.T) {
 	rec := httptest.NewRecorder()
 	ctx := e.NewContext(req, rec)
 
-	err := SignUpHandler(mockUserRepo, mockSessionRepo, ctx)
+	err := NewAuthHandler(service.NewAuthService(mockUserRepo, mockSessionRepo)).SignUp(ctx)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
@@ -167,7 +168,7 @@ func TestSignUpHandler_InvalidJSON(t *testing.T) {
 	assert.Equal(t, "bad_request", resp.Error.Code)
 }
 
-func TestSignUpHandler_MissingFields(t *testing.T) {
+func TestAuthHandler_SignUp_MissingFields(t *testing.T) {
 	tests := []struct {
 		name    string
 		reqBody api.SignUpRequest
@@ -198,7 +199,7 @@ func TestSignUpHandler_MissingFields(t *testing.T) {
 			rec := httptest.NewRecorder()
 			ctx := e.NewContext(req, rec)
 
-			err := SignUpHandler(mockUserRepo, mockSessionRepo, ctx)
+			err := NewAuthHandler(service.NewAuthService(mockUserRepo, mockSessionRepo)).SignUp(ctx)
 
 			assert.NoError(t, err)
 			assert.Equal(t, http.StatusBadRequest, rec.Code)
@@ -210,7 +211,7 @@ func TestSignUpHandler_MissingFields(t *testing.T) {
 	}
 }
 
-func TestSignUpHandler_EmailConflict(t *testing.T) {
+func TestAuthHandler_SignUp_EmailConflict(t *testing.T) {
 	e := echo.New()
 	mockUserRepo := new(MockUserRepository)
 	mockSessionRepo := new(MockSessionRepository)
@@ -218,14 +219,14 @@ func TestSignUpHandler_EmailConflict(t *testing.T) {
 	reqBody := api.SignUpRequest{Email: "taken@example.com", Username: "newuser", Password: "pass"}
 	reqJSON, _ := json.Marshal(reqBody)
 
-	mockUserRepo.On("ExistsByEmail", mock.Anything, "taken@example.com").Return(true, nil)
+	mockUserRepo.On("ExistsUserByEmail", mock.Anything, "taken@example.com").Return(true, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/signup", bytes.NewBuffer(reqJSON))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	ctx := e.NewContext(req, rec)
 
-	err := SignUpHandler(mockUserRepo, mockSessionRepo, ctx)
+	err := NewAuthHandler(service.NewAuthService(mockUserRepo, mockSessionRepo)).SignUp(ctx)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusConflict, rec.Code)
@@ -237,7 +238,7 @@ func TestSignUpHandler_EmailConflict(t *testing.T) {
 	mockUserRepo.AssertExpectations(t)
 }
 
-func TestSignUpHandler_UsernameConflict(t *testing.T) {
+func TestAuthHandler_SignUp_UsernameConflict(t *testing.T) {
 	e := echo.New()
 	mockUserRepo := new(MockUserRepository)
 	mockSessionRepo := new(MockSessionRepository)
@@ -245,15 +246,15 @@ func TestSignUpHandler_UsernameConflict(t *testing.T) {
 	reqBody := api.SignUpRequest{Email: "new@example.com", Username: "taken", Password: "pass"}
 	reqJSON, _ := json.Marshal(reqBody)
 
-	mockUserRepo.On("ExistsByEmail", mock.Anything, "new@example.com").Return(false, nil)
-	mockUserRepo.On("ExistsByUsername", mock.Anything, "taken").Return(true, nil)
+	mockUserRepo.On("ExistsUserByEmail", mock.Anything, "new@example.com").Return(false, nil)
+	mockUserRepo.On("ExistsUserByUsername", mock.Anything, "taken").Return(true, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/signup", bytes.NewBuffer(reqJSON))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	ctx := e.NewContext(req, rec)
 
-	err := SignUpHandler(mockUserRepo, mockSessionRepo, ctx)
+	err := NewAuthHandler(service.NewAuthService(mockUserRepo, mockSessionRepo)).SignUp(ctx)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusConflict, rec.Code)
@@ -265,7 +266,7 @@ func TestSignUpHandler_UsernameConflict(t *testing.T) {
 	mockUserRepo.AssertExpectations(t)
 }
 
-func TestSignUpHandler_CreateUserError(t *testing.T) {
+func TestAuthHandler_SignUp_CreateUserError(t *testing.T) {
 	e := echo.New()
 	mockUserRepo := new(MockUserRepository)
 	mockSessionRepo := new(MockSessionRepository)
@@ -273,16 +274,16 @@ func TestSignUpHandler_CreateUserError(t *testing.T) {
 	reqBody := api.SignUpRequest{Email: "new@example.com", Username: "newuser", Password: "pass"}
 	reqJSON, _ := json.Marshal(reqBody)
 
-	mockUserRepo.On("ExistsByEmail", mock.Anything, "new@example.com").Return(false, nil)
-	mockUserRepo.On("ExistsByUsername", mock.Anything, "newuser").Return(false, nil)
-	mockUserRepo.On("Create", mock.Anything, mock.Anything).Return(errors.New("db error"))
+	mockUserRepo.On("ExistsUserByEmail", mock.Anything, "new@example.com").Return(false, nil)
+	mockUserRepo.On("ExistsUserByUsername", mock.Anything, "newuser").Return(false, nil)
+	mockUserRepo.On("CreateUser", mock.Anything, mock.Anything).Return(errors.New("db error"))
 
 	req := httptest.NewRequest(http.MethodPost, "/api/signup", bytes.NewBuffer(reqJSON))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	ctx := e.NewContext(req, rec)
 
-	err := SignUpHandler(mockUserRepo, mockSessionRepo, ctx)
+	err := NewAuthHandler(service.NewAuthService(mockUserRepo, mockSessionRepo)).SignUp(ctx)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusInternalServerError, rec.Code)
@@ -294,7 +295,7 @@ func TestSignUpHandler_CreateUserError(t *testing.T) {
 	mockUserRepo.AssertExpectations(t)
 }
 
-func TestSignUpHandler_CreateSessionError(t *testing.T) {
+func TestAuthHandler_SignUp_CreateSessionError(t *testing.T) {
 	e := echo.New()
 	mockUserRepo := new(MockUserRepository)
 	mockSessionRepo := new(MockSessionRepository)
@@ -302,20 +303,20 @@ func TestSignUpHandler_CreateSessionError(t *testing.T) {
 	reqBody := api.SignUpRequest{Email: "new@example.com", Username: "newuser", Password: "pass"}
 	reqJSON, _ := json.Marshal(reqBody)
 
-	mockUserRepo.On("ExistsByEmail", mock.Anything, "new@example.com").Return(false, nil)
-	mockUserRepo.On("ExistsByUsername", mock.Anything, "newuser").Return(false, nil)
-	mockUserRepo.On("Create", mock.Anything, mock.Anything).Return(nil).Run(func(args mock.Arguments) {
+	mockUserRepo.On("ExistsUserByEmail", mock.Anything, "new@example.com").Return(false, nil)
+	mockUserRepo.On("ExistsUserByUsername", mock.Anything, "newuser").Return(false, nil)
+	mockUserRepo.On("CreateUser", mock.Anything, mock.Anything).Return(nil).Run(func(args mock.Arguments) {
 		u := args.Get(1).(*models.User)
 		u.ID = testUserUUID1
 	})
-	mockSessionRepo.On("Create", mock.Anything, mock.Anything).Return(errors.New("session db error"))
+	mockSessionRepo.On("CreateSession", mock.Anything, mock.Anything).Return(errors.New("session db error"))
 
 	req := httptest.NewRequest(http.MethodPost, "/api/signup", bytes.NewBuffer(reqJSON))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	ctx := e.NewContext(req, rec)
 
-	err := SignUpHandler(mockUserRepo, mockSessionRepo, ctx)
+	err := NewAuthHandler(service.NewAuthService(mockUserRepo, mockSessionRepo)).SignUp(ctx)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusInternalServerError, rec.Code)
@@ -338,7 +339,7 @@ func hashPassword(t *testing.T, password string) string {
 	return string(h)
 }
 
-func TestSignInHandler_SuccessWithEmail(t *testing.T) {
+func TestAuthHandler_SignIn_SuccessWithEmail(t *testing.T) {
 	e := echo.New()
 	mockUserRepo := new(MockUserRepository)
 	mockSessionRepo := new(MockSessionRepository)
@@ -361,8 +362,8 @@ func TestSignInHandler_SuccessWithEmail(t *testing.T) {
 	}
 	reqJSON, _ := json.Marshal(body)
 
-	mockUserRepo.On("GetByEmail", mock.Anything, email).Return(testUser, nil)
-	mockSessionRepo.On("Create", mock.Anything, mock.MatchedBy(func(s *models.Session) bool {
+	mockUserRepo.On("GetUserByEmail", mock.Anything, email).Return(testUser, nil)
+	mockSessionRepo.On("CreateSession", mock.Anything, mock.MatchedBy(func(s *models.Session) bool {
 		return s.UserID == testUserUUID1
 	})).Return(nil).Run(func(args mock.Arguments) {
 		s := args.Get(1).(*models.Session)
@@ -374,7 +375,7 @@ func TestSignInHandler_SuccessWithEmail(t *testing.T) {
 	rec := httptest.NewRecorder()
 	ctx := e.NewContext(req, rec)
 
-	err := SignInHandler(mockUserRepo, mockSessionRepo, ctx)
+	err := NewAuthHandler(service.NewAuthService(mockUserRepo, mockSessionRepo)).SignIn(ctx)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, rec.Code)
@@ -388,7 +389,7 @@ func TestSignInHandler_SuccessWithEmail(t *testing.T) {
 	mockSessionRepo.AssertExpectations(t)
 }
 
-func TestSignInHandler_SuccessWithUsername(t *testing.T) {
+func TestAuthHandler_SignIn_SuccessWithUsername(t *testing.T) {
 	e := echo.New()
 	mockUserRepo := new(MockUserRepository)
 	mockSessionRepo := new(MockSessionRepository)
@@ -410,8 +411,8 @@ func TestSignInHandler_SuccessWithUsername(t *testing.T) {
 	}
 	reqJSON, _ := json.Marshal(body)
 
-	mockUserRepo.On("GetByUsername", mock.Anything, "myuser").Return(testUser, nil)
-	mockSessionRepo.On("Create", mock.Anything, mock.Anything).Return(nil).Run(func(args mock.Arguments) {
+	mockUserRepo.On("GetUserByUsername", mock.Anything, "myuser").Return(testUser, nil)
+	mockSessionRepo.On("CreateSession", mock.Anything, mock.Anything).Return(nil).Run(func(args mock.Arguments) {
 		s := args.Get(1).(*models.Session)
 		s.ID = testSessionUUID3
 	})
@@ -421,7 +422,7 @@ func TestSignInHandler_SuccessWithUsername(t *testing.T) {
 	rec := httptest.NewRecorder()
 	ctx := e.NewContext(req, rec)
 
-	err := SignInHandler(mockUserRepo, mockSessionRepo, ctx)
+	err := NewAuthHandler(service.NewAuthService(mockUserRepo, mockSessionRepo)).SignIn(ctx)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, rec.Code)
@@ -435,7 +436,7 @@ func TestSignInHandler_SuccessWithUsername(t *testing.T) {
 	mockSessionRepo.AssertExpectations(t)
 }
 
-func TestSignInHandler_InvalidJSON(t *testing.T) {
+func TestAuthHandler_SignIn_InvalidJSON(t *testing.T) {
 	e := echo.New()
 	mockUserRepo := new(MockUserRepository)
 	mockSessionRepo := new(MockSessionRepository)
@@ -445,13 +446,13 @@ func TestSignInHandler_InvalidJSON(t *testing.T) {
 	rec := httptest.NewRecorder()
 	ctx := e.NewContext(req, rec)
 
-	err := SignInHandler(mockUserRepo, mockSessionRepo, ctx)
+	err := NewAuthHandler(service.NewAuthService(mockUserRepo, mockSessionRepo)).SignIn(ctx)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
-func TestSignInHandler_MissingPassword(t *testing.T) {
+func TestAuthHandler_SignIn_MissingPassword(t *testing.T) {
 	e := echo.New()
 	mockUserRepo := new(MockUserRepository)
 	mockSessionRepo := new(MockSessionRepository)
@@ -464,7 +465,7 @@ func TestSignInHandler_MissingPassword(t *testing.T) {
 	rec := httptest.NewRecorder()
 	ctx := e.NewContext(req, rec)
 
-	err := SignInHandler(mockUserRepo, mockSessionRepo, ctx)
+	err := NewAuthHandler(service.NewAuthService(mockUserRepo, mockSessionRepo)).SignIn(ctx)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
@@ -475,7 +476,7 @@ func TestSignInHandler_MissingPassword(t *testing.T) {
 	assert.Contains(t, resp.Error.Message, "Password")
 }
 
-func TestSignInHandler_MissingEmailAndUsername(t *testing.T) {
+func TestAuthHandler_SignIn_MissingEmailAndUsername(t *testing.T) {
 	e := echo.New()
 	mockUserRepo := new(MockUserRepository)
 	mockSessionRepo := new(MockSessionRepository)
@@ -488,7 +489,7 @@ func TestSignInHandler_MissingEmailAndUsername(t *testing.T) {
 	rec := httptest.NewRecorder()
 	ctx := e.NewContext(req, rec)
 
-	err := SignInHandler(mockUserRepo, mockSessionRepo, ctx)
+	err := NewAuthHandler(service.NewAuthService(mockUserRepo, mockSessionRepo)).SignIn(ctx)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
@@ -498,7 +499,7 @@ func TestSignInHandler_MissingEmailAndUsername(t *testing.T) {
 	assert.Contains(t, resp.Error.Message, "Email or username")
 }
 
-func TestSignInHandler_UserNotFound(t *testing.T) {
+func TestAuthHandler_SignIn_UserNotFound(t *testing.T) {
 	e := echo.New()
 	mockUserRepo := new(MockUserRepository)
 	mockSessionRepo := new(MockSessionRepository)
@@ -506,14 +507,14 @@ func TestSignInHandler_UserNotFound(t *testing.T) {
 	body := map[string]interface{}{"email": "no@example.com", "password": "pass"}
 	reqJSON, _ := json.Marshal(body)
 
-	mockUserRepo.On("GetByEmail", mock.Anything, "no@example.com").Return(nil, gorm.ErrRecordNotFound)
+	mockUserRepo.On("GetUserByEmail", mock.Anything, "no@example.com").Return(nil, gorm.ErrRecordNotFound)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/signin", bytes.NewBuffer(reqJSON))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	ctx := e.NewContext(req, rec)
 
-	err := SignInHandler(mockUserRepo, mockSessionRepo, ctx)
+	err := NewAuthHandler(service.NewAuthService(mockUserRepo, mockSessionRepo)).SignIn(ctx)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
@@ -525,7 +526,7 @@ func TestSignInHandler_UserNotFound(t *testing.T) {
 	mockUserRepo.AssertExpectations(t)
 }
 
-func TestSignInHandler_WrongPassword(t *testing.T) {
+func TestAuthHandler_SignIn_WrongPassword(t *testing.T) {
 	e := echo.New()
 	mockUserRepo := new(MockUserRepository)
 	mockSessionRepo := new(MockSessionRepository)
@@ -541,14 +542,14 @@ func TestSignInHandler_WrongPassword(t *testing.T) {
 	body := map[string]interface{}{"email": "test@example.com", "password": "wrongpass"}
 	reqJSON, _ := json.Marshal(body)
 
-	mockUserRepo.On("GetByEmail", mock.Anything, "test@example.com").Return(testUser, nil)
+	mockUserRepo.On("GetUserByEmail", mock.Anything, "test@example.com").Return(testUser, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/signin", bytes.NewBuffer(reqJSON))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	ctx := e.NewContext(req, rec)
 
-	err := SignInHandler(mockUserRepo, mockSessionRepo, ctx)
+	err := NewAuthHandler(service.NewAuthService(mockUserRepo, mockSessionRepo)).SignIn(ctx)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
@@ -560,7 +561,7 @@ func TestSignInHandler_WrongPassword(t *testing.T) {
 	mockUserRepo.AssertExpectations(t)
 }
 
-func TestSignInHandler_DatabaseError(t *testing.T) {
+func TestAuthHandler_SignIn_DatabaseError(t *testing.T) {
 	e := echo.New()
 	mockUserRepo := new(MockUserRepository)
 	mockSessionRepo := new(MockSessionRepository)
@@ -568,14 +569,14 @@ func TestSignInHandler_DatabaseError(t *testing.T) {
 	body := map[string]interface{}{"email": "test@example.com", "password": "pass"}
 	reqJSON, _ := json.Marshal(body)
 
-	mockUserRepo.On("GetByEmail", mock.Anything, "test@example.com").Return(nil, errors.New("db error"))
+	mockUserRepo.On("GetUserByEmail", mock.Anything, "test@example.com").Return(nil, errors.New("db error"))
 
 	req := httptest.NewRequest(http.MethodPost, "/api/signin", bytes.NewBuffer(reqJSON))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	ctx := e.NewContext(req, rec)
 
-	err := SignInHandler(mockUserRepo, mockSessionRepo, ctx)
+	err := NewAuthHandler(service.NewAuthService(mockUserRepo, mockSessionRepo)).SignIn(ctx)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusInternalServerError, rec.Code)
@@ -583,7 +584,7 @@ func TestSignInHandler_DatabaseError(t *testing.T) {
 	mockUserRepo.AssertExpectations(t)
 }
 
-func TestSignInHandler_CreateSessionError(t *testing.T) {
+func TestAuthHandler_SignIn_CreateSessionError(t *testing.T) {
 	e := echo.New()
 	mockUserRepo := new(MockUserRepository)
 	mockSessionRepo := new(MockSessionRepository)
@@ -599,15 +600,15 @@ func TestSignInHandler_CreateSessionError(t *testing.T) {
 	body := map[string]interface{}{"email": "test@example.com", "password": "pass"}
 	reqJSON, _ := json.Marshal(body)
 
-	mockUserRepo.On("GetByEmail", mock.Anything, "test@example.com").Return(testUser, nil)
-	mockSessionRepo.On("Create", mock.Anything, mock.Anything).Return(errors.New("session error"))
+	mockUserRepo.On("GetUserByEmail", mock.Anything, "test@example.com").Return(testUser, nil)
+	mockSessionRepo.On("CreateSession", mock.Anything, mock.Anything).Return(errors.New("session error"))
 
 	req := httptest.NewRequest(http.MethodPost, "/api/signin", bytes.NewBuffer(reqJSON))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	ctx := e.NewContext(req, rec)
 
-	err := SignInHandler(mockUserRepo, mockSessionRepo, ctx)
+	err := NewAuthHandler(service.NewAuthService(mockUserRepo, mockSessionRepo)).SignIn(ctx)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusInternalServerError, rec.Code)
@@ -618,7 +619,7 @@ func TestSignInHandler_CreateSessionError(t *testing.T) {
 
 // === GetMe ===
 
-func TestGetMeHandler_Success(t *testing.T) {
+func TestAuthHandler_GetMe_Success(t *testing.T) {
 	e := echo.New()
 	mockUserRepo := new(MockUserRepository)
 	mockSessionRepo := new(MockSessionRepository)
@@ -640,7 +641,7 @@ func TestGetMeHandler_Success(t *testing.T) {
 	ctx := e.NewContext(req, rec)
 	ctx.Set(UserContextKey, testUser)
 
-	err := GetMeHandler(mockUserRepo, mockSessionRepo, ctx)
+	err := NewAuthHandler(service.NewAuthService(mockUserRepo, mockSessionRepo)).GetMe(ctx)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, rec.Code)
@@ -652,7 +653,7 @@ func TestGetMeHandler_Success(t *testing.T) {
 	assert.Equal(t, "user", resp.Role)
 }
 
-func TestGetMeHandler_InitialsFromUsername(t *testing.T) {
+func TestAuthHandler_GetMe_InitialsFromUsername(t *testing.T) {
 	e := echo.New()
 	mockUserRepo := new(MockUserRepository)
 	mockSessionRepo := new(MockSessionRepository)
@@ -668,7 +669,7 @@ func TestGetMeHandler_InitialsFromUsername(t *testing.T) {
 	ctx := e.NewContext(req, rec)
 	ctx.Set(UserContextKey, testUser)
 
-	err := GetMeHandler(mockUserRepo, mockSessionRepo, ctx)
+	err := NewAuthHandler(service.NewAuthService(mockUserRepo, mockSessionRepo)).GetMe(ctx)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, rec.Code)
@@ -678,7 +679,7 @@ func TestGetMeHandler_InitialsFromUsername(t *testing.T) {
 	assert.Equal(t, "AL", resp.Initials)
 }
 
-func TestGetMeHandler_NoUser(t *testing.T) {
+func TestAuthHandler_GetMe_NoUser(t *testing.T) {
 	e := echo.New()
 	mockUserRepo := new(MockUserRepository)
 	mockSessionRepo := new(MockSessionRepository)
@@ -687,7 +688,7 @@ func TestGetMeHandler_NoUser(t *testing.T) {
 	rec := httptest.NewRecorder()
 	ctx := e.NewContext(req, rec)
 
-	err := GetMeHandler(mockUserRepo, mockSessionRepo, ctx)
+	err := NewAuthHandler(service.NewAuthService(mockUserRepo, mockSessionRepo)).GetMe(ctx)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
@@ -699,7 +700,7 @@ func TestGetMeHandler_NoUser(t *testing.T) {
 
 // === SignOut ===
 
-func TestSignOutHandler_Success(t *testing.T) {
+func TestAuthHandler_SignOut_Success(t *testing.T) {
 	e := echo.New()
 	mockSessionRepo := new(MockSessionRepository)
 
@@ -708,14 +709,14 @@ func TestSignOutHandler_Success(t *testing.T) {
 		UserID: testUserUUID1,
 	}
 
-	mockSessionRepo.On("Delete", mock.Anything, testSessionUUID1).Return(nil)
+	mockSessionRepo.On("DeleteSession", mock.Anything, testSessionUUID1).Return(nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/signout", nil)
 	rec := httptest.NewRecorder()
 	ctx := e.NewContext(req, rec)
 	ctx.Set(SessionContextKey, session)
 
-	err := SignOutHandler(mockSessionRepo, ctx)
+	err := NewAuthHandler(service.NewAuthService(nil, mockSessionRepo)).SignOut(ctx)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusNoContent, rec.Code)
@@ -723,7 +724,7 @@ func TestSignOutHandler_Success(t *testing.T) {
 	mockSessionRepo.AssertExpectations(t)
 }
 
-func TestSignOutHandler_NoSession(t *testing.T) {
+func TestAuthHandler_SignOut_NoSession(t *testing.T) {
 	e := echo.New()
 	mockSessionRepo := new(MockSessionRepository)
 
@@ -731,7 +732,7 @@ func TestSignOutHandler_NoSession(t *testing.T) {
 	rec := httptest.NewRecorder()
 	ctx := e.NewContext(req, rec)
 
-	err := SignOutHandler(mockSessionRepo, ctx)
+	err := NewAuthHandler(service.NewAuthService(nil, mockSessionRepo)).SignOut(ctx)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
@@ -741,7 +742,7 @@ func TestSignOutHandler_NoSession(t *testing.T) {
 	assert.Equal(t, "unauthorized", resp.Error.Code)
 }
 
-func TestSignOutHandler_DeleteError(t *testing.T) {
+func TestAuthHandler_SignOut_DeleteError(t *testing.T) {
 	e := echo.New()
 	mockSessionRepo := new(MockSessionRepository)
 
@@ -750,14 +751,14 @@ func TestSignOutHandler_DeleteError(t *testing.T) {
 		UserID: testUserUUID1,
 	}
 
-	mockSessionRepo.On("Delete", mock.Anything, testSessionUUID1).Return(errors.New("db error"))
+	mockSessionRepo.On("DeleteSession", mock.Anything, testSessionUUID1).Return(errors.New("db error"))
 
 	req := httptest.NewRequest(http.MethodPost, "/api/signout", nil)
 	rec := httptest.NewRecorder()
 	ctx := e.NewContext(req, rec)
 	ctx.Set(SessionContextKey, session)
 
-	err := SignOutHandler(mockSessionRepo, ctx)
+	err := NewAuthHandler(service.NewAuthService(nil, mockSessionRepo)).SignOut(ctx)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusInternalServerError, rec.Code)
@@ -793,10 +794,10 @@ func TestBuildInitials(t *testing.T) {
 			expected:  "A",
 		},
 		{
-			name:      "last name only",
-			lastName:  stringPtr("Smith"),
-			username:  "smith",
-			expected:  "S",
+			name:     "last name only",
+			lastName: stringPtr("Smith"),
+			username: "smith",
+			expected: "S",
 		},
 		{
 			name:     "no names, long username",
@@ -817,8 +818,9 @@ func TestBuildInitials(t *testing.T) {
 				FirstName: tc.firstName,
 				LastName:  tc.lastName,
 			}
-			result := buildInitials(user)
-			assert.Equal(t, tc.expected, result)
+			initials, _, err := service.NewAuthService(nil, nil).GetMe(context.Background(), user)
+			assert.NoError(t, err)
+			assert.Equal(t, tc.expected, initials)
 		})
 	}
 }
