@@ -15,6 +15,7 @@ import (
 
 	"fcstask-backend/internal/api"
 	models "fcstask-backend/internal/db/model"
+	"fcstask-backend/internal/service"
 )
 
 func intPtr(v int) *int { return &v }
@@ -42,20 +43,20 @@ func makeSessions(count int) []models.Session {
 	return sessions
 }
 
-func TestGetSessionsHandler_DefaultPagination(t *testing.T) {
+func TestSessionHandler_GetSessions_DefaultPagination(t *testing.T) {
 	e := echo.New()
 	mockSessionRepo := new(MockSessionRepository)
 
 	sessions := makeSessions(3)
-	mockSessionRepo.On("CountAll", mock.Anything).Return(int64(3), nil)
-	mockSessionRepo.On("GetAllWithUser", mock.Anything, 20, 0).Return(sessions, nil)
+	mockSessionRepo.On("CountSessions", mock.Anything).Return(int64(3), nil)
+	mockSessionRepo.On("GetSessionsWithUser", mock.Anything, 20, 0).Return(sessions, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/sessions", nil)
 	rec := httptest.NewRecorder()
 	ctx := e.NewContext(req, rec)
 
 	params := api.GetSessionsParams{}
-	err := GetSessionsHandler(mockSessionRepo, ctx, params)
+	err := NewSessionHandler(service.NewSessionService(mockSessionRepo), nil).GetSessions(ctx, params)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, rec.Code)
@@ -71,20 +72,20 @@ func TestGetSessionsHandler_DefaultPagination(t *testing.T) {
 	mockSessionRepo.AssertExpectations(t)
 }
 
-func TestGetSessionsHandler_CustomPagination(t *testing.T) {
+func TestSessionHandler_GetSessions_CustomPagination(t *testing.T) {
 	e := echo.New()
 	mockSessionRepo := new(MockSessionRepository)
 
 	sessions := makeSessions(2)
-	mockSessionRepo.On("CountAll", mock.Anything).Return(int64(10), nil)
-	mockSessionRepo.On("GetAllWithUser", mock.Anything, 5, 3).Return(sessions, nil)
+	mockSessionRepo.On("CountSessions", mock.Anything).Return(int64(10), nil)
+	mockSessionRepo.On("GetSessionsWithUser", mock.Anything, 5, 3).Return(sessions, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/sessions?limit=5&offset=3", nil)
 	rec := httptest.NewRecorder()
 	ctx := e.NewContext(req, rec)
 
 	params := api.GetSessionsParams{Limit: intPtr(5), Offset: intPtr(3)}
-	err := GetSessionsHandler(mockSessionRepo, ctx, params)
+	err := NewSessionHandler(service.NewSessionService(mockSessionRepo), nil).GetSessions(ctx, params)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, rec.Code)
@@ -99,19 +100,19 @@ func TestGetSessionsHandler_CustomPagination(t *testing.T) {
 	mockSessionRepo.AssertExpectations(t)
 }
 
-func TestGetSessionsHandler_EmptyResult(t *testing.T) {
+func TestSessionHandler_GetSessions_EmptyResult(t *testing.T) {
 	e := echo.New()
 	mockSessionRepo := new(MockSessionRepository)
 
-	mockSessionRepo.On("CountAll", mock.Anything).Return(int64(0), nil)
-	mockSessionRepo.On("GetAllWithUser", mock.Anything, 20, 0).Return([]models.Session{}, nil)
+	mockSessionRepo.On("CountSessions", mock.Anything).Return(int64(0), nil)
+	mockSessionRepo.On("GetSessionsWithUser", mock.Anything, 20, 0).Return([]models.Session{}, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/sessions", nil)
 	rec := httptest.NewRecorder()
 	ctx := e.NewContext(req, rec)
 
 	params := api.GetSessionsParams{}
-	err := GetSessionsHandler(mockSessionRepo, ctx, params)
+	err := NewSessionHandler(service.NewSessionService(mockSessionRepo), nil).GetSessions(ctx, params)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, rec.Code)
@@ -124,7 +125,7 @@ func TestGetSessionsHandler_EmptyResult(t *testing.T) {
 	mockSessionRepo.AssertExpectations(t)
 }
 
-func TestGetSessionsHandler_LimitTooHigh(t *testing.T) {
+func TestSessionHandler_GetSessions_LimitTooHigh(t *testing.T) {
 	e := echo.New()
 	mockSessionRepo := new(MockSessionRepository)
 
@@ -133,7 +134,7 @@ func TestGetSessionsHandler_LimitTooHigh(t *testing.T) {
 	ctx := e.NewContext(req, rec)
 
 	params := api.GetSessionsParams{Limit: intPtr(200)}
-	err := GetSessionsHandler(mockSessionRepo, ctx, params)
+	err := NewSessionHandler(service.NewSessionService(mockSessionRepo), nil).GetSessions(ctx, params)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
@@ -144,7 +145,7 @@ func TestGetSessionsHandler_LimitTooHigh(t *testing.T) {
 	assert.Contains(t, resp.Error.Message, "Limit")
 }
 
-func TestGetSessionsHandler_LimitZero(t *testing.T) {
+func TestSessionHandler_GetSessions_LimitZero(t *testing.T) {
 	e := echo.New()
 	mockSessionRepo := new(MockSessionRepository)
 
@@ -153,7 +154,7 @@ func TestGetSessionsHandler_LimitZero(t *testing.T) {
 	ctx := e.NewContext(req, rec)
 
 	params := api.GetSessionsParams{Limit: intPtr(0)}
-	err := GetSessionsHandler(mockSessionRepo, ctx, params)
+	err := NewSessionHandler(service.NewSessionService(mockSessionRepo), nil).GetSessions(ctx, params)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
@@ -163,7 +164,7 @@ func TestGetSessionsHandler_LimitZero(t *testing.T) {
 	assert.Equal(t, "bad_request", resp.Error.Code)
 }
 
-func TestGetSessionsHandler_NegativeOffset(t *testing.T) {
+func TestSessionHandler_GetSessions_NegativeOffset(t *testing.T) {
 	e := echo.New()
 	mockSessionRepo := new(MockSessionRepository)
 
@@ -172,7 +173,7 @@ func TestGetSessionsHandler_NegativeOffset(t *testing.T) {
 	ctx := e.NewContext(req, rec)
 
 	params := api.GetSessionsParams{Offset: intPtr(-1)}
-	err := GetSessionsHandler(mockSessionRepo, ctx, params)
+	err := NewSessionHandler(service.NewSessionService(mockSessionRepo), nil).GetSessions(ctx, params)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
@@ -183,18 +184,18 @@ func TestGetSessionsHandler_NegativeOffset(t *testing.T) {
 	assert.Contains(t, resp.Error.Message, "Offset")
 }
 
-func TestGetSessionsHandler_CountError(t *testing.T) {
+func TestSessionHandler_GetSessions_CountError(t *testing.T) {
 	e := echo.New()
 	mockSessionRepo := new(MockSessionRepository)
 
-	mockSessionRepo.On("CountAll", mock.Anything).Return(int64(0), errors.New("db error"))
+	mockSessionRepo.On("CountSessions", mock.Anything).Return(int64(0), errors.New("db error"))
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/sessions", nil)
 	rec := httptest.NewRecorder()
 	ctx := e.NewContext(req, rec)
 
 	params := api.GetSessionsParams{}
-	err := GetSessionsHandler(mockSessionRepo, ctx, params)
+	err := NewSessionHandler(service.NewSessionService(mockSessionRepo), nil).GetSessions(ctx, params)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusInternalServerError, rec.Code)
@@ -206,19 +207,19 @@ func TestGetSessionsHandler_CountError(t *testing.T) {
 	mockSessionRepo.AssertExpectations(t)
 }
 
-func TestGetSessionsHandler_GetAllError(t *testing.T) {
+func TestSessionHandler_GetSessions_GetAllError(t *testing.T) {
 	e := echo.New()
 	mockSessionRepo := new(MockSessionRepository)
 
-	mockSessionRepo.On("CountAll", mock.Anything).Return(int64(5), nil)
-	mockSessionRepo.On("GetAllWithUser", mock.Anything, 20, 0).Return(nil, errors.New("db error"))
+	mockSessionRepo.On("CountSessions", mock.Anything).Return(int64(5), nil)
+	mockSessionRepo.On("GetSessionsWithUser", mock.Anything, 20, 0).Return(nil, errors.New("db error"))
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/sessions", nil)
 	rec := httptest.NewRecorder()
 	ctx := e.NewContext(req, rec)
 
 	params := api.GetSessionsParams{}
-	err := GetSessionsHandler(mockSessionRepo, ctx, params)
+	err := NewSessionHandler(service.NewSessionService(mockSessionRepo), nil).GetSessions(ctx, params)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusInternalServerError, rec.Code)
@@ -232,7 +233,7 @@ func TestGetSessionsHandler_GetAllError(t *testing.T) {
 
 // === GetUsersWithSessions ===
 
-func TestGetUsersWithSessionsHandler_Success(t *testing.T) {
+func TestSessionHandler_GetUsersWithSessions_Success(t *testing.T) {
 	e := echo.New()
 	mockUserRepo := new(MockUserRepository)
 
@@ -257,14 +258,14 @@ func TestGetUsersWithSessionsHandler_Success(t *testing.T) {
 	}
 
 	mockUserRepo.On("CountUsersWithSessions", mock.Anything).Return(int64(1), nil)
-	mockUserRepo.On("GetAllWithSessions", mock.Anything, 20, 0).Return(users, nil)
+	mockUserRepo.On("GetUsersWithSessions", mock.Anything, 20, 0).Return(users, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/users/sessions", nil)
 	rec := httptest.NewRecorder()
 	ctx := e.NewContext(req, rec)
 
 	params := api.GetUsersWithSessionsParams{}
-	err := GetUsersWithSessionsHandler(mockUserRepo, ctx, params)
+	err := NewSessionHandler(nil, service.NewUserService(mockUserRepo)).GetUsersWithSessions(ctx, params)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, rec.Code)
@@ -285,19 +286,19 @@ func TestGetUsersWithSessionsHandler_Success(t *testing.T) {
 	mockUserRepo.AssertExpectations(t)
 }
 
-func TestGetUsersWithSessionsHandler_CustomPagination(t *testing.T) {
+func TestSessionHandler_GetUsersWithSessions_CustomPagination(t *testing.T) {
 	e := echo.New()
 	mockUserRepo := new(MockUserRepository)
 
 	mockUserRepo.On("CountUsersWithSessions", mock.Anything).Return(int64(50), nil)
-	mockUserRepo.On("GetAllWithSessions", mock.Anything, 10, 5).Return([]models.User{}, nil)
+	mockUserRepo.On("GetUsersWithSessions", mock.Anything, 10, 5).Return([]models.User{}, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/users/sessions?limit=10&offset=5", nil)
 	rec := httptest.NewRecorder()
 	ctx := e.NewContext(req, rec)
 
 	params := api.GetUsersWithSessionsParams{Limit: intPtr(10), Offset: intPtr(5)}
-	err := GetUsersWithSessionsHandler(mockUserRepo, ctx, params)
+	err := NewSessionHandler(nil, service.NewUserService(mockUserRepo)).GetUsersWithSessions(ctx, params)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, rec.Code)
@@ -312,7 +313,7 @@ func TestGetUsersWithSessionsHandler_CustomPagination(t *testing.T) {
 	mockUserRepo.AssertExpectations(t)
 }
 
-func TestGetUsersWithSessionsHandler_InvalidLimit(t *testing.T) {
+func TestSessionHandler_GetUsersWithSessions_InvalidLimit(t *testing.T) {
 	e := echo.New()
 	mockUserRepo := new(MockUserRepository)
 
@@ -321,7 +322,7 @@ func TestGetUsersWithSessionsHandler_InvalidLimit(t *testing.T) {
 	ctx := e.NewContext(req, rec)
 
 	params := api.GetUsersWithSessionsParams{Limit: intPtr(200)}
-	err := GetUsersWithSessionsHandler(mockUserRepo, ctx, params)
+	err := NewSessionHandler(nil, service.NewUserService(mockUserRepo)).GetUsersWithSessions(ctx, params)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
@@ -331,7 +332,7 @@ func TestGetUsersWithSessionsHandler_InvalidLimit(t *testing.T) {
 	assert.Equal(t, "bad_request", resp.Error.Code)
 }
 
-func TestGetUsersWithSessionsHandler_NegativeOffset(t *testing.T) {
+func TestSessionHandler_GetUsersWithSessions_NegativeOffset(t *testing.T) {
 	e := echo.New()
 	mockUserRepo := new(MockUserRepository)
 
@@ -340,13 +341,13 @@ func TestGetUsersWithSessionsHandler_NegativeOffset(t *testing.T) {
 	ctx := e.NewContext(req, rec)
 
 	params := api.GetUsersWithSessionsParams{Offset: intPtr(-5)}
-	err := GetUsersWithSessionsHandler(mockUserRepo, ctx, params)
+	err := NewSessionHandler(nil, service.NewUserService(mockUserRepo)).GetUsersWithSessions(ctx, params)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
-func TestGetUsersWithSessionsHandler_CountError(t *testing.T) {
+func TestSessionHandler_GetUsersWithSessions_CountError(t *testing.T) {
 	e := echo.New()
 	mockUserRepo := new(MockUserRepository)
 
@@ -357,7 +358,7 @@ func TestGetUsersWithSessionsHandler_CountError(t *testing.T) {
 	ctx := e.NewContext(req, rec)
 
 	params := api.GetUsersWithSessionsParams{}
-	err := GetUsersWithSessionsHandler(mockUserRepo, ctx, params)
+	err := NewSessionHandler(nil, service.NewUserService(mockUserRepo)).GetUsersWithSessions(ctx, params)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusInternalServerError, rec.Code)
@@ -365,19 +366,19 @@ func TestGetUsersWithSessionsHandler_CountError(t *testing.T) {
 	mockUserRepo.AssertExpectations(t)
 }
 
-func TestGetUsersWithSessionsHandler_GetAllError(t *testing.T) {
+func TestSessionHandler_GetUsersWithSessions_GetAllError(t *testing.T) {
 	e := echo.New()
 	mockUserRepo := new(MockUserRepository)
 
 	mockUserRepo.On("CountUsersWithSessions", mock.Anything).Return(int64(5), nil)
-	mockUserRepo.On("GetAllWithSessions", mock.Anything, 20, 0).Return(nil, errors.New("db error"))
+	mockUserRepo.On("GetUsersWithSessions", mock.Anything, 20, 0).Return(nil, errors.New("db error"))
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/users/sessions", nil)
 	rec := httptest.NewRecorder()
 	ctx := e.NewContext(req, rec)
 
 	params := api.GetUsersWithSessionsParams{}
-	err := GetUsersWithSessionsHandler(mockUserRepo, ctx, params)
+	err := NewSessionHandler(nil, service.NewUserService(mockUserRepo)).GetUsersWithSessions(ctx, params)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusInternalServerError, rec.Code)
@@ -385,7 +386,7 @@ func TestGetUsersWithSessionsHandler_GetAllError(t *testing.T) {
 	mockUserRepo.AssertExpectations(t)
 }
 
-func TestGetSessionsHandler_UserDataIncluded(t *testing.T) {
+func TestSessionHandler_GetSessions_UserDataIncluded(t *testing.T) {
 	e := echo.New()
 	mockSessionRepo := new(MockSessionRepository)
 
@@ -416,15 +417,15 @@ func TestGetSessionsHandler_UserDataIncluded(t *testing.T) {
 		},
 	}
 
-	mockSessionRepo.On("CountAll", mock.Anything).Return(int64(1), nil)
-	mockSessionRepo.On("GetAllWithUser", mock.Anything, 20, 0).Return(sessions, nil)
+	mockSessionRepo.On("CountSessions", mock.Anything).Return(int64(1), nil)
+	mockSessionRepo.On("GetSessionsWithUser", mock.Anything, 20, 0).Return(sessions, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/sessions", nil)
 	rec := httptest.NewRecorder()
 	ctx := e.NewContext(req, rec)
 
 	params := api.GetSessionsParams{}
-	err := GetSessionsHandler(mockSessionRepo, ctx, params)
+	err := NewSessionHandler(service.NewSessionService(mockSessionRepo), nil).GetSessions(ctx, params)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, rec.Code)

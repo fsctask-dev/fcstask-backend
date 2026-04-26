@@ -2,23 +2,73 @@ package handler
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/labstack/echo/v4"
+
+	models "fcstask-backend/internal/db/model"
+	"fcstask-backend/internal/service"
 )
+
+type testCourseRepository struct {
+	courses map[string]models.Course
+	boards  map[string]models.TaskBoardSummary
+}
+
+func (r *testCourseRepository) GetCourses(ctx context.Context) ([]models.Course, error) {
+	courses := make([]models.Course, 0, len(r.courses))
+	for _, course := range r.courses {
+		courses = append(courses, course)
+	}
+	return courses, nil
+}
+
+func (r *testCourseRepository) GetCourseByID(ctx context.Context, courseID string) (*models.Course, error) {
+	course, ok := r.courses[courseID]
+	if !ok {
+		return nil, nil
+	}
+	return &course, nil
+}
+
+func (r *testCourseRepository) CreateCourse(ctx context.Context, course models.Course) (*models.Course, error) {
+	r.courses[course.ID] = course
+	return &course, nil
+}
+
+func (r *testCourseRepository) UpdateCourse(ctx context.Context, courseID string, course models.Course) (*models.Course, error) {
+	r.courses[courseID] = course
+	return &course, nil
+}
+
+func (r *testCourseRepository) GetCourseBoard(ctx context.Context, courseID string) (*models.TaskBoardSummary, bool, error) {
+	board, ok := r.boards[courseID]
+	if !ok {
+		return nil, false, nil
+	}
+	return &board, true, nil
+}
+
+var testCourses *testCourseRepository
 
 func setupEcho() *echo.Echo {
 	e := echo.New()
 	api := e.Group("/api")
+	if testCourses == nil {
+		resetDB()
+	}
+	courseHandler := NewCourseHandler(service.NewCourseService(testCourses))
 
-	api.GET("/courses", GetCoursesHandler)
-	api.GET("/courses/:courseId", GetCourseHandler)
-	api.POST("/courses", CreateCourseHandler)
-	api.PUT("/courses/:courseId", UpdateCourseHandler)
+	api.GET("/courses", courseHandler.GetCourses)
+	api.GET("/courses/:courseId", courseHandler.GetCourse)
+	api.POST("/courses", courseHandler.CreateCourse)
+	api.PUT("/courses/:courseId", courseHandler.UpdateCourse)
 
 	return e
 }
@@ -31,34 +81,34 @@ func plainReq(method, path string, body []byte) *http.Request {
 }
 
 func resetDB() {
-	courseMu.Lock()
-	defer courseMu.Unlock()
-
-	courseDB = map[string]Course{
-		"algorithms": {
-			ID:           "algorithms",
-			Name:         "Algorithms",
-			Status:       "created",
-			StartDate:    "2024-01-01",
-			EndDate:      "2024-02-01",
-			RepoTemplate: "git@test/repo.git",
-			Description:  "test",
-			URL:          "/course/algorithms",
+	testCourses = &testCourseRepository{
+		courses: map[string]models.Course{
+			"algorithms": {
+				ID:           "algorithms",
+				Name:         "Algorithms",
+				Status:       "created",
+				StartDate:    "2024-01-01",
+				EndDate:      "2024-02-01",
+				RepoTemplate: "git@test/repo.git",
+				Description:  "test",
+				URL:          "/course/algorithms",
+			},
+			"hidden": {
+				ID:           "hidden",
+				Name:         "Hidden",
+				Status:       "hidden",
+				StartDate:    "2024-01-01",
+				EndDate:      "2024-02-01",
+				RepoTemplate: "git@test/repo.git",
+				Description:  "hidden",
+				URL:          "/course/hidden",
+			},
 		},
-		"hidden": {
-			ID:           "hidden",
-			Name:         "Hidden",
-			Status:       "hidden",
-			StartDate:    "2024-01-01",
-			EndDate:      "2024-02-01",
-			RepoTemplate: "git@test/repo.git",
-			Description:  "hidden",
-			URL:          "/course/hidden",
-		},
+		boards: map[string]models.TaskBoardSummary{},
 	}
 }
 
-func TestValidators(t *testing.T) {
+func TestCourseValidation(t *testing.T) {
 	tests := []struct {
 		name     string
 		fn       func() bool
@@ -83,7 +133,7 @@ func TestValidators(t *testing.T) {
 	}
 }
 
-func TestGetCourses_EmptyFilterResult(t *testing.T) {
+func TestCourseHandler_GetCourses_EmptyFilterResult(t *testing.T) {
 	resetDB()
 	e := setupEcho()
 
@@ -99,7 +149,7 @@ func TestGetCourses_EmptyFilterResult(t *testing.T) {
 	}
 }
 
-func TestGetCourses(t *testing.T) {
+func TestCourseHandler_GetCourses(t *testing.T) {
 	resetDB()
 	e := setupEcho()
 
@@ -112,7 +162,7 @@ func TestGetCourses(t *testing.T) {
 	}
 }
 
-func TestGetCourses_Filter(t *testing.T) {
+func TestCourseHandler_GetCourses_Filter(t *testing.T) {
 	resetDB()
 	e := setupEcho()
 
@@ -129,7 +179,7 @@ func TestGetCourses_Filter(t *testing.T) {
 	}
 }
 
-func TestGetCourses_NoFilterAllVisible(t *testing.T) {
+func TestCourseHandler_GetCourses_NoFilterAllVisible(t *testing.T) {
 	resetDB()
 	e := setupEcho()
 
@@ -146,7 +196,7 @@ func TestGetCourses_NoFilterAllVisible(t *testing.T) {
 	}
 }
 
-func TestGetCourse_OK(t *testing.T) {
+func TestCourseHandler_GetCourse_OK(t *testing.T) {
 	resetDB()
 	e := setupEcho()
 
@@ -159,7 +209,7 @@ func TestGetCourse_OK(t *testing.T) {
 	}
 }
 
-func TestGetCourse_NotFound(t *testing.T) {
+func TestCourseHandler_GetCourse_NotFound(t *testing.T) {
 	resetDB()
 	e := setupEcho()
 
@@ -172,7 +222,7 @@ func TestGetCourse_NotFound(t *testing.T) {
 	}
 }
 
-func TestCreateCourse_EmptyRepoTemplate(t *testing.T) {
+func TestCourseHandler_CreateCourse_EmptyRepoTemplate(t *testing.T) {
 	resetDB()
 	e := setupEcho()
 
@@ -194,7 +244,7 @@ func TestCreateCourse_EmptyRepoTemplate(t *testing.T) {
 	}
 }
 
-func TestCreateCourse_Success(t *testing.T) {
+func TestCourseHandler_CreateCourse_Success(t *testing.T) {
 	resetDB()
 	e := setupEcho()
 
@@ -217,7 +267,7 @@ func TestCreateCourse_Success(t *testing.T) {
 	}
 }
 
-func TestCreateCourse_ValidationError(t *testing.T) {
+func TestCourseHandler_CreateCourse_ValidationError(t *testing.T) {
 	resetDB()
 	e := setupEcho()
 
@@ -230,7 +280,7 @@ func TestCreateCourse_ValidationError(t *testing.T) {
 	}
 }
 
-func TestCreateCourse_Conflict(t *testing.T) {
+func TestCourseHandler_CreateCourse_Conflict(t *testing.T) {
 	resetDB()
 	e := setupEcho()
 
@@ -253,7 +303,7 @@ func TestCreateCourse_Conflict(t *testing.T) {
 	}
 }
 
-func TestCreateCourse_InvalidDateRange(t *testing.T) {
+func TestCourseHandler_CreateCourse_InvalidDateRange(t *testing.T) {
 	resetDB()
 	e := setupEcho()
 
@@ -276,7 +326,7 @@ func TestCreateCourse_InvalidDateRange(t *testing.T) {
 	}
 }
 
-func TestCreateCourse_MissingRequiredFields(t *testing.T) {
+func TestCourseHandler_CreateCourse_MissingRequiredFields(t *testing.T) {
 	resetDB()
 	e := setupEcho()
 
@@ -304,28 +354,22 @@ func TestCreateCourse_MissingRequiredFields(t *testing.T) {
 				t.Fatalf("expected 400, got %d", rec.Code)
 			}
 
-			var resp map[string]interface{}
+			var resp map[string]struct {
+				Code    string `json:"code"`
+				Message string `json:"message"`
+			}
 			json.Unmarshal(rec.Body.Bytes(), &resp)
-			details, ok := resp["details"].([]interface{})
-			if !ok {
-				t.Fatal("expected details array")
+			if resp["error"].Code != "bad_request" {
+				t.Fatalf("expected bad_request, got %q", resp["error"].Code)
 			}
-			found := false
-			for _, d := range details {
-				errMap := d.(map[string]interface{})
-				if errMap["field"] == tc.wantErrField {
-					found = true
-					break
-				}
-			}
-			if !found {
+			if !strings.Contains(resp["error"].Message, tc.wantErrField) {
 				t.Errorf("expected validation error for field %q", tc.wantErrField)
 			}
 		})
 	}
 }
 
-func TestCreateCourse_InvalidDates(t *testing.T) {
+func TestCourseHandler_CreateCourse_InvalidDates(t *testing.T) {
 	resetDB()
 	e := setupEcho()
 
@@ -353,7 +397,7 @@ func TestCreateCourse_InvalidDates(t *testing.T) {
 	}
 }
 
-func TestCreateCourse_InvalidStatus(t *testing.T) {
+func TestCourseHandler_CreateCourse_InvalidStatus(t *testing.T) {
 	resetDB()
 	e := setupEcho()
 
@@ -367,7 +411,7 @@ func TestCreateCourse_InvalidStatus(t *testing.T) {
 	}
 }
 
-func TestCreateCourse_InvalidJSON(t *testing.T) {
+func TestCourseHandler_CreateCourse_InvalidJSON(t *testing.T) {
 	resetDB()
 	e := setupEcho()
 
@@ -381,7 +425,7 @@ func TestCreateCourse_InvalidJSON(t *testing.T) {
 	}
 }
 
-func TestCreateCourse_ExtraFieldsIgnored(t *testing.T) {
+func TestCourseHandler_CreateCourse_ExtraFieldsIgnored(t *testing.T) {
 	resetDB()
 	e := setupEcho()
 
@@ -415,7 +459,7 @@ func TestCreateCourse_ExtraFieldsIgnored(t *testing.T) {
 	}
 }
 
-func TestUpdateCourse_UpdateRepoTemplate(t *testing.T) {
+func TestCourseHandler_UpdateCourse_UpdateRepoTemplate(t *testing.T) {
 	resetDB()
 	e := setupEcho()
 
@@ -432,7 +476,7 @@ func TestUpdateCourse_UpdateRepoTemplate(t *testing.T) {
 	}
 }
 
-func TestUpdateCourse_DateRangeValidAfterPartial(t *testing.T) {
+func TestCourseHandler_UpdateCourse_DateRangeValidAfterPartial(t *testing.T) {
 	resetDB()
 	e := setupEcho()
 
@@ -446,7 +490,7 @@ func TestUpdateCourse_DateRangeValidAfterPartial(t *testing.T) {
 	}
 }
 
-func TestUpdateCourse_AllFields(t *testing.T) {
+func TestCourseHandler_UpdateCourse_AllFields(t *testing.T) {
 	resetDB()
 	e := setupEcho()
 
@@ -468,7 +512,7 @@ func TestUpdateCourse_AllFields(t *testing.T) {
 	}
 }
 
-func TestUpdateCourse_InvalidStatus(t *testing.T) {
+func TestCourseHandler_UpdateCourse_InvalidStatus(t *testing.T) {
 	resetDB()
 	e := setupEcho()
 
@@ -481,7 +525,7 @@ func TestUpdateCourse_InvalidStatus(t *testing.T) {
 	}
 }
 
-func TestUpdateCourse_NotFound(t *testing.T) {
+func TestCourseHandler_UpdateCourse_NotFound(t *testing.T) {
 	resetDB()
 	e := setupEcho()
 
@@ -494,13 +538,11 @@ func TestUpdateCourse_NotFound(t *testing.T) {
 	}
 }
 
-func TestUpdateCourse_PartialUpdate(t *testing.T) {
+func TestCourseHandler_UpdateCourse_PartialUpdate(t *testing.T) {
 	resetDB()
 	e := setupEcho()
 
-	courseMu.RLock()
-	original := courseDB["algorithms"]
-	courseMu.RUnlock()
+	original := testCourses.courses["algorithms"]
 
 	body := []byte(`{
         "name": "New Name Only",
@@ -532,7 +574,7 @@ func TestUpdateCourse_PartialUpdate(t *testing.T) {
 	}
 }
 
-func TestUpdateCourse_EmptyFieldsIgnored(t *testing.T) {
+func TestCourseHandler_UpdateCourse_EmptyFieldsIgnored(t *testing.T) {
 	resetDB()
 	e := setupEcho()
 
@@ -564,7 +606,7 @@ func TestUpdateCourse_EmptyFieldsIgnored(t *testing.T) {
 	}
 }
 
-func TestUpdateCourse_InvalidDateRange(t *testing.T) {
+func TestCourseHandler_UpdateCourse_InvalidDateRange(t *testing.T) {
 	resetDB()
 	e := setupEcho()
 
@@ -582,7 +624,7 @@ func TestUpdateCourse_InvalidDateRange(t *testing.T) {
 	}
 }
 
-func TestUpdateCourse_InvalidDateFormat(t *testing.T) {
+func TestCourseHandler_UpdateCourse_InvalidDateFormat(t *testing.T) {
 	resetDB()
 	e := setupEcho()
 
@@ -602,7 +644,7 @@ func TestUpdateCourse_InvalidDateFormat(t *testing.T) {
 	}
 }
 
-func TestUpdateCourse_IgnoreSlugChange(t *testing.T) {
+func TestCourseHandler_UpdateCourse_IgnoreSlugChange(t *testing.T) {
 	resetDB()
 	e := setupEcho()
 
@@ -616,16 +658,14 @@ func TestUpdateCourse_IgnoreSlugChange(t *testing.T) {
 		t.Fatalf("expected 200, got %d", rec.Code)
 	}
 
-	courseMu.RLock()
-	course := courseDB["algorithms"]
-	courseMu.RUnlock()
+	course := testCourses.courses["algorithms"]
 
 	if course.ID != "algorithms" {
 		t.Error("ID should not change")
 	}
 }
 
-func TestUpdateCourse_InvalidJSON(t *testing.T) {
+func TestCourseHandler_UpdateCourse_InvalidJSON(t *testing.T) {
 	resetDB()
 	e := setupEcho()
 
@@ -639,7 +679,7 @@ func TestUpdateCourse_InvalidJSON(t *testing.T) {
 	}
 }
 
-func TestIsValidDateRange_EqualDates(t *testing.T) {
+func TestCourseValidation_IsValidDateRange_EqualDates(t *testing.T) {
 	if isValidDateRange("2024-01-01", "2024-01-01") {
 		t.Fatal("expected false when dates are equal")
 	}

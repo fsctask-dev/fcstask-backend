@@ -17,7 +17,7 @@ import (
 	"fcstask-backend/internal/api"
 	models "fcstask-backend/internal/db/model"
 	"fcstask-backend/internal/db/repo"
-	"fcstask-backend/internal/server/handler"
+	"fcstask-backend/internal/handler"
 )
 
 // --- Mocks ---
@@ -26,12 +26,12 @@ type MockUserRepository struct {
 	mock.Mock
 }
 
-func (m *MockUserRepository) Create(ctx context.Context, user *models.User) error {
+func (m *MockUserRepository) CreateUser(ctx context.Context, user *models.User) error {
 	args := m.Called(ctx, user)
 	return args.Error(0)
 }
 
-func (m *MockUserRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.User, error) {
+func (m *MockUserRepository) GetUserByID(ctx context.Context, id uuid.UUID) (*models.User, error) {
 	args := m.Called(ctx, id)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -39,7 +39,7 @@ func (m *MockUserRepository) GetByID(ctx context.Context, id uuid.UUID) (*models
 	return args.Get(0).(*models.User), args.Error(1)
 }
 
-func (m *MockUserRepository) GetByEmail(ctx context.Context, email string) (*models.User, error) {
+func (m *MockUserRepository) GetUserByEmail(ctx context.Context, email string) (*models.User, error) {
 	args := m.Called(ctx, email)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -47,7 +47,7 @@ func (m *MockUserRepository) GetByEmail(ctx context.Context, email string) (*mod
 	return args.Get(0).(*models.User), args.Error(1)
 }
 
-func (m *MockUserRepository) GetByUsername(ctx context.Context, username string) (*models.User, error) {
+func (m *MockUserRepository) GetUserByUsername(ctx context.Context, username string) (*models.User, error) {
 	args := m.Called(ctx, username)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -55,7 +55,7 @@ func (m *MockUserRepository) GetByUsername(ctx context.Context, username string)
 	return args.Get(0).(*models.User), args.Error(1)
 }
 
-func (m *MockUserRepository) GetByUserID(ctx context.Context, userID uuid.UUID) (*models.User, error) {
+func (m *MockUserRepository) GetUserByUserID(ctx context.Context, userID uuid.UUID) (*models.User, error) {
 	args := m.Called(ctx, userID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -63,7 +63,7 @@ func (m *MockUserRepository) GetByUserID(ctx context.Context, userID uuid.UUID) 
 	return args.Get(0).(*models.User), args.Error(1)
 }
 
-func (m *MockUserRepository) GetByTgUID(ctx context.Context, tgUID int64) (*models.User, error) {
+func (m *MockUserRepository) GetUserByTgUID(ctx context.Context, tgUID int64) (*models.User, error) {
 	args := m.Called(ctx, tgUID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -71,32 +71,32 @@ func (m *MockUserRepository) GetByTgUID(ctx context.Context, tgUID int64) (*mode
 	return args.Get(0).(*models.User), args.Error(1)
 }
 
-func (m *MockUserRepository) Update(ctx context.Context, user *models.User) error {
+func (m *MockUserRepository) UpdateUser(ctx context.Context, user *models.User) error {
 	args := m.Called(ctx, user)
 	return args.Error(0)
 }
 
-func (m *MockUserRepository) Delete(ctx context.Context, id uuid.UUID) error {
+func (m *MockUserRepository) DeleteUser(ctx context.Context, id uuid.UUID) error {
 	args := m.Called(ctx, id)
 	return args.Error(0)
 }
 
-func (m *MockUserRepository) ExistsByEmail(ctx context.Context, email string) (bool, error) {
+func (m *MockUserRepository) ExistsUserByEmail(ctx context.Context, email string) (bool, error) {
 	args := m.Called(ctx, email)
 	return args.Bool(0), args.Error(1)
 }
 
-func (m *MockUserRepository) ExistsByUsername(ctx context.Context, username string) (bool, error) {
+func (m *MockUserRepository) ExistsUserByUsername(ctx context.Context, username string) (bool, error) {
 	args := m.Called(ctx, username)
 	return args.Bool(0), args.Error(1)
 }
 
-func (m *MockUserRepository) Count(ctx context.Context) (int64, error) {
+func (m *MockUserRepository) CountUsers(ctx context.Context) (int64, error) {
 	args := m.Called(ctx)
 	return args.Get(0).(int64), args.Error(1)
 }
 
-func (m *MockUserRepository) GetAllWithSessions(ctx context.Context, limit, offset int) ([]models.User, error) {
+func (m *MockUserRepository) GetUsersWithSessions(ctx context.Context, limit, offset int) ([]models.User, error) {
 	args := m.Called(ctx, limit, offset)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -115,12 +115,12 @@ type MockSessionRepository struct {
 	mock.Mock
 }
 
-func (m *MockSessionRepository) Create(ctx context.Context, session *models.Session) error {
+func (m *MockSessionRepository) CreateSession(ctx context.Context, session *models.Session) error {
 	args := m.Called(ctx, session)
 	return args.Error(0)
 }
 
-func (m *MockSessionRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.Session, error) {
+func (m *MockSessionRepository) GetSessionByID(ctx context.Context, id uuid.UUID) (*models.Session, error) {
 	args := m.Called(ctx, id)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -128,7 +128,7 @@ func (m *MockSessionRepository) GetByID(ctx context.Context, id uuid.UUID) (*mod
 	return args.Get(0).(*models.Session), args.Error(1)
 }
 
-func (m *MockSessionRepository) GetByUserID(ctx context.Context, userID uuid.UUID) ([]models.Session, error) {
+func (m *MockSessionRepository) GetSessionsByUserID(ctx context.Context, userID uuid.UUID) ([]models.Session, error) {
 	args := m.Called(ctx, userID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -136,7 +136,7 @@ func (m *MockSessionRepository) GetByUserID(ctx context.Context, userID uuid.UUI
 	return args.Get(0).([]models.Session), args.Error(1)
 }
 
-func (m *MockSessionRepository) GetAllWithUser(ctx context.Context, limit, offset int) ([]models.Session, error) {
+func (m *MockSessionRepository) GetSessionsWithUser(ctx context.Context, limit, offset int) ([]models.Session, error) {
 	args := m.Called(ctx, limit, offset)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -144,27 +144,27 @@ func (m *MockSessionRepository) GetAllWithUser(ctx context.Context, limit, offse
 	return args.Get(0).([]models.Session), args.Error(1)
 }
 
-func (m *MockSessionRepository) CountAll(ctx context.Context) (int64, error) {
+func (m *MockSessionRepository) CountSessions(ctx context.Context) (int64, error) {
 	args := m.Called(ctx)
 	return args.Get(0).(int64), args.Error(1)
 }
 
-func (m *MockSessionRepository) TouchAccessedAt(ctx context.Context, id uuid.UUID) error {
+func (m *MockSessionRepository) TouchSessionAccessedAt(ctx context.Context, id uuid.UUID) error {
 	args := m.Called(ctx, id)
 	return args.Error(0)
 }
 
-func (m *MockSessionRepository) Delete(ctx context.Context, id uuid.UUID) error {
+func (m *MockSessionRepository) DeleteSession(ctx context.Context, id uuid.UUID) error {
 	args := m.Called(ctx, id)
 	return args.Error(0)
 }
 
-func (m *MockSessionRepository) DeleteByUserID(ctx context.Context, userID uuid.UUID) error {
+func (m *MockSessionRepository) DeleteSessionsByUserID(ctx context.Context, userID uuid.UUID) error {
 	args := m.Called(ctx, userID)
 	return args.Error(0)
 }
 
-func (m *MockSessionRepository) CleanOutdated(ctx context.Context, ttl time.Duration) (int64, error) {
+func (m *MockSessionRepository) CleanOutdatedSessions(ctx context.Context, ttl time.Duration) (int64, error) {
 	args := m.Called(ctx, ttl)
 	return args.Get(0).(int64), args.Error(1)
 }
@@ -285,7 +285,7 @@ func TestAuth_SessionNotFound(t *testing.T) {
 	mockUserRepo := new(MockUserRepository)
 	mockSessionRepo := new(MockSessionRepository)
 
-	mockSessionRepo.On("GetByID", mock.Anything, testSessionID).Return(nil, errors.New("not found"))
+	mockSessionRepo.On("GetSessionByID", mock.Anything, testSessionID).Return(nil, errors.New("not found"))
 
 	mw := Auth(mockUserRepo, mockSessionRepo, []string{"/api/me"})
 
@@ -319,8 +319,8 @@ func TestAuth_UserNotFound(t *testing.T) {
 		ID:     testSessionID,
 		UserID: testUserID,
 	}
-	mockSessionRepo.On("GetByID", mock.Anything, testSessionID).Return(session, nil)
-	mockUserRepo.On("GetByID", mock.Anything, testUserID).Return(nil, errors.New("not found"))
+	mockSessionRepo.On("GetSessionByID", mock.Anything, testSessionID).Return(session, nil)
+	mockUserRepo.On("GetUserByID", mock.Anything, testUserID).Return(nil, errors.New("not found"))
 
 	mw := Auth(mockUserRepo, mockSessionRepo, []string{"/api/me"})
 
@@ -365,9 +365,9 @@ func TestAuth_Success(t *testing.T) {
 		UpdatedAt: now,
 	}
 
-	mockSessionRepo.On("GetByID", mock.Anything, testSessionID).Return(session, nil)
-	mockSessionRepo.On("TouchAccessedAt", mock.Anything, testSessionID).Return(nil)
-	mockUserRepo.On("GetByID", mock.Anything, testUserID).Return(user, nil)
+	mockSessionRepo.On("GetSessionByID", mock.Anything, testSessionID).Return(session, nil)
+	mockSessionRepo.On("TouchSessionAccessedAt", mock.Anything, testSessionID).Return(nil)
+	mockUserRepo.On("GetUserByID", mock.Anything, testUserID).Return(user, nil)
 
 	mw := Auth(mockUserRepo, mockSessionRepo, []string{"/api/me"})
 
