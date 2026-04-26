@@ -9,7 +9,7 @@ import (
 
 	"fcstask-backend/internal/api"
 	"fcstask-backend/internal/db/repo"
-	"fcstask-backend/internal/server/handler"
+	"fcstask-backend/internal/handler"
 )
 
 func authError(ctx echo.Context, message string) error {
@@ -44,17 +44,17 @@ func Auth(userRepo repo.IUserRepo, sessionRepo repo.SessionRepositoryInterface, 
 				return authError(ctx, "Invalid session token")
 			}
 
-			session, err := sessionRepo.GetByID(ctx.Request().Context(), sessionID)
+			session, err := sessionRepo.GetSessionByID(ctx.Request().Context(), sessionID)
 			if err != nil {
 				return authError(ctx, "Session not found")
 			}
 
-			user, err := userRepo.GetByID(ctx.Request().Context(), session.UserID)
+			user, err := userRepo.GetUserByID(ctx.Request().Context(), session.UserID)
 			if err != nil {
 				return authError(ctx, "User not found")
 			}
 
-			_ = sessionRepo.TouchAccessedAt(ctx.Request().Context(), session.ID)
+			_ = sessionRepo.TouchSessionAccessedAt(ctx.Request().Context(), session.ID)
 
 			ctx.Set(handler.UserContextKey, user)
 			ctx.Set(handler.SessionContextKey, session)

@@ -8,18 +8,27 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
+
+	"fcstask-backend/internal/service"
 )
 
-// setupEchoBoard — настраивает Echo с нужным хендлером
+// setupEchoBoard настраивает Echo с нужным handlerом
 func setupEchoBoard() *echo.Echo {
 	e := echo.New()
-	e.GET("/api/courses/:courseId/board", GetCourseBoardHandler)
+	if testCourses == nil {
+		resetDB()
+	}
+	courseHandler := NewCourseHandler(service.NewCourseService(testCourses))
+	e.GET("/api/courses/:courseId/board", courseHandler.GetCourseBoard)
 	return e
 }
 
-// resetBoardDB — сбрасывает boardData к исходному состоянию
+// resetBoardDB сбрасывает test board data к исходному состоянию.
 func resetBoardDB() {
-	boardData = map[string]TaskBoardSummary{
+	if testCourses == nil {
+		resetDB()
+	}
+	testCourses.boards = map[string]TaskBoardSummary{
 		"algorithms": {
 			CourseName:    "Algorithms 101",
 			CourseStatus:  "in_progress",
@@ -66,10 +75,10 @@ func resetBoardDB() {
 }
 
 /* ============================================================
-   Тесты GetCourseBoardHandler
+   Тесты CourseHandler.GetCourseBoard
    ============================================================ */
 
-func TestGetCourseBoardHandler_ValidCourse(t *testing.T) {
+func TestCourseHandler_GetCourseBoard_ValidCourse(t *testing.T) {
 	resetBoardDB()
 	e := setupEchoBoard()
 
@@ -93,23 +102,22 @@ func TestGetCourseBoardHandler_ValidCourse(t *testing.T) {
 	assert.Equal(t, "Arrays Sprint", resp.Groups[0].Tasks[0].Name)
 }
 
-func TestGetCourseBoardHandler_CourseWithoutBoard(t *testing.T) {
+func TestCourseHandler_GetCourseBoard_CourseWithoutBoard(t *testing.T) {
 	resetBoardDB()
 	e := setupEchoBoard()
 
-	// Добавим курс, которого нет в boardData, но есть в courseDB
-	courseMu.Lock()
-	courseDB["rust"] = Course{
-		ID:           "rust",
+	// Добавим курс, которого нет в board data, но есть в course repo.
+	testCourses.courses["rust"] = Course{
+		ID:           testCourseUUID(),
 		Name:         "Rust Core",
+		Slug:         "rust",
 		Status:       "created",
-		StartDate:    "2024-10-15",
-		EndDate:      "2025-01-15",
-		RepoTemplate: "git@test/rust.git",
-		Description:  "Rust basics",
+		StartDate:    testCourseDate("2024-10-15"),
+		EndDate:      testCourseDate("2025-01-15"),
+		RepoTemplate: testStringPtr("git@test/rust.git"),
+		Description:  testStringPtr("Rust basics"),
 		URL:          "/course/rust",
 	}
-	courseMu.Unlock()
 
 	req := httptest.NewRequest(http.MethodGet, "/api/courses/rust/board", nil)
 	rec := httptest.NewRecorder()
@@ -127,7 +135,7 @@ func TestGetCourseBoardHandler_CourseWithoutBoard(t *testing.T) {
 	assert.Empty(t, resp.Groups)
 }
 
-func TestGetCourseBoardHandler_CourseNotFound(t *testing.T) {
+func TestCourseHandler_GetCourseBoard_CourseNotFound(t *testing.T) {
 	resetBoardDB()
 	e := setupEchoBoard()
 
@@ -138,27 +146,24 @@ func TestGetCourseBoardHandler_CourseNotFound(t *testing.T) {
 
 	assert.Equal(t, http.StatusNotFound, rec.Code)
 
-	var resp map[string]string
+	var resp map[string]struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+	}
 	err := json.Unmarshal(rec.Body.Bytes(), &resp)
 	assert.NoError(t, err)
-	assert.Equal(t, "course not found", resp["error"])
+	assert.Equal(t, "not_found", resp["error"].Code)
+	assert.Equal(t, "course not found", resp["error"].Message)
 }
 
-func TestGetCourseBoardHandler_EmptyBoardData(t *testing.T) {
+func TestCourseHandler_GetCourseBoard_EmptyBoardData(t *testing.T) {
 	resetDB()
-	// Сохраним оригинальное состояние
-	originalBoardData := boardData
-	defer func() { boardData = originalBoardData }()
-
-	// Очистим boardData
-	boardData = make(map[string]TaskBoardSummary)
+	testCourses.boards = make(map[string]TaskBoardSummary)
 
 	e := setupEchoBoard()
 
 	// Убедимся, что курс существует
-	courseMu.RLock()
-	_, exists := courseDB["algorithms"]
-	courseMu.RUnlock()
+	_, exists := testCourses.courses["algorithms"]
 	assert.True(t, exists, "course 'algorithms' must exist")
 
 	req := httptest.NewRequest(http.MethodGet, "/api/courses/algorithms/board", nil)
@@ -176,24 +181,23 @@ func TestGetCourseBoardHandler_EmptyBoardData(t *testing.T) {
 	assert.Empty(t, resp.Groups)
 }
 
-func TestGetCourseBoardHandler_JSONStructure(t *testing.T) {
+func TestCourseHandler_GetCourseBoard_JSONStructure(t *testing.T) {
 	resetDB()
 	resetBoardDB()
-	
-	// Добавим курс mlops в courseDB
-	courseMu.Lock()
-	courseDB["mlops"] = Course{
-		ID:           "mlops",
+
+	// Добавим курс mlops в course repo.
+	testCourses.courses["mlops"] = Course{
+		ID:           testCourseUUID(),
 		Name:         "MLOps Studio",
+		Slug:         "mlops",
 		Status:       "all_tasks_issued",
-		StartDate:    "2024-09-01",
-		EndDate:      "2024-11-30",
-		RepoTemplate: "git@test/mlops.git",
-		Description:  "MLOps course",
+		StartDate:    testCourseDate("2024-09-01"),
+		EndDate:      testCourseDate("2024-11-30"),
+		RepoTemplate: testStringPtr("git@test/mlops.git"),
+		Description:  testStringPtr("MLOps course"),
 		URL:          "/course/mlops",
 	}
-	courseMu.Unlock()
-	
+
 	e := setupEchoBoard()
 
 	req := httptest.NewRequest(http.MethodGet, "/api/courses/mlops/board", nil)

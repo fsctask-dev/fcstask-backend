@@ -1,32 +1,13 @@
 package handler
 
 import (
-	"errors"
 	"net/http"
-	"strings"
 
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/labstack/echo/v4"
 
 	"fcstask-backend/internal/api"
+	"fcstask-backend/internal/service"
 )
-
-// uniqueConstraintColumn extracts the column name from a Postgres unique
-// constraint violation (error code 23505). It maps GORM-generated index names
-// like "idx_users_email" to "email". Returns "" if the error is not a unique
-// violation or the constraint is unrecognised.
-func uniqueConstraintColumn(err error) string {
-	var pgErr *pgconn.PgError
-	if !errors.As(err, &pgErr) || pgErr.Code != "23505" {
-		return ""
-	}
-	// GORM generates index names as idx_<table>_<column>.
-	parts := strings.SplitN(pgErr.ConstraintName, "_", 3)
-	if len(parts) == 3 {
-		return parts[2]
-	}
-	return pgErr.ConstraintName
-}
 
 func apiError(ctx echo.Context, status int, code, message string) error {
 	return ctx.JSON(status, api.Error{
@@ -51,4 +32,27 @@ func conflict(ctx echo.Context, message string) error {
 
 func internalError(ctx echo.Context, message string) error {
 	return apiError(ctx, http.StatusInternalServerError, "internal_error", message)
+}
+
+func serviceError(ctx echo.Context, err error) error {
+	if err == nil {
+		return nil
+	}
+
+	if serviceErr, ok := err.(*service.Error); ok {
+		switch serviceErr.Code {
+		case "bad_request":
+			return badRequest(ctx, serviceErr.Message)
+		case "unauthorized":
+			return unauthorized(ctx, serviceErr.Message)
+		case "not_found":
+			return apiError(ctx, http.StatusNotFound, "not_found", serviceErr.Message)
+		case "conflict":
+			return conflict(ctx, serviceErr.Message)
+		default:
+			return internalError(ctx, serviceErr.Message)
+		}
+	}
+
+	return internalError(ctx, "Internal server error")
 }
