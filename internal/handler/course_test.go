@@ -47,6 +47,11 @@ func (r *testCourseRepository) UpdateCourse(ctx context.Context, courseID string
 	return &course, nil
 }
 
+func (r *testCourseRepository) DeleteCourse(ctx context.Context, courseID string) error {
+	delete(r.courses, courseID)
+	return nil
+}
+
 func (r *testCourseRepository) GetCourseBoard(ctx context.Context, courseID string) (*models.TaskBoardSummary, bool, error) {
 	board, ok := r.boards[courseID]
 	if !ok {
@@ -86,7 +91,9 @@ func resetDB() {
 			"algorithms": {
 				ID:           "algorithms",
 				Name:         "Algorithms",
+				Slug:         "algorithms",
 				Status:       "created",
+				Type:         models.CourseTypePublic,
 				StartDate:    "2024-01-01",
 				EndDate:      "2024-02-01",
 				RepoTemplate: "git@test/repo.git",
@@ -96,7 +103,9 @@ func resetDB() {
 			"hidden": {
 				ID:           "hidden",
 				Name:         "Hidden",
+				Slug:         "hidden",
 				Status:       "hidden",
+				Type:         models.CourseTypePrivate,
 				StartDate:    "2024-01-01",
 				EndDate:      "2024-02-01",
 				RepoTemplate: "git@test/repo.git",
@@ -264,6 +273,65 @@ func TestCourseHandler_CreateCourse_Success(t *testing.T) {
 	e.ServeHTTP(rec, req)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("expected 201, got %d", rec.Code)
+	}
+}
+
+func TestCourseHandler_CreateCourse_DefaultsTypeToPrivate(t *testing.T) {
+	resetDB()
+	e := setupEcho()
+
+	body := []byte(`{
+		"name":"Private Course",
+		"slug":"private-course",
+		"status":"created",
+		"startDate":"2024-03-01",
+		"endDate":"2024-04-01",
+		"repoTemplate":"git@test/private.git",
+		"description":"Private by default"
+	}`)
+
+	req := plainReq(http.MethodPost, "/api/courses", body)
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d", rec.Code)
+	}
+
+	var course Course
+	json.Unmarshal(rec.Body.Bytes(), &course)
+	if course.Type != models.CourseTypePrivate {
+		t.Fatalf("expected private type by default, got %q", course.Type)
+	}
+}
+
+func TestCourseHandler_CreateCourse_PublicType(t *testing.T) {
+	resetDB()
+	e := setupEcho()
+
+	body := []byte(`{
+		"name":"Public Course",
+		"slug":"public-course",
+		"status":"created",
+		"type":"public",
+		"startDate":"2024-03-01",
+		"endDate":"2024-04-01",
+		"repoTemplate":"git@test/public.git",
+		"description":"Public course"
+	}`)
+
+	req := plainReq(http.MethodPost, "/api/courses", body)
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d", rec.Code)
+	}
+
+	var course Course
+	json.Unmarshal(rec.Body.Bytes(), &course)
+	if course.Type != models.CourseTypePublic {
+		t.Fatalf("expected public type, got %q", course.Type)
 	}
 }
 

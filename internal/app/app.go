@@ -38,7 +38,7 @@ func New(cfg *config.Config) (*App, error) {
 
 	userRepo := repo.NewUserRepository(dbClient.DB())
 	sessionRepo := repo.NewSessionRepository(dbClient.DB())
-	courseRepo := repo.NewInMemoryCourseRepository()
+	courseRepo := repo.NewCourseRepository(dbClient.DB())
 
 	userService := service.NewUserService(userRepo)
 	authService := service.NewAuthService(userRepo, sessionRepo)

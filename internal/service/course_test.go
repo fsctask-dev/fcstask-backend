@@ -41,6 +41,11 @@ func (r *courseServiceRepo) UpdateCourse(ctx context.Context, courseID string, c
 	return &course, nil
 }
 
+func (r *courseServiceRepo) DeleteCourse(ctx context.Context, courseID string) error {
+	delete(r.courses, courseID)
+	return nil
+}
+
 func (r *courseServiceRepo) GetCourseBoard(ctx context.Context, courseID string) (*models.TaskBoardSummary, bool, error) {
 	board, ok := r.boards[courseID]
 	if !ok {
@@ -55,7 +60,9 @@ func newCourseServiceRepo() *courseServiceRepo {
 			"go": {
 				ID:           "go",
 				Name:         "Go",
+				Slug:         "go",
 				Status:       "created",
+				Type:         models.CourseTypePrivate,
 				StartDate:    "2026-01-01",
 				EndDate:      "2026-02-01",
 				RepoTemplate: "git@test/go.git",
@@ -83,6 +90,8 @@ func TestCourseService_CreateCourseSuccess(t *testing.T) {
 
 	assert.NoError(t, err)
 	assert.Equal(t, "rust", course.ID)
+	assert.Equal(t, "rust", course.Slug)
+	assert.Equal(t, models.CourseTypePrivate, course.Type)
 	assert.Equal(t, "/course/rust", course.URL)
 	assert.Contains(t, repo.courses, "rust")
 }
@@ -104,6 +113,25 @@ func TestCourseService_CreateCourseConflict(t *testing.T) {
 	var serviceErr *Error
 	assert.True(t, errors.As(err, &serviceErr))
 	assert.Equal(t, "conflict", serviceErr.Code)
+}
+
+func TestCourseService_CreateCoursePublicType(t *testing.T) {
+	repo := newCourseServiceRepo()
+	svc := NewCourseService(repo)
+
+	course, err := svc.CreateCourse(context.Background(), CourseInput{
+		Name:         "Public",
+		Slug:         "public",
+		Status:       "created",
+		Type:         models.CourseTypePublic,
+		StartDate:    "2026-03-01",
+		EndDate:      "2026-04-01",
+		RepoTemplate: "git@test/public.git",
+		Description:  "Public course",
+	})
+
+	assert.NoError(t, err)
+	assert.Equal(t, models.CourseTypePublic, course.Type)
 }
 
 func TestCourseService_UpdateCoursePartial(t *testing.T) {

@@ -20,6 +20,7 @@ type CourseInput struct {
 	Name         string
 	Slug         string
 	Status       string
+	Type         models.CourseType
 	StartDate    string
 	EndDate      string
 	RepoTemplate string
@@ -68,7 +69,9 @@ func (s *CourseService) CreateCourse(ctx context.Context, input CourseInput) (*m
 	course := models.Course{
 		ID:           input.Slug,
 		Name:         input.Name,
+		Slug:         input.Slug,
 		Status:       input.Status,
+		Type:         courseTypeOrDefault(input.Type),
 		StartDate:    input.StartDate,
 		EndDate:      input.EndDate,
 		RepoTemplate: input.RepoTemplate,
@@ -88,6 +91,9 @@ func (s *CourseService) UpdateCourse(ctx context.Context, courseID string, input
 	if input.Status != "" && !IsValidCourseStatus(input.Status) {
 		return nil, BadRequest("invalid status value")
 	}
+	if input.Type != "" && !IsValidCourseType(input.Type) {
+		return nil, BadRequest("type must be 'public' or 'private'")
+	}
 	if input.StartDate != "" && !IsValidDate(input.StartDate) {
 		return nil, BadRequest("startDate must be in format YYYY-MM-DD")
 	}
@@ -101,6 +107,9 @@ func (s *CourseService) UpdateCourse(ctx context.Context, courseID string, input
 	}
 	if input.Status != "" {
 		updated.Status = input.Status
+	}
+	if input.Type != "" {
+		updated.Type = input.Type
 	}
 	if input.StartDate != "" {
 		updated.StartDate = input.StartDate
@@ -160,6 +169,9 @@ func validateCreateCourse(input CourseInput) error {
 	if !IsValidCourseStatus(input.Status) {
 		return BadRequest("invalid status value")
 	}
+	if input.Type != "" && !IsValidCourseType(input.Type) {
+		return BadRequest("type must be 'public' or 'private'")
+	}
 	if input.StartDate == "" {
 		return BadRequest("startDate is required")
 	}
@@ -194,6 +206,17 @@ func IsValidCourseStatus(status string) bool {
 		"finished":         true,
 	}
 	return valid[status]
+}
+
+func IsValidCourseType(courseType models.CourseType) bool {
+	return courseType == models.CourseTypePublic || courseType == models.CourseTypePrivate
+}
+
+func courseTypeOrDefault(courseType models.CourseType) models.CourseType {
+	if courseType == "" {
+		return models.CourseTypePrivate
+	}
+	return courseType
 }
 
 func IsValidDate(date string) bool {

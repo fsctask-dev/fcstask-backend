@@ -167,6 +167,11 @@ func (r *controllerCourseRepo) UpdateCourse(ctx context.Context, courseID string
 	return &course, nil
 }
 
+func (r *controllerCourseRepo) DeleteCourse(ctx context.Context, courseID string) error {
+	delete(r.courses, courseID)
+	return nil
+}
+
 func (r *controllerCourseRepo) GetCourseBoard(ctx context.Context, courseID string) (*models.TaskBoardSummary, bool, error) {
 	return nil, false, nil
 }

@@ -16,13 +16,14 @@ type BoardGroup = models.BoardGroup
 type TaskBoardSummary = models.TaskBoardSummary
 
 type PostCourseRequest struct {
-	Name         string `json:"name"`
-	Slug         string `json:"slug"`
-	Status       string `json:"status"`
-	StartDate    string `json:"startDate"`
-	EndDate      string `json:"endDate"`
-	RepoTemplate string `json:"repoTemplate"`
-	Description  string `json:"description"`
+	Name         string            `json:"name"`
+	Slug         string            `json:"slug"`
+	Status       string            `json:"status"`
+	Type         models.CourseType `json:"type"`
+	StartDate    string            `json:"startDate"`
+	EndDate      string            `json:"endDate"`
+	RepoTemplate string            `json:"repoTemplate"`
+	Description  string            `json:"description"`
 }
 
 type CourseHandler struct {
@@ -88,6 +89,7 @@ func courseInput(req PostCourseRequest) service.CourseInput {
 		Name:         req.Name,
 		Slug:         req.Slug,
 		Status:       req.Status,
+		Type:         req.Type,
 		StartDate:    req.StartDate,
 		EndDate:      req.EndDate,
 		RepoTemplate: req.RepoTemplate,
