@@ -14,7 +14,7 @@ import (
 	"fcstask-backend/internal/db/repo"
 )
 
-func CreateUserHandler(userRepo repo.UserRepositoryInterface, ctx echo.Context) error {
+func CreateUserHandler(userRepo repo.IUserRepo, ctx echo.Context) error {
 	var req api.CreateUserRequest
 	if err := ctx.Bind(&req); err != nil {
 		return badRequest(ctx, "Invalid request body")
@@ -78,7 +78,7 @@ func CreateUserHandler(userRepo repo.UserRepositoryInterface, ctx echo.Context) 
 	return ctx.JSON(http.StatusCreated, userResp)
 }
 
-func GetUserByIDHandler(userRepo repo.UserRepositoryInterface, ctx echo.Context, id uuid.UUID) error {
+func GetUserByIDHandler(userRepo repo.IUserRepo, ctx echo.Context, id uuid.UUID) error {
 	user, err := userRepo.GetByID(ctx.Request().Context(), id)
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -90,7 +90,7 @@ func GetUserByIDHandler(userRepo repo.UserRepositoryInterface, ctx echo.Context,
 	return ctx.JSON(http.StatusOK, userToAPI(user))
 }
 
-func GetUserByUsernameHandler(userRepo repo.UserRepositoryInterface, ctx echo.Context, username string) error {
+func GetUserByUsernameHandler(userRepo repo.IUserRepo, ctx echo.Context, username string) error {
 	user, err := userRepo.GetByUsername(ctx.Request().Context(), username)
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -102,7 +102,7 @@ func GetUserByUsernameHandler(userRepo repo.UserRepositoryInterface, ctx echo.Co
 	return ctx.JSON(http.StatusOK, userToAPI(user))
 }
 
-func GetUserByEmailHandler(userRepo repo.UserRepositoryInterface, ctx echo.Context, email string) error {
+func GetUserByEmailHandler(userRepo repo.IUserRepo, ctx echo.Context, email string) error {
 	user, err := userRepo.GetByEmail(ctx.Request().Context(), email)
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {

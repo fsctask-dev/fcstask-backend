@@ -1,0 +1,12 @@
+type: object
+required:
+  - user
+  - session_token
+properties:
+  user:
+    $ref: "./User.yaml"
+  session_token:
+    type: string
+    format: uuid
+    description: Session token for authentication
+

@@ -10,7 +10,7 @@ import (
 	"fcstask-backend/internal/db/model"
 )
 
-type UserRepositoryInterface interface {
+type IUserRepo interface {
 	Create(ctx context.Context, user *model.User) error
 	GetByID(ctx context.Context, id uuid.UUID) (*model.User, error)
 	GetByEmail(ctx context.Context, email string) (*model.User, error)
@@ -32,9 +32,9 @@ type UserRepository struct {
 	rw db.ReadWriter
 }
 
-var _ UserRepositoryInterface = (*UserRepository)(nil)
+var _ IUserRepo = (*UserRepository)(nil)
 
-func NewUserRepository(rw db.ReadWriter) UserRepositoryInterface {
+func NewUserRepository(rw db.ReadWriter) IUserRepo {
 	return &UserRepository{rw: rw}
 }
 

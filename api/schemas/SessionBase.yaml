@@ -1,0 +1,22 @@
+type: object
+required:
+  - ip
+  - user_agent
+  - created_at
+  - updated_at
+properties:
+  ip:
+    type: string
+    description: Client IP address
+  user_agent:
+    type: string
+    description: Client user agent
+  created_at:
+    type: string
+    format: date-time
+    description: Session creation timestamp
+  updated_at:
+    type: string
+    format: date-time
+    description: Session update timestamp
+

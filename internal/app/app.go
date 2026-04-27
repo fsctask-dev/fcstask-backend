@@ -2,19 +2,18 @@ package app
 
 import (
 	"context"
-	"fmt"
-	"log"
-	"time"
-
-	"github.com/labstack/echo/v4"
-
 	"fcstask-backend/internal/api"
 	"fcstask-backend/internal/config"
 	"fcstask-backend/internal/db"
-	"fcstask-backend/internal/db/model"
 	"fcstask-backend/internal/metrics"
 	"fcstask-backend/internal/server"
+	"fcstask-backend/internal/server/handler"
 	authmw "fcstask-backend/internal/server/middleware"
+	"fmt"
+	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
+	"log"
+	"time"
 )
 
 type App struct {
@@ -34,11 +33,13 @@ func New(cfg *config.Config) (*App, error) {
 		return nil, fmt.Errorf("failed to init database: %w", err)
 	}
 
-	if err := dbClient.AutoMigrate(&model.User{}, &model.Session{}); err != nil {
-		log.Printf("Warning: failed to run migrations: %v", err)
-	}
-
 	apiServer := server.NewAPIServer(dbClient)
+
+	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
+		AllowOrigins: []string{"http://localhost:5173", "http://localhost:3000"},
+		AllowMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowHeaders: []string{"Content-Type", "Authorization"},
+	}))
 
 	e.Use(authmw.Auth(apiServer.UserRepo(), apiServer.SessionRepo(), []string{
 		"/v1/api/me",
@@ -46,11 +47,18 @@ func New(cfg *config.Config) (*App, error) {
 		"/v1/sessions",
 		"/v1/users/sessions",
 	}))
+
 	api.RegisterHandlers(e, apiServer)
+
+	// Course and board routes (in-memory storage)
+	e.GET("/api/courses", handler.GetCoursesHandler)
+	e.POST("/api/courses", handler.CreateCourseHandler)
+	e.GET("/api/courses/:courseId", handler.GetCourseHandler)
+	e.PUT("/api/courses/:courseId", handler.UpdateCourseHandler)
+	e.GET("/api/courses/:courseId/board", handler.GetCourseBoardHandler)
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 	metrics.EchoPrometheus(e)
-
 
 	httpServer := server.NewHTTPServer(addr, e)
 
@@ -112,4 +120,4 @@ func (a *App) runSessionCleanup(ctx context.Context) {
 			}
 		}
 	}
-}
+	}

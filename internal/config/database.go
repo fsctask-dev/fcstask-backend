@@ -12,6 +12,7 @@ type DatabaseConfig struct {
 	MaxOpenConns    int             `yaml:"max_open_conns"`
 	MaxIdleConns    int             `yaml:"max_idle_conns"`
 	ConnMaxLifetime time.Duration   `yaml:"conn_max_lifetime"`
+	PingTimeout     time.Duration   `yaml:"ping_timeout"`
 	Replicas        []ReplicaConfig `yaml:"replicas,omitempty"`
 }
 

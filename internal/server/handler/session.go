@@ -78,7 +78,7 @@ func GetSessionsHandler(sessionRepo repo.SessionRepositoryInterface, ctx echo.Co
 	})
 }
 
-func GetUsersWithSessionsHandler(userRepo repo.UserRepositoryInterface, ctx echo.Context, params api.GetUsersWithSessionsParams) error {
+func GetUsersWithSessionsHandler(userRepo repo.IUserRepo, ctx echo.Context, params api.GetUsersWithSessionsParams) error {
 	limit, offset, err := parsePagination(params.Limit, params.Offset)
 	if err != nil {
 		return badRequest(ctx, err.Error())

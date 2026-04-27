@@ -13,6 +13,7 @@ database:
   max_open_conns: 25
   max_idle_conns: 25
   conn_max_lifetime: 5m
+  ping_timeout: 5s
   # replicas:
   #   - host: "replica-1"
   #     port: 6432

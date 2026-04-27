@@ -1,7 +1,10 @@
 package server
 
 import (
+	"fcstask-backend/internal/api"
 	"fcstask-backend/internal/server/handler"
+
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
@@ -48,4 +51,20 @@ func (s *APIServer) GetSessions(ctx echo.Context, params api.GetSessionsParams) 
 
 func (s *APIServer) GetUsersWithSessions(ctx echo.Context, params api.GetUsersWithSessionsParams) error {
 	return handler.GetUsersWithSessionsHandler(s.userRepo, ctx, params)
+}
+
+func (s *APIServer) GetCourses(ctx echo.Context, params api.GetCoursesParams) error {
+	return s.courseHandler.GetCoursesHandler(ctx)
+}
+
+func (s *APIServer) GetCourse(ctx echo.Context, courseId string) error {
+	return s.courseHandler.GetCourseHandler(ctx)
+}
+
+func (s *APIServer) CreateCourse(ctx echo.Context) error {
+	return s.courseHandler.CreateCourseHandler(ctx)
+}
+
+func (s *APIServer) UpdateCourse(ctx echo.Context, courseId string) error {
+	return s.courseHandler.UpdateCourseHandler(ctx)
 }
