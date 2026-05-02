@@ -21,9 +21,7 @@ type Course struct {
 	Description  *string        `gorm:"type:text" json:"description,omitempty"`
 	Status       string         `gorm:"type:varchar(50);not null;default:'created'" json:"status"`
 	Type         CourseType     `gorm:"type:varchar(20);not null;default:'private'" json:"type"`
-	InviteCode   *string        `gorm:"type:varchar(50);uniqueIndex" json:"invite_code,omitempty"` // кодовое слово для приватных курсов
-	TeacherID    *uuid.UUID     `gorm:"type:uuid;index" json:"teacher_id,omitempty"`
-	Teacher      *User          `gorm:"foreignKey:TeacherID;constraint:OnDelete:SET NULL" json:"teacher,omitempty"`
+	InviteCode   *string        `gorm:"type:varchar(50);uniqueIndex" json:"invite_code,omitempty"`
 	StartDate    *time.Time     `gorm:"type:timestamp" json:"start_date,omitempty"`
 	EndDate      *time.Time     `gorm:"type:timestamp" json:"end_date,omitempty"`
 	RepoTemplate *string        `gorm:"type:varchar(500)" json:"repo_template,omitempty"`
