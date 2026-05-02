@@ -2,239 +2,316 @@ package handler
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/labstack/echo/v4"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+
+	"fcstask-backend/internal/db/model"
 )
 
-func setupEcho() *echo.Echo {
+// MockCourseRepo - мок для репозитория курсов
+type MockCourseRepo struct {
+	mock.Mock
+}
+
+func (m *MockCourseRepo) Create(ctx context.Context, course *model.Course) error {
+	args := m.Called(ctx, course)
+	return args.Error(0)
+}
+
+func (m *MockCourseRepo) GetByID(ctx context.Context, id string) (*model.Course, error) {
+	args := m.Called(ctx, id)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*model.Course), args.Error(1)
+}
+
+func (m *MockCourseRepo) GetBySlug(ctx context.Context, slug string) (*model.Course, error) {
+	args := m.Called(ctx, slug)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*model.Course), args.Error(1)
+}
+
+func (m *MockCourseRepo) GetAll(ctx context.Context, statusFilter string) ([]model.Course, error) {
+	args := m.Called(ctx, statusFilter)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]model.Course), args.Error(1)
+}
+
+func (m *MockCourseRepo) Update(ctx context.Context, course *model.Course) error {
+	args := m.Called(ctx, course)
+	return args.Error(0)
+}
+
+func (m *MockCourseRepo) Delete(ctx context.Context, id string) error {
+	args := m.Called(ctx, id)
+	return args.Error(0)
+}
+
+func TestGetCourses_Success(t *testing.T) {
 	e := echo.New()
-	api := e.Group("/api")
+	mockRepo := new(MockCourseRepo)
 
-	api.GET("/courses", GetCoursesHandler)
-	api.GET("/courses/:courseId", GetCourseHandler)
-	api.POST("/courses", CreateCourseHandler)
-	api.PUT("/courses/:courseId", UpdateCourseHandler)
-
-	return e
-}
-
-// plainReq - запрос БЕЗ авторизации
-func plainReq(method, path string, body []byte) *http.Request {
-	req := httptest.NewRequest(method, path, bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	return req
-}
-
-func resetDB() {
-	courseMu.Lock()
-	defer courseMu.Unlock()
-
-	courseDB = map[string]Course{
-		"algorithms": {
-			ID:           "algorithms",
-			Name:         "Algorithms",
-			Status:       "created",
-			StartDate:    "2024-01-01",
-			EndDate:      "2024-02-01",
-			RepoTemplate: "git@test/repo.git",
-			Description:  "test",
-			URL:          "/course/algorithms",
-		},
-		"hidden": {
-			ID:           "hidden",
-			Name:         "Hidden",
-			Status:       "hidden",
-			StartDate:    "2024-01-01",
-			EndDate:      "2024-02-01",
-			RepoTemplate: "git@test/repo.git",
-			Description:  "hidden",
-			URL:          "/course/hidden",
-		},
-	}
-}
-
-func TestValidators(t *testing.T) {
-	tests := []struct {
-		name     string
-		fn       func() bool
-		expected bool
-	}{
-		{"valid status", func() bool { return isValidCourseStatus("created") }, true},
-		{"invalid status", func() bool { return isValidCourseStatus("broken") }, false},
-
-		{"valid date", func() bool { return isValidDate("2024-01-01") }, true},
-		{"invalid date format", func() bool { return isValidDate("01-01-2024") }, false},
-
-		{"valid date range", func() bool { return isValidDateRange("2024-01-01", "2024-01-02") }, true},
-		{"invalid date range", func() bool { return isValidDateRange("2024-01-02", "2024-01-01") }, false},
+	courses := []model.Course{
+		{ID: "algorithms", Name: "Algorithms", Status: "created", Type: model.CourseTypePublic},
+		{ID: "hidden", Name: "Hidden", Status: "hidden", Type: model.CourseTypePrivate},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.fn(); got != tt.expected {
-				t.Errorf("expected %v, got %v", tt.expected, got)
-			}
-		})
-	}
-}
+	mockRepo.On("GetAll", mock.Anything, "").Return(courses, nil)
 
-func TestGetCourses_EmptyFilterResult(t *testing.T) {
-	resetDB()
-	e := setupEcho()
-
-	req := plainReq(http.MethodGet, "/api/courses?status=finished", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/courses", nil)
 	rec := httptest.NewRecorder()
-	e.ServeHTTP(rec, req)
+	ctx := e.NewContext(req, rec)
 
-	var courses []Course
-	json.Unmarshal(rec.Body.Bytes(), &courses)
+	handler := NewCourseHandler(mockRepo)
+	err := handler.GetCoursesHandler(ctx)
 
-	if len(courses) != 0 {
-		t.Fatalf("expected 0 courses, got %d", len(courses))
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, rec.Code)
+
+	var resp []model.Course
+	json.Unmarshal(rec.Body.Bytes(), &resp)
+	assert.Len(t, resp, 2)
+	assert.Equal(t, "algorithms", resp[0].ID)
+	assert.Equal(t, model.CourseTypePublic, resp[0].Type)
+
+	mockRepo.AssertExpectations(t)
 }
 
-func TestGetCourses(t *testing.T) {
-	resetDB()
-	e := setupEcho()
+func TestGetCourses_WithStatusFilter(t *testing.T) {
+	e := echo.New()
+	mockRepo := new(MockCourseRepo)
 
-	req := plainReq(http.MethodGet, "/api/courses", nil)
-	rec := httptest.NewRecorder()
-
-	e.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200")
+	courses := []model.Course{
+		{ID: "hidden", Name: "Hidden", Status: "hidden", Type: model.CourseTypePrivate},
 	}
+
+	mockRepo.On("GetAll", mock.Anything, "hidden").Return(courses, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/courses?status=hidden", nil)
+	rec := httptest.NewRecorder()
+	ctx := e.NewContext(req, rec)
+
+	handler := NewCourseHandler(mockRepo)
+	err := handler.GetCoursesHandler(ctx)
+
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, rec.Code)
+
+	var resp []model.Course
+	json.Unmarshal(rec.Body.Bytes(), &resp)
+	assert.Len(t, resp, 1)
+	assert.Equal(t, "hidden", resp[0].Status)
+
+	mockRepo.AssertExpectations(t)
 }
 
-func TestGetCourses_Filter(t *testing.T) {
-	resetDB()
-	e := setupEcho()
+func TestGetCourses_GetAllError(t *testing.T) {
+	e := echo.New()
+	mockRepo := new(MockCourseRepo)
 
-	req := plainReq(http.MethodGet, "/api/courses?status=hidden", nil)
+	mockRepo.On("GetAll", mock.Anything, "").Return(nil, errors.New("db error"))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/courses", nil)
 	rec := httptest.NewRecorder()
+	ctx := e.NewContext(req, rec)
 
-	e.ServeHTTP(rec, req)
+	handler := NewCourseHandler(mockRepo)
+	err := handler.GetCoursesHandler(ctx)
 
-	var courses []Course
-	_ = json.Unmarshal(rec.Body.Bytes(), &courses)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusInternalServerError, rec.Code)
 
-	if len(courses) != 1 {
-		t.Fatalf("expected 1 filtered course")
-	}
+	var resp map[string]string
+	json.Unmarshal(rec.Body.Bytes(), &resp)
+	assert.Equal(t, "failed to fetch courses", resp["error"])
+
+	mockRepo.AssertExpectations(t)
 }
 
-func TestGetCourses_NoFilterAllVisible(t *testing.T) {
-	resetDB()
-	e := setupEcho()
+func TestGetCourse_Success(t *testing.T) {
+	e := echo.New()
+	mockRepo := new(MockCourseRepo)
 
-	req := plainReq(http.MethodGet, "/api/courses", nil)
-	rec := httptest.NewRecorder()
-
-	e.ServeHTTP(rec, req)
-
-	var courses []Course
-	_ = json.Unmarshal(rec.Body.Bytes(), &courses)
-
-	if len(courses) != 2 {
-		t.Fatalf("expected 2 courses without filter")
+	course := &model.Course{
+		ID:           "algorithms",
+		Name:         "Algorithms",
+		Slug:         "algorithms",
+		Status:       "created",
+		Type:         model.CourseTypePublic,
+		StartDate:    "2024-01-01",
+		EndDate:      "2024-02-01",
+		RepoTemplate: "git@test/repo.git",
+		Description:  "test",
+		URL:          "/course/algorithms",
 	}
-}
 
-func TestGetCourse_OK(t *testing.T) {
-	resetDB()
-	e := setupEcho()
+	mockRepo.On("GetByID", mock.Anything, "algorithms").Return(course, nil)
 
-	req := plainReq(http.MethodGet, "/api/courses/algorithms", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/courses/algorithms", nil)
 	rec := httptest.NewRecorder()
+	ctx := e.NewContext(req, rec)
+	ctx.SetParamNames("courseId")
+	ctx.SetParamValues("algorithms")
 
-	e.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200")
-	}
+	handler := NewCourseHandler(mockRepo)
+	err := handler.GetCourseHandler(ctx)
+
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, rec.Code)
+
+	var resp model.Course
+	json.Unmarshal(rec.Body.Bytes(), &resp)
+	assert.Equal(t, "algorithms", resp.ID)
+	assert.Equal(t, model.CourseTypePublic, resp.Type)
+
+	mockRepo.AssertExpectations(t)
 }
 
 func TestGetCourse_NotFound(t *testing.T) {
-	resetDB()
-	e := setupEcho()
+	e := echo.New()
+	mockRepo := new(MockCourseRepo)
 
-	req := plainReq(http.MethodGet, "/api/courses/unknown", nil)
+	mockRepo.On("GetByID", mock.Anything, "unknown").Return(nil, fmt.Errorf("not found"))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/courses/unknown", nil)
 	rec := httptest.NewRecorder()
+	ctx := e.NewContext(req, rec)
+	ctx.SetParamNames("courseId")
+	ctx.SetParamValues("unknown")
 
-	e.ServeHTTP(rec, req)
-	if rec.Code != http.StatusNotFound {
-		t.Fatalf("expected 404")
-	}
-}
+	handler := NewCourseHandler(mockRepo)
+	err := handler.GetCourseHandler(ctx)
 
-func TestCreateCourse_EmptyRepoTemplate(t *testing.T) {
-	resetDB()
-	e := setupEcho()
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusNotFound, rec.Code)
 
-	body := []byte(`{
-		"name":"Test",
-		"slug":"test",
-		"status":"created",
-		"startDate":"2025-01-01",
-		"endDate":"2025-02-01",
-		"description":"x"
-	}`)
+	var resp map[string]string
+	json.Unmarshal(rec.Body.Bytes(), &resp)
+	assert.Equal(t, "course not found", resp["error"])
 
-	req := plainReq(http.MethodPost, "/api/courses", body)
-	rec := httptest.NewRecorder()
-	e.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", rec.Code)
-	}
+	mockRepo.AssertExpectations(t)
 }
 
 func TestCreateCourse_Success(t *testing.T) {
-	resetDB()
-	e := setupEcho()
+	e := echo.New()
+	mockRepo := new(MockCourseRepo)
 
-	body := []byte(`{
+	mockRepo.On("GetBySlug", mock.Anything, "go-course").Return(nil, fmt.Errorf("not found"))
+	mockRepo.On("Create", mock.Anything, mock.AnythingOfType("*model.Course")).Return(nil)
+
+	body := `{
 		"name":"Go Course",
 		"slug":"go-course",
 		"status":"created",
+		"type":"public",
 		"startDate":"2024-03-01",
 		"endDate":"2024-04-01",
 		"repoTemplate":"git@test/go.git",
 		"description":"Go basics"
-	}`)
+	}`
 
-	req := plainReq(http.MethodPost, "/api/courses", body)
+	req := httptest.NewRequest(http.MethodPost, "/api/courses", bytes.NewReader([]byte(body)))
+	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
+	ctx := e.NewContext(req, rec)
 
-	e.ServeHTTP(rec, req)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d", rec.Code)
-	}
+	handler := NewCourseHandler(mockRepo)
+	err := handler.CreateCourseHandler(ctx)
+
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusCreated, rec.Code)
+
+	var resp model.Course
+	json.Unmarshal(rec.Body.Bytes(), &resp)
+	assert.Equal(t, "go-course", resp.ID)
+	assert.Equal(t, model.CourseTypePublic, resp.Type)
+	assert.Equal(t, "/course/go-course", resp.URL)
+
+	mockRepo.AssertExpectations(t)
+}
+
+func TestCreateCourse_DefaultTypePrivate(t *testing.T) {
+	e := echo.New()
+	mockRepo := new(MockCourseRepo)
+
+	mockRepo.On("GetBySlug", mock.Anything, "test").Return(nil, fmt.Errorf("not found"))
+	mockRepo.On("Create", mock.Anything, mock.MatchedBy(func(course *model.Course) bool {
+		return course.Type == model.CourseTypePrivate
+	})).Return(nil)
+
+	body := `{
+		"name":"Test",
+		"slug":"test",
+		"status":"created",
+		"startDate":"2024-01-01",
+		"endDate":"2024-02-01",
+		"repoTemplate":"git@test",
+		"description":"test"
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/api/courses", bytes.NewReader([]byte(body)))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	ctx := e.NewContext(req, rec)
+
+	handler := NewCourseHandler(mockRepo)
+	err := handler.CreateCourseHandler(ctx)
+
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusCreated, rec.Code)
+
+	var resp model.Course
+	json.Unmarshal(rec.Body.Bytes(), &resp)
+	assert.Equal(t, model.CourseTypePrivate, resp.Type)
+
+	mockRepo.AssertExpectations(t)
 }
 
 func TestCreateCourse_ValidationError(t *testing.T) {
-	resetDB()
-	e := setupEcho()
+	e := echo.New()
+	mockRepo := new(MockCourseRepo)
 
-	req := plainReq(http.MethodPost, "/api/courses", []byte(`{"slug":"a"}`))
+	body := `{"slug":"a"}`
+
+	req := httptest.NewRequest(http.MethodPost, "/api/courses", bytes.NewReader([]byte(body)))
+	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
+	ctx := e.NewContext(req, rec)
 
-	e.ServeHTTP(rec, req)
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400")
-	}
+	handler := NewCourseHandler(mockRepo)
+	err := handler.CreateCourseHandler(ctx)
+
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+
+	var resp map[string]interface{}
+	json.Unmarshal(rec.Body.Bytes(), &resp)
+	assert.Equal(t, "validation failed", resp["error"])
+	assert.NotNil(t, resp["details"])
 }
 
 func TestCreateCourse_Conflict(t *testing.T) {
-	resetDB()
-	e := setupEcho()
+	e := echo.New()
+	mockRepo := new(MockCourseRepo)
 
-	body := []byte(`{
+	existingCourse := &model.Course{ID: "algorithms", Slug: "algorithms"}
+	mockRepo.On("GetBySlug", mock.Anything, "algorithms").Return(existingCourse, nil)
+
+	body := `{
 		"name":"Algorithms",
 		"slug":"algorithms",
 		"status":"created",
@@ -242,44 +319,49 @@ func TestCreateCourse_Conflict(t *testing.T) {
 		"endDate":"2024-02-01",
 		"repoTemplate":"git@test",
 		"description":"dup"
-	}`)
+	}`
 
-	req := plainReq(http.MethodPost, "/api/courses", body)
+	req := httptest.NewRequest(http.MethodPost, "/api/courses", bytes.NewReader([]byte(body)))
+	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
+	ctx := e.NewContext(req, rec)
 
-	e.ServeHTTP(rec, req)
-	if rec.Code != http.StatusConflict {
-		t.Fatalf("expected 409")
-	}
+	handler := NewCourseHandler(mockRepo)
+	err := handler.CreateCourseHandler(ctx)
+
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusConflict, rec.Code)
+
+	var resp map[string]string
+	json.Unmarshal(rec.Body.Bytes(), &resp)
+	assert.Equal(t, "course with this slug already exists", resp["error"])
+
+	mockRepo.AssertExpectations(t)
 }
 
-func TestCreateCourse_InvalidDateRange(t *testing.T) {
-	resetDB()
-	e := setupEcho()
+func TestCreateCourse_InvalidJSON(t *testing.T) {
+	e := echo.New()
+	mockRepo := new(MockCourseRepo)
 
-	body := []byte(`{
-		"name":"Bad",
-		"slug":"bad-course",
-		"status":"created",
-		"startDate":"2024-02-01",
-		"endDate":"2024-01-01",
-		"repoTemplate":"git@test",
-		"description":"x"
-	}`)
+	body := `{ "name": "test"`
 
-	req := plainReq(http.MethodPost, "/api/courses", body)
+	req := httptest.NewRequest(http.MethodPost, "/api/courses", bytes.NewReader([]byte(body)))
+	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
+	ctx := e.NewContext(req, rec)
 
-	e.ServeHTTP(rec, req)
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400")
-	}
+	handler := NewCourseHandler(mockRepo)
+	err := handler.CreateCourseHandler(ctx)
+
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+
+	var resp map[string]string
+	json.Unmarshal(rec.Body.Bytes(), &resp)
+	assert.Equal(t, "invalid JSON payload", resp["error"])
 }
 
 func TestCreateCourse_MissingRequiredFields(t *testing.T) {
-	resetDB()
-	e := setupEcho()
-
 	cases := []struct {
 		name         string
 		body         string
@@ -296,20 +378,25 @@ func TestCreateCourse_MissingRequiredFields(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			req := plainReq(http.MethodPost, "/api/courses", []byte(tc.body))
-			rec := httptest.NewRecorder()
-			e.ServeHTTP(rec, req)
+			e := echo.New()
+			mockRepo := new(MockCourseRepo)
 
-			if rec.Code != http.StatusBadRequest {
-				t.Fatalf("expected 400, got %d", rec.Code)
-			}
+			req := httptest.NewRequest(http.MethodPost, "/api/courses", bytes.NewReader([]byte(tc.body)))
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			ctx := e.NewContext(req, rec)
+
+			handler := NewCourseHandler(mockRepo)
+			err := handler.CreateCourseHandler(ctx)
+
+			assert.NoError(t, err)
+			assert.Equal(t, http.StatusBadRequest, rec.Code)
 
 			var resp map[string]interface{}
 			json.Unmarshal(rec.Body.Bytes(), &resp)
 			details, ok := resp["details"].([]interface{})
-			if !ok {
-				t.Fatal("expected details array")
-			}
+			assert.True(t, ok, "expected details array")
+
 			found := false
 			for _, d := range details {
 				errMap := d.(map[string]interface{})
@@ -318,329 +405,382 @@ func TestCreateCourse_MissingRequiredFields(t *testing.T) {
 					break
 				}
 			}
-			if !found {
-				t.Errorf("expected validation error for field %q", tc.wantErrField)
-			}
+			assert.True(t, found, "expected validation error for field %q", tc.wantErrField)
 		})
 	}
 }
 
-func TestCreateCourse_InvalidDates(t *testing.T) {
-	resetDB()
-	e := setupEcho()
+func TestCreateCourse_InvalidType(t *testing.T) {
+	e := echo.New()
+	mockRepo := new(MockCourseRepo)
 
-	badDates := []struct {
-		name      string
-		startDate string
-		endDate   string
-	}{
-		{"invalid start format", "01-01-2025", "2025-02-01"},
-		{"invalid end format", "2025-01-01", "01-02-2025"},
-		{"end before start", "2025-02-01", "2025-01-01"},
-	}
+	body := `{"name":"Test","slug":"test","status":"created","type":"invalid","startDate":"2025-01-01","endDate":"2025-02-01","repoTemplate":"git@a","description":"x"}`
 
-	for _, tc := range badDates {
-		t.Run(tc.name, func(t *testing.T) {
-			body := fmt.Sprintf(`{"name":"Test","slug":"test","status":"created","startDate":"%s","endDate":"%s","repoTemplate":"git@a","description":"x"}`, tc.startDate, tc.endDate)
-			req := plainReq(http.MethodPost, "/api/courses", []byte(body))
-			rec := httptest.NewRecorder()
-			e.ServeHTTP(rec, req)
-
-			if rec.Code != http.StatusBadRequest {
-				t.Fatalf("expected 400, got %d", rec.Code)
-			}
-		})
-	}
-}
-
-func TestCreateCourse_InvalidStatus(t *testing.T) {
-	resetDB()
-	e := setupEcho()
-
-	body := []byte(`{"name":"Test","slug":"test","status":"invalid","startDate":"2025-01-01","endDate":"2025-02-01","repoTemplate":"git@a","description":"x"}`)
-	req := plainReq(http.MethodPost, "/api/courses", body)
+	req := httptest.NewRequest(http.MethodPost, "/api/courses", bytes.NewReader([]byte(body)))
+	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
-	e.ServeHTTP(rec, req)
+	ctx := e.NewContext(req, rec)
 
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", rec.Code)
+	handler := NewCourseHandler(mockRepo)
+	err := handler.CreateCourseHandler(ctx)
+
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+
+	var resp map[string]interface{}
+	json.Unmarshal(rec.Body.Bytes(), &resp)
+	details, ok := resp["details"].([]interface{})
+	assert.True(t, ok)
+
+	found := false
+	for _, d := range details {
+		errMap := d.(map[string]interface{})
+		if errMap["field"] == "type" {
+			found = true
+			break
+		}
 	}
+	assert.True(t, found)
 }
 
-func TestCreateCourse_InvalidJSON(t *testing.T) {
-	resetDB()
-	e := setupEcho()
+func TestCreateCourse_CreateError(t *testing.T) {
+	e := echo.New()
+	mockRepo := new(MockCourseRepo)
 
-	body := []byte(`{ "name": "test"`) // malformed
-	req := plainReq(http.MethodPost, "/api/courses", body)
-	rec := httptest.NewRecorder()
-	e.ServeHTTP(rec, req)
+	mockRepo.On("GetBySlug", mock.Anything, "test").Return(nil, fmt.Errorf("not found"))
+	mockRepo.On("Create", mock.Anything, mock.AnythingOfType("*model.Course")).Return(errors.New("db error"))
 
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", rec.Code)
-	}
-}
-
-func TestCreateCourse_ExtraFieldsIgnored(t *testing.T) {
-	resetDB()
-	e := setupEcho()
-
-	body := []byte(`{
-		"name":"Extra",
-		"slug":"extra",
+	body := `{
+		"name":"Test",
+		"slug":"test",
 		"status":"created",
-		"startDate":"2024-03-01",
-		"endDate":"2024-04-01",
+		"startDate":"2024-01-01",
+		"endDate":"2024-02-01",
 		"repoTemplate":"git@test",
-		"description":"test",
-		"id":"should-ignore",
-		"url":"should-ignore"
-	}`)
+		"description":"test"
+	}`
 
-	req := plainReq(http.MethodPost, "/api/courses", body)
+	req := httptest.NewRequest(http.MethodPost, "/api/courses", bytes.NewReader([]byte(body)))
+	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
-	e.ServeHTTP(rec, req)
+	ctx := e.NewContext(req, rec)
 
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d", rec.Code)
-	}
+	handler := NewCourseHandler(mockRepo)
+	err := handler.CreateCourseHandler(ctx)
 
-	var course Course
-	json.Unmarshal(rec.Body.Bytes(), &course)
-	if course.ID != "extra" {
-		t.Error("ID should be set from slug")
-	}
-	if course.URL != "/course/extra" {
-		t.Error("URL should be generated")
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusInternalServerError, rec.Code)
+
+	var resp map[string]string
+	json.Unmarshal(rec.Body.Bytes(), &resp)
+	assert.Equal(t, "failed to create course", resp["error"])
+
+	mockRepo.AssertExpectations(t)
 }
 
-func TestUpdateCourse_UpdateRepoTemplate(t *testing.T) {
-	resetDB()
-	e := setupEcho()
+func TestUpdateCourse_Success(t *testing.T) {
+	e := echo.New()
+	mockRepo := new(MockCourseRepo)
 
-	body := []byte(`{"repoTemplate":"git@updated"}`)
-	req := plainReq(http.MethodPut, "/api/courses/algorithms", body)
-	rec := httptest.NewRecorder()
-	e.ServeHTTP(rec, req)
-
-	var updated Course
-	json.Unmarshal(rec.Body.Bytes(), &updated)
-
-	if updated.RepoTemplate != "git@updated" {
-		t.Fatalf("repoTemplate not updated")
+	existingCourse := &model.Course{
+		ID:           "algorithms",
+		Name:         "Algorithms",
+		Slug:         "algorithms",
+		Status:       "created",
+		Type:         model.CourseTypePrivate,
+		StartDate:    "2024-01-01",
+		EndDate:      "2024-02-01",
+		RepoTemplate: "git@test/repo.git",
+		Description:  "test",
 	}
-}
 
-func TestUpdateCourse_DateRangeValidAfterPartial(t *testing.T) {
-	resetDB()
-	e := setupEcho()
+	mockRepo.On("GetByID", mock.Anything, "algorithms").Return(existingCourse, nil)
+	mockRepo.On("Update", mock.Anything, mock.AnythingOfType("*model.Course")).Return(nil)
 
-	body := []byte(`{"endDate":"2024-03-01"}`)
-	req := plainReq(http.MethodPut, "/api/courses/algorithms", body)
+	body := `{
+		"name":"Updated Algorithms",
+		"type":"public"
+	}`
+
+	req := httptest.NewRequest(http.MethodPut, "/api/courses/algorithms", bytes.NewReader([]byte(body)))
+	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
-	e.ServeHTTP(rec, req)
+	ctx := e.NewContext(req, rec)
+	ctx.SetParamNames("courseId")
+	ctx.SetParamValues("algorithms")
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rec.Code)
-	}
-}
+	handler := NewCourseHandler(mockRepo)
+	err := handler.UpdateCourseHandler(ctx)
 
-func TestUpdateCourse_AllFields(t *testing.T) {
-	resetDB()
-	e := setupEcho()
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, rec.Code)
 
-	body := []byte(`{
-		"name":"Updated",
-		"status":"finished",
-		"startDate":"2024-01-10",
-		"endDate":"2024-02-10",
-		"repoTemplate":"git@new",
-		"description":"updated"
-	}`)
+	var resp model.Course
+	json.Unmarshal(rec.Body.Bytes(), &resp)
+	assert.Equal(t, "Updated Algorithms", resp.Name)
+	assert.Equal(t, model.CourseTypePublic, resp.Type)
 
-	req := plainReq(http.MethodPut, "/api/courses/algorithms", body)
-	rec := httptest.NewRecorder()
-
-	e.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200")
-	}
-}
-
-func TestUpdateCourse_InvalidStatus(t *testing.T) {
-	resetDB()
-	e := setupEcho()
-
-	req := plainReq(http.MethodPut, "/api/courses/algorithms", []byte(`{"status":"bad"}`))
-	rec := httptest.NewRecorder()
-
-	e.ServeHTTP(rec, req)
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400")
-	}
+	mockRepo.AssertExpectations(t)
 }
 
 func TestUpdateCourse_NotFound(t *testing.T) {
-	resetDB()
-	e := setupEcho()
+	e := echo.New()
+	mockRepo := new(MockCourseRepo)
 
-	req := plainReq(http.MethodPut, "/api/courses/unknown", []byte(`{"name":"x"}`))
+	mockRepo.On("GetByID", mock.Anything, "unknown").Return(nil, fmt.Errorf("not found"))
+
+	body := `{"name":"x"}`
+
+	req := httptest.NewRequest(http.MethodPut, "/api/courses/unknown", bytes.NewReader([]byte(body)))
+	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
+	ctx := e.NewContext(req, rec)
+	ctx.SetParamNames("courseId")
+	ctx.SetParamValues("unknown")
 
-	e.ServeHTTP(rec, req)
-	if rec.Code != http.StatusNotFound {
-		t.Fatalf("expected 404")
-	}
+	handler := NewCourseHandler(mockRepo)
+	err := handler.UpdateCourseHandler(ctx)
+
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusNotFound, rec.Code)
+
+	mockRepo.AssertExpectations(t)
 }
 
-func TestUpdateCourse_PartialUpdate(t *testing.T) {
-	resetDB()
-	e := setupEcho()
+func TestUpdateCourse_InvalidStatus(t *testing.T) {
+	e := echo.New()
+	mockRepo := new(MockCourseRepo)
 
-	courseMu.RLock()
-	original := courseDB["algorithms"]
-	courseMu.RUnlock()
+	existingCourse := &model.Course{
+		ID:     "algorithms",
+		Status: "created",
+	}
 
-	body := []byte(`{
-        "name": "New Name Only",
-        "description": "New desc only"
-    }`)
+	mockRepo.On("GetByID", mock.Anything, "algorithms").Return(existingCourse, nil)
 
-	req := plainReq(http.MethodPut, "/api/courses/algorithms", body)
+	body := `{"status":"invalid"}`
+
+	req := httptest.NewRequest(http.MethodPut, "/api/courses/algorithms", bytes.NewReader([]byte(body)))
+	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
-	e.ServeHTTP(rec, req)
+	ctx := e.NewContext(req, rec)
+	ctx.SetParamNames("courseId")
+	ctx.SetParamValues("algorithms")
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rec.Code)
-	}
+	handler := NewCourseHandler(mockRepo)
+	err := handler.UpdateCourseHandler(ctx)
 
-	var updated Course
-	json.Unmarshal(rec.Body.Bytes(), &updated)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
 
-	if updated.Name != "New Name Only" {
-		t.Errorf("name not updated, got %q", updated.Name)
-	}
-	if updated.Description != "New desc only" {
-		t.Errorf("description not updated, got %q", updated.Description)
-	}
-	if updated.Status != original.Status {
-		t.Errorf("status changed unexpectedly: %q → %q", original.Status, updated.Status)
-	}
-	if updated.StartDate != original.StartDate {
-		t.Error("startDate should not change")
-	}
+	mockRepo.AssertExpectations(t)
 }
 
-func TestUpdateCourse_EmptyFieldsIgnored(t *testing.T) {
-	resetDB()
-	e := setupEcho()
+func TestUpdateCourse_InvalidType(t *testing.T) {
+	e := echo.New()
+	mockRepo := new(MockCourseRepo)
 
-	body := []byte(`{
-		"name":"",
-		"status":"",
-		"description":""
-	}`)
+	existingCourse := &model.Course{
+		ID:   "algorithms",
+		Type: model.CourseTypePrivate,
+	}
 
-	req := plainReq(http.MethodPut, "/api/courses/algorithms", body)
+	mockRepo.On("GetByID", mock.Anything, "algorithms").Return(existingCourse, nil)
+
+	body := `{"type":"invalid"}`
+
+	req := httptest.NewRequest(http.MethodPut, "/api/courses/algorithms", bytes.NewReader([]byte(body)))
+	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
-	e.ServeHTTP(rec, req)
+	ctx := e.NewContext(req, rec)
+	ctx.SetParamNames("courseId")
+	ctx.SetParamValues("algorithms")
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rec.Code)
-	}
+	handler := NewCourseHandler(mockRepo)
+	err := handler.UpdateCourseHandler(ctx)
 
-	var updated Course
-	json.Unmarshal(rec.Body.Bytes(), &updated)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
 
-	if updated.Name == "" {
-		t.Error("name should not be updated to empty")
-	}
-	if updated.Status == "" {
-		t.Error("status should not be updated to empty")
-	}
-	if updated.Description == "" {
-		t.Error("description should not be updated to empty")
-	}
+	mockRepo.AssertExpectations(t)
 }
 
 func TestUpdateCourse_InvalidDateRange(t *testing.T) {
-	resetDB()
-	e := setupEcho()
+	e := echo.New()
+	mockRepo := new(MockCourseRepo)
 
-	body := []byte(`{
-		"startDate": "2025-03-01",
-		"endDate":   "2025-02-01"
-	}`)
-
-	req := plainReq(http.MethodPut, "/api/courses/algorithms", body)
-	rec := httptest.NewRecorder()
-	e.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", rec.Code)
+	existingCourse := &model.Course{
+		ID:        "algorithms",
+		StartDate: "2024-01-01",
+		EndDate:   "2024-02-01",
 	}
+
+	mockRepo.On("GetByID", mock.Anything, "algorithms").Return(existingCourse, nil)
+
+	body := `{"startDate":"2025-03-01","endDate":"2025-02-01"}`
+
+	req := httptest.NewRequest(http.MethodPut, "/api/courses/algorithms", bytes.NewReader([]byte(body)))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	ctx := e.NewContext(req, rec)
+	ctx.SetParamNames("courseId")
+	ctx.SetParamValues("algorithms")
+
+	handler := NewCourseHandler(mockRepo)
+	err := handler.UpdateCourseHandler(ctx)
+
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+
+	mockRepo.AssertExpectations(t)
 }
 
-func TestUpdateCourse_InvalidDateFormat(t *testing.T) {
-	resetDB()
-	e := setupEcho()
+func TestUpdateCourse_PartialUpdate(t *testing.T) {
+	e := echo.New()
+	mockRepo := new(MockCourseRepo)
 
-	cases := []string{
-		`{"startDate": "01-03-2025"}`,
-		`{"endDate": "01-04-2025"}`,
+	existingCourse := &model.Course{
+		ID:           "algorithms",
+		Name:         "Algorithms",
+		Status:       "created",
+		Type:         model.CourseTypePrivate,
+		StartDate:    "2024-01-01",
+		EndDate:      "2024-02-01",
+		RepoTemplate: "git@test/repo.git",
+		Description:  "test",
 	}
 
-	for _, bodyStr := range cases {
-		req := plainReq(http.MethodPut, "/api/courses/algorithms", []byte(bodyStr))
-		rec := httptest.NewRecorder()
-		e.ServeHTTP(rec, req)
+	mockRepo.On("GetByID", mock.Anything, "algorithms").Return(existingCourse, nil)
+	mockRepo.On("Update", mock.Anything, mock.AnythingOfType("*model.Course")).Return(nil)
 
-		if rec.Code != http.StatusBadRequest {
-			t.Fatalf("expected 400, got %d", rec.Code)
-		}
-	}
+	body := `{
+		"name": "New Name Only",
+		"description": "New desc only"
+	}`
+
+	req := httptest.NewRequest(http.MethodPut, "/api/courses/algorithms", bytes.NewReader([]byte(body)))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	ctx := e.NewContext(req, rec)
+	ctx.SetParamNames("courseId")
+	ctx.SetParamValues("algorithms")
+
+	handler := NewCourseHandler(mockRepo)
+	err := handler.UpdateCourseHandler(ctx)
+
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, rec.Code)
+
+	var resp model.Course
+	json.Unmarshal(rec.Body.Bytes(), &resp)
+	assert.Equal(t, "New Name Only", resp.Name)
+	assert.Equal(t, "New desc only", resp.Description)
+	assert.Equal(t, "created", resp.Status) // не должно измениться
+
+	mockRepo.AssertExpectations(t)
 }
 
-func TestUpdateCourse_IgnoreSlugChange(t *testing.T) {
-	resetDB()
-	e := setupEcho()
+func TestUpdateCourse_EmptyFieldsIgnored(t *testing.T) {
+	e := echo.New()
+	mockRepo := new(MockCourseRepo)
 
-	body := []byte(`{"slug": "new-slug"}`)
+	existingCourse := &model.Course{
+		ID:          "algorithms",
+		Name:        "Algorithms",
+		Status:      "created",
+		Description: "test",
+	}
 
-	req := plainReq(http.MethodPut, "/api/courses/algorithms", body)
+	mockRepo.On("GetByID", mock.Anything, "algorithms").Return(existingCourse, nil)
+	mockRepo.On("Update", mock.Anything, mock.AnythingOfType("*model.Course")).Return(nil)
+
+	body := `{
+		"name":"",
+		"status":"",
+		"description":""
+	}`
+
+	req := httptest.NewRequest(http.MethodPut, "/api/courses/algorithms", bytes.NewReader([]byte(body)))
+	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
-	e.ServeHTTP(rec, req)
+	ctx := e.NewContext(req, rec)
+	ctx.SetParamNames("courseId")
+	ctx.SetParamValues("algorithms")
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rec.Code)
+	handler := NewCourseHandler(mockRepo)
+	err := handler.UpdateCourseHandler(ctx)
+
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, rec.Code)
+
+	var resp model.Course
+	json.Unmarshal(rec.Body.Bytes(), &resp)
+	assert.Equal(t, "Algorithms", resp.Name)  // не должно измениться
+	assert.Equal(t, "created", resp.Status)   // не должно измениться
+	assert.Equal(t, "test", resp.Description) // не должно измениться
+
+	mockRepo.AssertExpectations(t)
+}
+
+func TestUpdateCourse_UpdateError(t *testing.T) {
+	e := echo.New()
+	mockRepo := new(MockCourseRepo)
+
+	existingCourse := &model.Course{
+		ID:        "algorithms",
+		StartDate: "2024-01-01",
+		EndDate:   "2024-02-01",
 	}
 
-	courseMu.RLock()
-	course := courseDB["algorithms"]
-	courseMu.RUnlock()
+	mockRepo.On("GetByID", mock.Anything, "algorithms").Return(existingCourse, nil)
+	mockRepo.On("Update", mock.Anything, mock.AnythingOfType("*model.Course")).Return(errors.New("db error"))
 
-	if course.ID != "algorithms" {
-		t.Error("ID should not change")
-	}
+	body := `{"name":"Updated"}`
+
+	req := httptest.NewRequest(http.MethodPut, "/api/courses/algorithms", bytes.NewReader([]byte(body)))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	ctx := e.NewContext(req, rec)
+	ctx.SetParamNames("courseId")
+	ctx.SetParamValues("algorithms")
+
+	handler := NewCourseHandler(mockRepo)
+	err := handler.UpdateCourseHandler(ctx)
+
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusInternalServerError, rec.Code)
+
+	var resp map[string]string
+	json.Unmarshal(rec.Body.Bytes(), &resp)
+	assert.Equal(t, "failed to update course", resp["error"])
+
+	mockRepo.AssertExpectations(t)
 }
 
 func TestUpdateCourse_InvalidJSON(t *testing.T) {
-	resetDB()
-	e := setupEcho()
+	e := echo.New()
+	mockRepo := new(MockCourseRepo)
 
-	body := []byte(`{ "name": "test"`)
-	req := plainReq(http.MethodPut, "/api/courses/algorithms", body)
+	body := `{ "name": "test"`
+
+	req := httptest.NewRequest(http.MethodPut, "/api/courses/algorithms", bytes.NewReader([]byte(body)))
+	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
-	e.ServeHTTP(rec, req)
+	ctx := e.NewContext(req, rec)
+	ctx.SetParamNames("courseId")
+	ctx.SetParamValues("algorithms")
 
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", rec.Code)
-	}
+	handler := NewCourseHandler(mockRepo)
+	err := handler.UpdateCourseHandler(ctx)
+
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+
+	var resp map[string]string
+	json.Unmarshal(rec.Body.Bytes(), &resp)
+	assert.Equal(t, "invalid JSON payload", resp["error"])
 }
 
 func TestIsValidDateRange_EqualDates(t *testing.T) {
-	if isValidDateRange("2024-01-01", "2024-01-01") {
-		t.Fatal("expected false when dates are equal")
-	}
+	assert.False(t, isValidDateRange("2024-01-01", "2024-01-01"))
 }

@@ -2,110 +2,37 @@ package handler
 
 import (
 	"net/http"
-	"sync"
 	"time"
 
 	"github.com/labstack/echo/v4"
+
+	"fcstask-backend/internal/db/model"
+	"fcstask-backend/internal/db/repo"
 )
 
-// Course - модель курса
-type Course struct {
-	ID           string `json:"id"`
-	Name         string `json:"name"`
-	Status       string `json:"status"` // Просто string, без кастомного типа
-	StartDate    string `json:"startDate"`
-	EndDate      string `json:"endDate"`
-	RepoTemplate string `json:"repoTemplate"`
-	Description  string `json:"description"`
-	URL          string `json:"url"`
+type CourseHandler struct {
+	courseRepo repo.CourseRepositoryInterface
 }
 
-// PostCourseRequest - тело запроса на создание курса
+func NewCourseHandler(courseRepo repo.CourseRepositoryInterface) *CourseHandler {
+	return &CourseHandler{courseRepo: courseRepo}
+}
+
 type PostCourseRequest struct {
-	Name         string `json:"name"`
-	Slug         string `json:"slug"`
-	Status       string `json:"status"`
-	StartDate    string `json:"startDate"`
-	EndDate      string `json:"endDate"`
-	RepoTemplate string `json:"repoTemplate"`
-	Description  string `json:"description"`
+	Name         string           `json:"name"`
+	Slug         string           `json:"slug"`
+	Status       string           `json:"status"`
+	Type         model.CourseType `json:"type"`
+	StartDate    string           `json:"startDate"`
+	EndDate      string           `json:"endDate"`
+	RepoTemplate string           `json:"repoTemplate"`
+	Description  string           `json:"description"`
 }
 
-// ValidationError - ошибка валидации
 type ValidationError struct {
 	Field   string `json:"field"`
 	Message string `json:"message"`
 }
-
-// In-memory storage
-var (
-	courseDB = map[string]Course{
-		"algorithms": {
-			ID:           "algorithms",
-			Name:         "Algorithms 101",
-			Status:       "in_progress",
-			StartDate:    "2024-10-01",
-			EndDate:      "2024-12-20",
-			RepoTemplate: "git@gitlab.local/algorithms-template.git",
-			Description:  "Основы алгоритмов и структур данных",
-			URL:          "/course/algorithms",
-		},
-		"mlops": {
-			ID:           "mlops",
-			Name:         "MLOps Studio",
-			Status:       "all_tasks_issued",
-			StartDate:    "2024-09-01",
-			EndDate:      "2024-11-30",
-			RepoTemplate: "git@gitlab.local/mlops-template.git",
-			Description:  "Продвинутые практики MLOps",
-			URL:          "/course/mlops",
-		},
-		"rust": {
-			ID:           "rust",
-			Name:         "Rust Core",
-			Status:       "created",
-			StartDate:    "2024-10-15",
-			EndDate:      "2025-01-15",
-			RepoTemplate: "git@gitlab.local/rust-template.git",
-			Description:  "Основы системного программирования на Rust",
-			URL:          "/course/rust",
-		},
-		"golang": {
-			ID:           "golang",
-			Name:         "Go Lab",
-			Status:       "finished",
-			StartDate:    "2024-08-01",
-			EndDate:      "2024-10-31",
-			RepoTemplate: "git@gitlab.local/golang-template.git",
-			Description:  "Практикум по языку Go",
-			URL:          "/course/golang",
-		},
-		"advanced-cpp": {
-			ID:           "advanced-cpp",
-			Name:         "Advanced C++",
-			Status:       "in_progress",
-			StartDate:    "2024-10-01",
-			EndDate:      "2024-12-20",
-			RepoTemplate: "git@gitlab.local/advanced-cpp-template.git",
-			Description:  "Продвинутые концепции C++",
-			URL:          "/course/advanced-cpp",
-		},
-		"advanced-python": {
-			ID:           "advanced-python",
-			Name:         "Advanced Python",
-			Status:       "created",
-			StartDate:    "2024-11-01",
-			EndDate:      "2025-02-28",
-			RepoTemplate: "git@gitlab.local/advanced-python-template.git",
-			Description:  "Продвинутый анализ данных на Python",
-			URL:          "/course/advanced-python",
-		},
-	}
-
-	courseMu sync.RWMutex
-)
-
-// Вспомогательные функции валидации
 
 func isValidCourseStatus(status string) bool {
 	valid := map[string]bool{
@@ -130,8 +57,7 @@ func isValidDateRange(start, end string) bool {
 	return endDate.After(startDate)
 }
 
-// Validate проверяет корректность запроса
-func (req *PostCourseRequest) Validate() []ValidationError {
+func (req *PostCourseRequest) Validate(c echo.Context) error {
 	var errs []ValidationError
 
 	if req.Name == "" {
@@ -146,6 +72,10 @@ func (req *PostCourseRequest) Validate() []ValidationError {
 		errs = append(errs, ValidationError{"status", "status is required"})
 	} else if !isValidCourseStatus(req.Status) {
 		errs = append(errs, ValidationError{"status", "invalid status value"})
+	}
+
+	if req.Type != "" && req.Type != model.CourseTypePublic && req.Type != model.CourseTypePrivate {
+		errs = append(errs, ValidationError{"type", "type must be 'public' or 'private'"})
 	}
 
 	if req.StartDate == "" {
@@ -172,63 +102,61 @@ func (req *PostCourseRequest) Validate() []ValidationError {
 		errs = append(errs, ValidationError{"description", "description is required"})
 	}
 
-	return errs
+	if len(errs) > 0 {
+		return c.JSON(http.StatusBadRequest, map[string]interface{}{"error": "validation failed", "details": errs})
+	}
+
+	return nil
 }
 
-// Хендлеры
-
-func GetCoursesHandler(c echo.Context) error {
+func (h *CourseHandler) GetCoursesHandler(c echo.Context) error {
 	statusFilter := c.QueryParam("status")
 
-	courseMu.RLock()
-	defer courseMu.RUnlock()
-
-	courses := make([]Course, 0, len(courseDB))
-	for _, course := range courseDB {
-		if statusFilter == "" || course.Status == statusFilter {
-			courses = append(courses, course)
-		}
+	courses, err := h.courseRepo.GetAll(c.Request().Context(), statusFilter)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to fetch courses"})
 	}
 
 	return c.JSON(http.StatusOK, courses)
 }
 
-func GetCourseHandler(c echo.Context) error {
+func (h *CourseHandler) GetCourseHandler(c echo.Context) error {
 	courseID := c.Param("courseId")
 
-	courseMu.RLock()
-	course, exists := courseDB[courseID]
-	courseMu.RUnlock()
-
-	if !exists {
+	course, err := h.courseRepo.GetByID(c.Request().Context(), courseID)
+	if err != nil {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "course not found"})
 	}
 
 	return c.JSON(http.StatusOK, course)
 }
 
-func CreateCourseHandler(c echo.Context) error {
+func (h *CourseHandler) CreateCourseHandler(c echo.Context) error {
 	var req PostCourseRequest
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid JSON payload"})
 	}
 
-	if errs := req.Validate(); len(errs) > 0 {
-		return c.JSON(http.StatusBadRequest, map[string]interface{}{"error": "validation failed", "details": errs})
+	if err := req.Validate(c); err != nil {
+		return err
 	}
 
-	courseMu.RLock()
-	_, exists := courseDB[req.Slug]
-	courseMu.RUnlock()
-
-	if exists {
+	_, err := h.courseRepo.GetBySlug(c.Request().Context(), req.Slug)
+	if err == nil {
 		return c.JSON(http.StatusConflict, map[string]string{"error": "course with this slug already exists"})
 	}
 
-	course := Course{
+	courseType := req.Type
+	if courseType == "" {
+		courseType = model.CourseTypePrivate
+	}
+
+	course := model.Course{
 		ID:           req.Slug,
 		Name:         req.Name,
+		Slug:         req.Slug,
 		Status:       req.Status,
+		Type:         courseType,
 		StartDate:    req.StartDate,
 		EndDate:      req.EndDate,
 		RepoTemplate: req.RepoTemplate,
@@ -236,21 +164,18 @@ func CreateCourseHandler(c echo.Context) error {
 		URL:          "/course/" + req.Slug,
 	}
 
-	courseMu.Lock()
-	courseDB[req.Slug] = course
-	courseMu.Unlock()
+	if err := h.courseRepo.Create(c.Request().Context(), &course); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to create course"})
+	}
 
 	return c.JSON(http.StatusCreated, course)
 }
 
-func UpdateCourseHandler(c echo.Context) error {
+func (h *CourseHandler) UpdateCourseHandler(c echo.Context) error {
 	courseID := c.Param("courseId")
 
-	courseMu.RLock()
-	course, exists := courseDB[courseID]
-	courseMu.RUnlock()
-
-	if !exists {
+	course, err := h.courseRepo.GetByID(c.Request().Context(), courseID)
+	if err != nil {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "course not found"})
 	}
 
@@ -263,6 +188,10 @@ func UpdateCourseHandler(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid status value"})
 	}
 
+	if req.Type != "" && req.Type != model.CourseTypePublic && req.Type != model.CourseTypePrivate {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "type must be 'public' or 'private'"})
+	}
+
 	if req.StartDate != "" && !isValidDate(req.StartDate) {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "startDate must be in format YYYY-MM-DD"})
 	}
@@ -271,33 +200,35 @@ func UpdateCourseHandler(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "endDate must be in format YYYY-MM-DD"})
 	}
 
-	updated := course
 	if req.Name != "" {
-		updated.Name = req.Name
+		course.Name = req.Name
 	}
 	if req.Status != "" {
-		updated.Status = req.Status
+		course.Status = req.Status
+	}
+	if req.Type != "" {
+		course.Type = req.Type
 	}
 	if req.StartDate != "" {
-		updated.StartDate = req.StartDate
+		course.StartDate = req.StartDate
 	}
 	if req.EndDate != "" {
-		updated.EndDate = req.EndDate
+		course.EndDate = req.EndDate
 	}
 	if req.RepoTemplate != "" {
-		updated.RepoTemplate = req.RepoTemplate
+		course.RepoTemplate = req.RepoTemplate
 	}
 	if req.Description != "" {
-		updated.Description = req.Description
+		course.Description = req.Description
 	}
 
-	if !isValidDateRange(updated.StartDate, updated.EndDate) {
+	if !isValidDateRange(course.StartDate, course.EndDate) {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "endDate must be after startDate"})
 	}
 
-	courseMu.Lock()
-	courseDB[courseID] = updated
-	courseMu.Unlock()
+	if err := h.courseRepo.Update(c.Request().Context(), course); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to update course"})
+	}
 
-	return c.JSON(http.StatusOK, updated)
+	return c.JSON(http.StatusOK, course)
 }
