@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"fcstask-backend/internal/config"
-	"fcstask-backend/internal/db/model"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -58,19 +57,6 @@ func New(cfg *config.DatabaseConfig) (*Client, error) {
 	}
 
 	return &Client{db: db}, nil
-}
-
-func Migrate(cfg *config.DatabaseConfig) error {
-	client, err := New(cfg)
-	if err != nil {
-		return err
-	}
-	defer client.Close()
-
-	if err := client.db.AutoMigrate(&model.User{}); err != nil {
-		return err
-	}
-	return client.db.AutoMigrate(&model.Session{})
 }
 
 func (c *Client) DB() *gorm.DB {

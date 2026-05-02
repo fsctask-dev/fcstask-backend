@@ -24,7 +24,7 @@ tidy:
 # Миграции БД
 migrate:
 	@echo "Running database migrations..."
-	go run ./cmd/migrate/main.go
+	go run ./migrate/main.go
 
 install-tools:
 	@echo "📦 Installing tools..."
