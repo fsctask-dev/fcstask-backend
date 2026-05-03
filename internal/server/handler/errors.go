@@ -52,3 +52,7 @@ func conflict(ctx echo.Context, message string) error {
 func internalError(ctx echo.Context, message string) error {
 	return apiError(ctx, http.StatusInternalServerError, "internal_error", message)
 }
+
+func notFound(ctx echo.Context, message string) error {
+	return apiError(ctx, http.StatusNotFound, "not_found", message)
+}
