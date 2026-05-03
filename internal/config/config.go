@@ -12,6 +12,7 @@ type Config struct {
 	Database DatabaseConfig `yaml:"database"`
 	Session  SessionConfig  `yaml:"session"`
 	OAuth    OAuthConfig    `yaml:"oauth"`
+	Mailer   MailerConfig   `yaml:"mailer"`
 }
 
 type SessionConfig struct {

@@ -18,3 +18,31 @@ database:
 session:
   ttl: 24h
   cleanup_interval: 5s
+
+oauth:
+  gitlab:
+    enabled: false
+    base_url: "https://gitlab.com"
+    client_id: ""
+    client_secret: ""
+  google:
+    enabled: false
+    client_id: ""
+    client_secret: ""
+  telegram:
+    enabled: false
+    bot_token: ""
+    max_auth_age_seconds: 86400
+
+mailer:
+  enabled: false
+  from: "noreply@fcs-task.local"
+  code_ttl: 15m
+  resend_cooldown: 60s
+  max_attempts: 5
+  cleanup_interval: 5m
+  smtp:
+    host: ""
+    port: 587
+    username: ""
+    password: ""

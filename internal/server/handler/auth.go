@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 	"golang.org/x/crypto/bcrypt"
@@ -16,73 +15,6 @@ import (
 	models "fcstask-backend/internal/db/model"
 	"fcstask-backend/internal/db/repo"
 )
-
-func SignUpHandler(userRepo repo.IUserRepo, sessionRepo repo.SessionRepositoryInterface, ctx echo.Context) error {
-	var req api.SignUpRequest
-	if err := ctx.Bind(&req); err != nil {
-		return badRequest(ctx, "Invalid request body")
-	}
-
-	if req.Username == "" || req.Password == "" || req.Email == "" {
-		return badRequest(ctx, "Username, password and email are required")
-	}
-
-	if exists, err := userRepo.ExistsByEmail(ctx.Request().Context(), string(req.Email)); err != nil {
-		return internalError(ctx, "Failed to check email uniqueness")
-	} else if exists {
-		return conflict(ctx, "User with this email already exists")
-	}
-
-	if exists, err := userRepo.ExistsByUsername(ctx.Request().Context(), req.Username); err != nil {
-		return internalError(ctx, "Failed to check username uniqueness")
-	} else if exists {
-		return conflict(ctx, "User with this username already exists")
-	}
-
-	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
-	if err != nil {
-		return internalError(ctx, "Failed to hash password")
-	}
-
-	user := models.User{
-		Email:        string(req.Email),
-		Username:     req.Username,
-		PasswordHash: string(hash),
-		TgUID:        req.TgUid,
-		UserID:       uuid.New(),
-	}
-
-	if err := userRepo.Create(ctx.Request().Context(), &user); err != nil {
-		if col := uniqueConstraintColumn(err); col != "" {
-			return conflict(ctx, "User with this "+col+" already exists")
-		}
-		return internalError(ctx, "Failed to create user")
-	}
-
-	session := models.Session{
-		UserID:    user.ID,
-		IP:        ctx.RealIP(),
-		UserAgent: ctx.Request().UserAgent(),
-	}
-	if err := sessionRepo.Create(ctx.Request().Context(), &session); err != nil {
-		return internalError(ctx, "Failed to create session")
-	}
-
-	return ctx.JSON(http.StatusCreated, api.AuthResponse{
-		SessionToken: openapi_types.UUID(session.ID),
-		User: api.User{
-			Id:        user.ID,
-			Email:     openapi_types.Email(user.Email),
-			Username:  user.Username,
-			FirstName: user.FirstName,
-			LastName:  user.LastName,
-			TgUid:     user.TgUID,
-			UserId:    openapi_types.UUID(user.UserID),
-			CreatedAt: user.CreatedAt,
-			UpdatedAt: user.UpdatedAt,
-		},
-	})
-}
 
 func SignInHandler(userRepo repo.IUserRepo, sessionRepo repo.SessionRepositoryInterface, ctx echo.Context) error {
 	var req api.SignInRequest

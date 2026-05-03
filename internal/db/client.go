@@ -76,7 +76,13 @@ func Migrate(cfg *config.DatabaseConfig) error {
 	if err := client.db.AutoMigrate(&model.OAuthIdentity{}); err != nil {
 		return err
 	}
-	return client.db.AutoMigrate(&model.RegistrationSession{})
+	if err := client.db.AutoMigrate(&model.RegistrationSession{}); err != nil {
+		return err
+	}
+	if err := client.db.AutoMigrate(&model.EmailRegistration{}); err != nil {
+		return err
+	}
+	return client.db.AutoMigrate(&model.PasswordReset{})
 }
 
 func (c *Client) DB() *gorm.DB {

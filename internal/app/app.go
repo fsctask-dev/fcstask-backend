@@ -24,6 +24,7 @@ type App struct {
 	httpServer      server.HTTPServer
 	shutdownTimeout time.Duration
 	sessionCfg      config.SessionConfig
+	mailerCfg       config.MailerConfig
 }
 
 func New(cfg *config.Config) (*App, error) {
@@ -34,7 +35,7 @@ func New(cfg *config.Config) (*App, error) {
 		return nil, fmt.Errorf("failed to init database: %w", err)
 	}
 
-	apiServer := server.NewAPIServer(dbClient, cfg.OAuth)
+	apiServer := server.NewAPIServer(dbClient, cfg.OAuth, cfg.Mailer)
 
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
 		AllowOrigins: []string{"http://localhost:5173", "http://localhost:3000"},
@@ -70,6 +71,7 @@ func New(cfg *config.Config) (*App, error) {
 		httpServer:      httpServer,
 		shutdownTimeout: cfg.Server.ShutdownTimeout,
 		sessionCfg:      cfg.Session,
+		mailerCfg:       cfg.Mailer,
 	}, nil
 }
 
@@ -81,6 +83,7 @@ func (a *App) Run(ctx context.Context) error {
 	}()
 
 	go a.runSessionCleanup(ctx)
+	go a.runEmailFlowCleanup(ctx)
 
 	select {
 	case err := <-errCh:
@@ -118,6 +121,34 @@ func (a *App) runSessionCleanup(ctx context.Context) {
 				log.Printf("Session cleanup error: %v", err)
 			} else if deleted > 0 {
 				log.Printf("Session cleanup: removed %d expired sessions", deleted)
+			}
+		}
+	}
+}
+
+func (a *App) runEmailFlowCleanup(ctx context.Context) {
+	interval := a.mailerCfg.CleanupInterval
+	if interval <= 0 {
+		interval = 5 * time.Minute
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			now := time.Now().UTC()
+			if n, err := a.apiServer.EmailRegRepo().DeleteExpired(ctx, now); err != nil {
+				log.Printf("Email registration cleanup error: %v", err)
+			} else if n > 0 {
+				log.Printf("Email registration cleanup: removed %d expired rows", n)
+			}
+			if n, err := a.apiServer.PasswordResetRepo().DeleteExpired(ctx, now); err != nil {
+				log.Printf("Password reset cleanup error: %v", err)
+			} else if n > 0 {
+				log.Printf("Password reset cleanup: removed %d expired rows", n)
 			}
 		}
 	}

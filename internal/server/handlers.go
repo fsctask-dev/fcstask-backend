@@ -30,7 +30,27 @@ func (s *APIServer) GetUserByEmail(ctx echo.Context, email openapi_types.Email) 
 }
 
 func (s *APIServer) SignUp(ctx echo.Context) error {
-	return handler.SignUpHandler(s.userRepo, s.sessionRepo, ctx)
+	return s.signUpHandler.Submit(ctx)
+}
+
+func (s *APIServer) SignUpVerify(ctx echo.Context) error {
+	return s.signUpHandler.Verify(ctx)
+}
+
+func (s *APIServer) SignUpResendCode(ctx echo.Context) error {
+	return s.signUpHandler.Resend(ctx)
+}
+
+func (s *APIServer) PasswordResetRequest(ctx echo.Context) error {
+	return s.passwordResetHandler.Request(ctx)
+}
+
+func (s *APIServer) PasswordResetResend(ctx echo.Context) error {
+	return s.passwordResetHandler.Resend(ctx)
+}
+
+func (s *APIServer) PasswordResetConfirm(ctx echo.Context) error {
+	return s.passwordResetHandler.Confirm(ctx)
 }
 
 func (s *APIServer) SignIn(ctx echo.Context) error {
