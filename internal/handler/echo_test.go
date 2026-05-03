@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-func TestEchoHandlerReturnsSameBody(t *testing.T) {
+func TestEcho_ReturnsSameBody(t *testing.T) {
 	e := echo.New()
 
 	req := httptest.NewRequest(
