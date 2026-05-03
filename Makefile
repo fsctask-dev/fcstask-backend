@@ -5,7 +5,7 @@ BINARY_NAME := fcstask-api
 DOCKER_IMAGE_NAME ?= miruken/$(MODULE_NAME)-backend
 DOCKER_IMAGE_TAG ?= 0.1.0
 
-.PHONY: init tidy migrate migrate install-tools gen test docker-build docker-run docker-test docker-push ci-local ci
+.PHONY: init tidy migrate migrate install-tools gen test test-integration-db postgreplication-up docker-build docker-run docker-test docker-push ci-local ci
 
 init:
 	@echo "🔧 Initializing repo: $(MODULE_NAME)..."
@@ -54,6 +54,12 @@ test: gen
 	@echo "🧪 Running tests..."
 	@go test ./... -v
 	@echo "✅ Tests completed"
+
+postgreplication-up:
+	podman compose -f compose.postgres-replication.yaml up -d
+
+test-integration-db:
+	go test -tags=integration -count=1 -v ./internal/db/...
 
 docker-build:
 	@echo "🐳 Building Docker image..."

@@ -120,4 +120,4 @@ func (a *App) runSessionCleanup(ctx context.Context) {
 			}
 		}
 	}
-}
+	}

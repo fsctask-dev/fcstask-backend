@@ -1,0 +1,47 @@
+# PostgreSQL primary + streaming replica (Bitnami).
+# Podman: podman compose -f compose.postgres-replication.yaml up -d
+# Docker: docker compose -f compose.postgres-replication.yaml up -d
+#
+# Master: localhost:6432  Replica (read-only): localhost:6433
+# User/password/db: postgres / postgres / fcstask
+
+services:
+  postgres-primary:
+    image: docker.io/bitnami/postgresql:latest
+    networks: [fcstask-pg]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d fcstask"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+      start_period: 20s
+    environment:
+      POSTGRESQL_USERNAME: postgres
+      POSTGRESQL_PASSWORD: postgres
+      POSTGRESQL_DATABASE: fcstask
+      POSTGRESQL_REPLICATION_MODE: master
+      POSTGRESQL_REPLICATION_USER: replicator
+      POSTGRESQL_REPLICATION_PASSWORD: replicatorpass
+    ports:
+      - "6432:5432"
+
+  postgres-replica:
+    image: docker.io/bitnami/postgresql:latest
+    networks: [fcstask-pg]
+    depends_on:
+      postgres-primary:
+        condition: service_healthy
+    environment:
+      POSTGRESQL_USERNAME: postgres
+      POSTGRESQL_PASSWORD: postgres
+      POSTGRESQL_DATABASE: fcstask
+      POSTGRESQL_REPLICATION_MODE: slave
+      POSTGRESQL_MASTER_HOST: postgres-primary
+      POSTGRESQL_MASTER_PORT_NUMBER: "5432"
+      POSTGRESQL_REPLICATION_USER: replicator
+      POSTGRESQL_REPLICATION_PASSWORD: replicatorpass
+    ports:
+      - "6433:5432"
+
+networks:
+  fcstask-pg: {}

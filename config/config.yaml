@@ -14,6 +14,19 @@ database:
   max_idle_conns: 25
   conn_max_lifetime: 5m
   ping_timeout: 5s
+  # replicas:
+  #   - host: "replica-1"
+  #     port: 6432
+  #     username: "postgres"
+  #     password: "postgres"
+  #     database: "fcstask"
+  #     ssl_mode: "disable"
+  #   - host: "replica-2"
+  #     port: 6432
+  #     username: "postgres"
+  #     password: "postgres"
+  #     database: "fcstask"
+  #     ssl_mode: "disable"
 
 session:
   ttl: 24h
