@@ -1,5 +1,7 @@
 GOPATH := $(shell go env GOPATH)
-PATH := $(PATH):$(GOPATH)/bin
+export PATH := $(PATH):$(GOPATH)/bin
+OAPI_CODEGEN := $(GOPATH)/bin/oapi-codegen
+MOCKGEN := $(GOPATH)/bin/mockgen
 MODULE_NAME := fcstask-backend
 BINARY_NAME := fcstask-api
 DOCKER_IMAGE_NAME ?= miruken/$(MODULE_NAME)-backend
@@ -28,23 +30,22 @@ migrate:
 
 install-tools:
 	@echo "📦 Installing tools..."
-	@which oapi-codegen || go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest
-	@which mockgen || go install github.com/golang/mock/mockgen@latest
-	@go get github.com/golang/mock/gomock
+	@test -x "$(OAPI_CODEGEN)" || go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest
+	@test -x "$(MOCKGEN)" || go install github.com/golang/mock/mockgen@latest
 	@echo "✅ Tools installed"
 
 gen: install-tools
 	@echo "Generating API code from OpenAPI..."
-	@if command -v oapi-codegen >/dev/null 2>&1; then \
+	@if test -x "$(OAPI_CODEGEN)"; then \
 		echo "oapi-codegen is already installed"; \
 	else \
 		echo "Installing oapi-codegen..."; \
 		go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest; \
 	fi
 	@echo "Generating types..."
-	oapi-codegen -generate types -package api -o internal/api/types.gen.go api/openapi.yaml
+	$(OAPI_CODEGEN) -generate types,skip-prune -package api -o internal/api/types.gen.go api/openapi.yaml
 	@echo "Generating server..."
-	oapi-codegen -generate server -package api -o internal/api/server.gen.go api/openapi.yaml
+	$(OAPI_CODEGEN) -generate server -package api -o internal/api/server.gen.go api/openapi.yaml
 	@echo "Code generation completed!"
 	@echo "🔄 Generating code..."
 	@go generate ./...
