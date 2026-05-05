@@ -55,7 +55,7 @@ func (h *AdminRoleHandler) AdminAssignRoleHandler(c echo.Context) error {
 		return badRequest(c, "role_id is required")
 	}
 
-	if _, err := h.userRepo.GetByID(c.Request().Context(), req.UserID); err != nil {
+	if _, err := h.userRepo.GetUserByID(c.Request().Context(), req.UserID); err != nil {
 		return notFound(c, "User not found")
 	}
 

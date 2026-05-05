@@ -64,3 +64,7 @@ func serviceError(ctx echo.Context, err error) error {
 
 	return internalError(ctx, "Internal server error")
 }
+
+func notFound(ctx echo.Context, message string) error {
+	return apiError(ctx, http.StatusNotFound, "not_found", message)
+}

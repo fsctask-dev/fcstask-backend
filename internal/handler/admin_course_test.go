@@ -1,4 +1,4 @@
-package handler
+package handler_test
 
 import (
 	"bytes"
@@ -14,419 +14,461 @@ import (
 	"github.com/stretchr/testify/mock"
 
 	"fcstask-backend/internal/db/model"
+	"fcstask-backend/internal/handler"
 )
 
-type MockCourseRepository struct {
+type MockCourseRepo struct {
 	mock.Mock
 }
 
-func (m *MockCourseRepository) GetByID(ctx context.Context, id string) (*model.Course, error) {
-	args := m.Called(ctx, id)
+func (m *MockCourseRepo) GetCourses(ctx context.Context) ([]model.Course, error) {
+	args := m.Called(ctx)
+	return args.Get(0).([]model.Course), args.Error(1)
+}
+
+func (m *MockCourseRepo) GetCourseByID(ctx context.Context, courseID string) (*model.Course, error) {
+	args := m.Called(ctx, courseID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(*model.Course), args.Error(1)
 }
 
-func (m *MockCourseRepository) Update(ctx context.Context, course *model.Course) error {
+func (m *MockCourseRepo) CreateCourse(ctx context.Context, course model.Course) (*model.Course, error) {
 	args := m.Called(ctx, course)
-	return args.Error(0)
-}
-
-func (m *MockCourseRepository) Create(ctx context.Context, course *model.Course) error {
-	args := m.Called(ctx, course)
-	return args.Error(0)
-}
-
-func (m *MockCourseRepository) Delete(ctx context.Context, id string) error {
-	args := m.Called(ctx, id)
-	return args.Error(0)
-}
-
-func (m *MockCourseRepository) List(ctx context.Context, filter interface{}) ([]*model.Course, error) {
-	args := m.Called(ctx, filter)
-	return args.Get(0).([]*model.Course), args.Error(1)
-}
-
-func TestAdminEditCourseHandler_Success(t *testing.T) {
-	// Setup
-	e := echo.New()
-	courseID := uuid.New()
-	course := &model.Course{
-		ID:          courseID.String(),
-		Name:        "Old Name",
-		Description: ptrString("Old Description"),
-		Type:        model.CourseTypePrivate,
-		Status:      "draft",
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
 	}
-
-	mockRepo := new(MockCourseRepository)
-	mockRepo.On("GetByID", mock.Anything, courseID.String()).Return(course, nil)
-	mockRepo.On("Update", mock.Anything, mock.AnythingOfType("*model.Course")).Return(nil)
-
-	handler := NewAdminCourseHandler(mockRepo)
-
-	reqBody := UpdateCourseInfoRequest{
-		Name:        ptrString("New Name"),
-		Description: ptrString("New Description"),
-		Type:        ptrType(model.CourseTypePublic),
-	}
-	body, _ := json.Marshal(reqBody)
-
-	req := httptest.NewRequest(http.MethodPatch, "/admin/courses/"+courseID.String(), bytes.NewReader(body))
-	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
-	c.SetParamNames("courseId")
-	c.SetParamValues(courseID.String())
-
-	err := handler.AdminEditCourseHandler(c)
-
-	assert.NoError(t, err)
-	assert.Equal(t, http.StatusOK, rec.Code)
-
-	var response model.Course
-	err = json.Unmarshal(rec.Body.Bytes(), &response)
-	assert.NoError(t, err)
-	assert.Equal(t, "New Name", response.Name)
-	assert.Equal(t, "New Description", *response.Description)
-	assert.Equal(t, model.CourseTypePublic, response.Type)
-
-	mockRepo.AssertExpectations(t)
+	return args.Get(0).(*model.Course), args.Error(1)
 }
 
-func TestAdminEditCourseHandler_InvalidCourseID(t *testing.T) {
+func (m *MockCourseRepo) UpdateCourse(ctx context.Context, courseID string, course model.Course) (*model.Course, error) {
+	args := m.Called(ctx, courseID, course)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*model.Course), args.Error(1)
+}
+
+func (m *MockCourseRepo) DeleteCourse(ctx context.Context, courseID string) error {
+	args := m.Called(ctx, courseID)
+	return args.Error(0)
+}
+
+func (m *MockCourseRepo) GetCourseBoard(ctx context.Context, courseID string) (*model.TaskBoardSummary, bool, error) {
+	args := m.Called(ctx, courseID)
+	if args.Get(0) == nil {
+		return nil, args.Bool(1), args.Error(2)
+	}
+	return args.Get(0).(*model.TaskBoardSummary), args.Bool(1), args.Error(2)
+}
+
+func setupEcho() *echo.Echo {
 	e := echo.New()
-	mockRepo := new(MockCourseRepository)
-	handler := NewAdminCourseHandler(mockRepo)
+	return e
+}
 
-	req := httptest.NewRequest(http.MethodPatch, "/admin/courses/invalid-id", nil)
+func newRequest(method, path string, body interface{}) (*http.Request, *httptest.ResponseRecorder) {
+	var buf bytes.Buffer
+	if body != nil {
+		json.NewEncoder(&buf).Encode(body)
+	}
+	req := httptest.NewRequest(method, path, &buf)
+	if body != nil {
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	}
 	rec := httptest.NewRecorder()
+	return req, rec
+}
+
+func TestAdminCreateCourse_Success(t *testing.T) {
+	e := setupEcho()
+	repo := new(MockCourseRepo)
+	h := handler.NewAdminCourseHandler(repo)
+
+	body := map[string]interface{}{
+		"name":   "Test Course",
+		"slug":   "test-course",
+		"status": "created",
+		"type":   "public",
+	}
+	req, rec := newRequest(http.MethodPost, "/admin/courses", body)
 	c := e.NewContext(req, rec)
-	c.SetParamNames("courseId")
-	c.SetParamValues("invalid-id")
 
-	err := handler.AdminEditCourseHandler(c)
+	repo.On("GetCourseByID", mock.Anything, "test-course").Return(nil, nil)
+	created := &model.Course{ID: uuid.New(), Name: "Test Course", Slug: "test-course"}
+	repo.On("CreateCourse", mock.Anything, mock.AnythingOfType("model.Course")).Return(created, nil)
 
+	err := h.AdminCreateCourseHandler(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusCreated, rec.Code)
+}
+
+func TestAdminCreateCourse_MissingName(t *testing.T) {
+	e := setupEcho()
+	repo := new(MockCourseRepo)
+	h := handler.NewAdminCourseHandler(repo)
+
+	body := map[string]interface{}{"slug": "test-course"}
+	req, rec := newRequest(http.MethodPost, "/admin/courses", body)
+	c := e.NewContext(req, rec)
+
+	err := h.AdminCreateCourseHandler(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
-
-	var response map[string]string
-	json.Unmarshal(rec.Body.Bytes(), &response)
-	assert.Equal(t, "Invalid course ID", response["error"])
 }
 
-func TestAdminEditCourseHandler_CourseNotFound(t *testing.T) {
-	e := echo.New()
-	courseID := uuid.New()
+func TestAdminCreateCourse_MissingSlug(t *testing.T) {
+	e := setupEcho()
+	repo := new(MockCourseRepo)
+	h := handler.NewAdminCourseHandler(repo)
 
-	mockRepo := new(MockCourseRepository)
-	mockRepo.On("GetByID", mock.Anything, courseID.String()).Return(nil, assert.AnError)
+	body := map[string]interface{}{"name": "Test Course"}
+	req, rec := newRequest(http.MethodPost, "/admin/courses", body)
+	c := e.NewContext(req, rec)
 
-	handler := NewAdminCourseHandler(mockRepo)
+	err := h.AdminCreateCourseHandler(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+}
 
-	req := httptest.NewRequest(http.MethodPatch, "/admin/courses/"+courseID.String(), nil)
-	rec := httptest.NewRecorder()
+func TestAdminCreateCourse_InvalidStatus(t *testing.T) {
+	e := setupEcho()
+	repo := new(MockCourseRepo)
+	h := handler.NewAdminCourseHandler(repo)
+
+	body := map[string]interface{}{"name": "X", "slug": "x", "status": "invalid"}
+	req, rec := newRequest(http.MethodPost, "/admin/courses", body)
+	c := e.NewContext(req, rec)
+
+	err := h.AdminCreateCourseHandler(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestAdminCreateCourse_InvalidType(t *testing.T) {
+	e := setupEcho()
+	repo := new(MockCourseRepo)
+	h := handler.NewAdminCourseHandler(repo)
+
+	body := map[string]interface{}{"name": "X", "slug": "x", "type": "invalid"}
+	req, rec := newRequest(http.MethodPost, "/admin/courses", body)
+	c := e.NewContext(req, rec)
+
+	err := h.AdminCreateCourseHandler(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestAdminCreateCourse_InvalidStartDate(t *testing.T) {
+	e := setupEcho()
+	repo := new(MockCourseRepo)
+	h := handler.NewAdminCourseHandler(repo)
+
+	body := map[string]interface{}{"name": "X", "slug": "x", "start_date": "not-a-date"}
+	req, rec := newRequest(http.MethodPost, "/admin/courses", body)
+	c := e.NewContext(req, rec)
+
+	err := h.AdminCreateCourseHandler(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestAdminCreateCourse_EndBeforeStart(t *testing.T) {
+	e := setupEcho()
+	repo := new(MockCourseRepo)
+	h := handler.NewAdminCourseHandler(repo)
+
+	body := map[string]interface{}{
+		"name":       "X",
+		"slug":       "x",
+		"start_date": "2025-12-01",
+		"end_date":   "2025-01-01",
+	}
+	req, rec := newRequest(http.MethodPost, "/admin/courses", body)
+	c := e.NewContext(req, rec)
+
+	err := h.AdminCreateCourseHandler(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestAdminCreateCourse_SlugConflict(t *testing.T) {
+	e := setupEcho()
+	repo := new(MockCourseRepo)
+	h := handler.NewAdminCourseHandler(repo)
+
+	body := map[string]interface{}{"name": "X", "slug": "existing"}
+	req, rec := newRequest(http.MethodPost, "/admin/courses", body)
+	c := e.NewContext(req, rec)
+
+	existing := &model.Course{Slug: "existing"}
+	repo.On("GetCourseByID", mock.Anything, "existing").Return(existing, nil)
+
+	err := h.AdminCreateCourseHandler(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusConflict, rec.Code)
+}
+
+func TestAdminGetAllCourses_Success(t *testing.T) {
+	e := setupEcho()
+	repo := new(MockCourseRepo)
+	h := handler.NewAdminCourseHandler(repo)
+
+	req, rec := newRequest(http.MethodGet, "/admin/courses", nil)
+	c := e.NewContext(req, rec)
+
+	courses := []model.Course{{Name: "A"}, {Name: "B"}}
+	repo.On("GetCourses", mock.Anything).Return(courses, nil)
+
+	err := h.AdminGetAllCoursesHandler(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestAdminGetAllCourses_WithStatusFilter(t *testing.T) {
+	e := setupEcho()
+	repo := new(MockCourseRepo)
+	h := handler.NewAdminCourseHandler(repo)
+	req, rec := newRequest(http.MethodGet, "/admin/courses?status=hidden", nil)
+	c := e.NewContext(req, rec)
+	courses := []model.Course{
+		{Name: "A", Status: "hidden"},
+		{Name: "B", Status: "doreshka"},
+	}
+	repo.On("GetCourses", mock.Anything).Return(courses, nil)
+	err := h.AdminGetAllCoursesHandler(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	var result []model.Course
+	json.Unmarshal(rec.Body.Bytes(), &result)
+	assert.Len(t, result, 1)
+	assert.Equal(t, "A", result[0].Name)
+}
+
+func TestAdminGetAllCourses_InvalidStatus(t *testing.T) {
+	e := setupEcho()
+	repo := new(MockCourseRepo)
+	h := handler.NewAdminCourseHandler(repo)
+	req, rec := newRequest(http.MethodGet, "/admin/courses?status=badstatus", nil)
+	c := e.NewContext(req, rec)
+	err := h.AdminGetAllCoursesHandler(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestAdminGetCourseByID_Success(t *testing.T) {
+	e := setupEcho()
+	repo := new(MockCourseRepo)
+	h := handler.NewAdminCourseHandler(repo)
+
+	id := uuid.New()
+	req, rec := newRequest(http.MethodGet, "/admin/courses/"+id.String(), nil)
 	c := e.NewContext(req, rec)
 	c.SetParamNames("courseId")
-	c.SetParamValues(courseID.String())
+	c.SetParamValues(id.String())
 
-	err := handler.AdminEditCourseHandler(c)
+	course := &model.Course{ID: id, Name: "Test"}
+	repo.On("GetCourseByID", mock.Anything, id.String()).Return(course, nil)
 
+	err := h.AdminGetCourseByIDHandler(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestAdminGetCourseByID_InvalidUUID(t *testing.T) {
+	e := setupEcho()
+	repo := new(MockCourseRepo)
+	h := handler.NewAdminCourseHandler(repo)
+
+	req, rec := newRequest(http.MethodGet, "/admin/courses/not-a-uuid", nil)
+	c := e.NewContext(req, rec)
+	c.SetParamNames("courseId")
+	c.SetParamValues("not-a-uuid")
+
+	err := h.AdminGetCourseByIDHandler(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestAdminGetCourseByID_NotFound(t *testing.T) {
+	e := setupEcho()
+	repo := new(MockCourseRepo)
+	h := handler.NewAdminCourseHandler(repo)
+
+	id := uuid.New()
+	req, rec := newRequest(http.MethodGet, "/admin/courses/"+id.String(), nil)
+	c := e.NewContext(req, rec)
+	c.SetParamNames("courseId")
+	c.SetParamValues(id.String())
+
+	repo.On("GetCourseByID", mock.Anything, id.String()).Return(nil, nil)
+
+	err := h.AdminGetCourseByIDHandler(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusNotFound, rec.Code)
 }
 
-func TestAdminEditCourseHandler_InvalidType(t *testing.T) {
-	e := echo.New()
-	courseID := uuid.New()
-	course := &model.Course{
-		ID:   courseID.String(),
-		Name: "Test Course",
-	}
+func TestAdminDeleteCourse_Success(t *testing.T) {
+	e := setupEcho()
+	repo := new(MockCourseRepo)
+	h := handler.NewAdminCourseHandler(repo)
 
-	mockRepo := new(MockCourseRepository)
-	mockRepo.On("GetByID", mock.Anything, courseID.String()).Return(course, nil)
-
-	handler := NewAdminCourseHandler(mockRepo)
-
-	reqBody := map[string]string{"type": "invalid"}
-	body, _ := json.Marshal(reqBody)
-
-	req := httptest.NewRequest(http.MethodPatch, "/admin/courses/"+courseID.String(), bytes.NewReader(body))
-	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-	rec := httptest.NewRecorder()
+	id := uuid.New()
+	req, rec := newRequest(http.MethodDelete, "/admin/courses/"+id.String(), nil)
 	c := e.NewContext(req, rec)
 	c.SetParamNames("courseId")
-	c.SetParamValues(courseID.String())
+	c.SetParamValues(id.String())
 
-	err := handler.AdminEditCourseHandler(c)
+	course := &model.Course{ID: id}
+	repo.On("GetCourseByID", mock.Anything, id.String()).Return(course, nil)
+	repo.On("DeleteCourse", mock.Anything, id.String()).Return(nil)
 
+	err := h.AdminDeleteCourseHandler(c)
 	assert.NoError(t, err)
-	assert.Equal(t, http.StatusBadRequest, rec.Code)
-
-	var response map[string]string
-	json.Unmarshal(rec.Body.Bytes(), &response)
-	assert.Equal(t, "Type must be 'public' or 'private'", response["error"])
+	assert.Equal(t, http.StatusNoContent, rec.Code)
 }
 
-func TestAdminEditCourseHandler_InvalidStartDateFormat(t *testing.T) {
-	e := echo.New()
-	courseID := uuid.New()
-	course := &model.Course{ID: courseID.String()}
+func TestAdminDeleteCourse_NotFound(t *testing.T) {
+	e := setupEcho()
+	repo := new(MockCourseRepo)
+	h := handler.NewAdminCourseHandler(repo)
 
-	mockRepo := new(MockCourseRepository)
-	mockRepo.On("GetByID", mock.Anything, courseID.String()).Return(course, nil)
-
-	handler := NewAdminCourseHandler(mockRepo)
-
-	reqBody := UpdateCourseInfoRequest{
-		StartDate: ptrString("2023-13-01"),
-	}
-	body, _ := json.Marshal(reqBody)
-
-	req := httptest.NewRequest(http.MethodPatch, "/admin/courses/"+courseID.String(), bytes.NewReader(body))
-	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-	rec := httptest.NewRecorder()
+	id := uuid.New()
+	req, rec := newRequest(http.MethodDelete, "/admin/courses/"+id.String(), nil)
 	c := e.NewContext(req, rec)
 	c.SetParamNames("courseId")
-	c.SetParamValues(courseID.String())
+	c.SetParamValues(id.String())
 
-	err := handler.AdminEditCourseHandler(c)
+	repo.On("GetCourseByID", mock.Anything, id.String()).Return(nil, nil)
 
-	assert.NoError(t, err)
-	assert.Equal(t, http.StatusBadRequest, rec.Code)
-}
-
-func TestAdminEditCourseHandler_InvalidDateRange(t *testing.T) {
-	e := echo.New()
-	courseID := uuid.New()
-	course := &model.Course{
-		ID:        courseID.String(),
-		StartDate: nil,
-		EndDate:   nil,
-	}
-
-	mockRepo := new(MockCourseRepository)
-	mockRepo.On("GetByID", mock.Anything, courseID.String()).Return(course, nil)
-
-	handler := NewAdminCourseHandler(mockRepo)
-
-	reqBody := UpdateCourseInfoRequest{
-		StartDate: ptrString("2024-01-10"),
-		EndDate:   ptrString("2024-01-05"),
-	}
-	body, _ := json.Marshal(reqBody)
-
-	req := httptest.NewRequest(http.MethodPatch, "/admin/courses/"+courseID.String(), bytes.NewReader(body))
-	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
-	c.SetParamNames("courseId")
-	c.SetParamValues(courseID.String())
-
-	err := handler.AdminEditCourseHandler(c)
-
-	assert.NoError(t, err)
-	assert.Equal(t, http.StatusBadRequest, rec.Code)
-
-	var response map[string]string
-	json.Unmarshal(rec.Body.Bytes(), &response)
-	assert.Equal(t, "end_date must be after start_date", response["error"])
-}
-
-func TestAdminEditCourseHandler_UpdateError(t *testing.T) {
-	e := echo.New()
-	courseID := uuid.New()
-	course := &model.Course{ID: courseID.String(), Name: "Test"}
-
-	mockRepo := new(MockCourseRepository)
-	mockRepo.On("GetByID", mock.Anything, courseID.String()).Return(course, nil)
-	mockRepo.On("Update", mock.Anything, mock.AnythingOfType("*model.Course")).Return(assert.AnError)
-
-	handler := NewAdminCourseHandler(mockRepo)
-
-	reqBody := UpdateCourseInfoRequest{Name: ptrString("New Name")}
-	body, _ := json.Marshal(reqBody)
-
-	req := httptest.NewRequest(http.MethodPatch, "/admin/courses/"+courseID.String(), bytes.NewReader(body))
-	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
-	c.SetParamNames("courseId")
-	c.SetParamValues(courseID.String())
-
-	err := handler.AdminEditCourseHandler(c)
-
-	assert.NoError(t, err)
-	assert.Equal(t, http.StatusInternalServerError, rec.Code)
-}
-
-func TestAdminUpdateCourseStatusHandler_Success(t *testing.T) {
-	e := echo.New()
-	courseID := uuid.New()
-	course := &model.Course{
-		ID:     courseID.String(),
-		Status: "draft",
-	}
-
-	mockRepo := new(MockCourseRepository)
-	mockRepo.On("GetByID", mock.Anything, courseID.String()).Return(course, nil)
-	mockRepo.On("Update", mock.Anything, mock.AnythingOfType("*model.Course")).Return(nil)
-
-	handler := NewAdminCourseHandler(mockRepo)
-
-	reqBody := UpdateCourseStatusRequest{Status: "published"}
-	body, _ := json.Marshal(reqBody)
-
-	req := httptest.NewRequest(http.MethodPatch, "/admin/courses/"+courseID.String()+"/status", bytes.NewReader(body))
-	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
-	c.SetParamNames("courseId")
-	c.SetParamValues(courseID.String())
-
-	err := handler.AdminUpdateCourseStatusHandler(c)
-
-	assert.NoError(t, err)
-	assert.Equal(t, http.StatusOK, rec.Code)
-
-	var response model.Course
-	json.Unmarshal(rec.Body.Bytes(), &response)
-	assert.Equal(t, "published", response.Status)
-
-	mockRepo.AssertExpectations(t)
-}
-
-func TestAdminUpdateCourseStatusHandler_InvalidCourseID(t *testing.T) {
-	e := echo.New()
-	mockRepo := new(MockCourseRepository)
-	handler := NewAdminCourseHandler(mockRepo)
-
-	req := httptest.NewRequest(http.MethodPatch, "/admin/courses/invalid-id/status", nil)
-	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
-	c.SetParamNames("courseId")
-	c.SetParamValues("invalid-id")
-
-	err := handler.AdminUpdateCourseStatusHandler(c)
-
-	assert.NoError(t, err)
-	assert.Equal(t, http.StatusBadRequest, rec.Code)
-}
-
-func TestAdminUpdateCourseStatusHandler_CourseNotFound(t *testing.T) {
-	e := echo.New()
-	courseID := uuid.New()
-
-	mockRepo := new(MockCourseRepository)
-	mockRepo.On("GetByID", mock.Anything, courseID.String()).Return(nil, assert.AnError)
-
-	handler := NewAdminCourseHandler(mockRepo)
-
-	req := httptest.NewRequest(http.MethodPatch, "/admin/courses/"+courseID.String()+"/status", nil)
-	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
-	c.SetParamNames("courseId")
-	c.SetParamValues(courseID.String())
-
-	err := handler.AdminUpdateCourseStatusHandler(c)
-
+	err := h.AdminDeleteCourseHandler(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusNotFound, rec.Code)
 }
 
-func TestAdminUpdateCourseStatusHandler_MissingStatus(t *testing.T) {
-	e := echo.New()
-	courseID := uuid.New()
-	course := &model.Course{ID: courseID.String(), Status: "draft"}
+func TestAdminEditCourse_Success(t *testing.T) {
+	e := setupEcho()
+	repo := new(MockCourseRepo)
+	h := handler.NewAdminCourseHandler(repo)
 
-	mockRepo := new(MockCourseRepository)
-	mockRepo.On("GetByID", mock.Anything, courseID.String()).Return(course, nil)
-
-	handler := NewAdminCourseHandler(mockRepo)
-
-	reqBody := UpdateCourseStatusRequest{Status: ""}
-	body, _ := json.Marshal(reqBody)
-
-	req := httptest.NewRequest(http.MethodPatch, "/admin/courses/"+courseID.String()+"/status", bytes.NewReader(body))
-	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-	rec := httptest.NewRecorder()
+	id := uuid.New()
+	newName := "Updated Name"
+	body := map[string]interface{}{"name": newName}
+	req, rec := newRequest(http.MethodPatch, "/admin/courses/"+id.String(), body)
 	c := e.NewContext(req, rec)
 	c.SetParamNames("courseId")
-	c.SetParamValues(courseID.String())
+	c.SetParamValues(id.String())
 
-	err := handler.AdminUpdateCourseStatusHandler(c)
+	existing := &model.Course{ID: id, Name: "Old Name", Slug: "slug"}
+	repo.On("GetCourseByID", mock.Anything, id.String()).Return(existing, nil)
+	updated := &model.Course{ID: id, Name: newName, Slug: "slug"}
+	repo.On("UpdateCourse", mock.Anything, id.String(), mock.AnythingOfType("model.Course")).Return(updated, nil)
 
+	err := h.AdminEditCourseHandler(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestAdminEditCourse_InvalidType(t *testing.T) {
+	e := setupEcho()
+	repo := new(MockCourseRepo)
+	h := handler.NewAdminCourseHandler(repo)
+
+	id := uuid.New()
+	typeVal := model.CourseType("invalid")
+	body := map[string]interface{}{"type": typeVal}
+	req, rec := newRequest(http.MethodPatch, "/admin/courses/"+id.String(), body)
+	c := e.NewContext(req, rec)
+	c.SetParamNames("courseId")
+	c.SetParamValues(id.String())
+
+	existing := &model.Course{ID: id, Slug: "slug"}
+	repo.On("GetCourseByID", mock.Anything, id.String()).Return(existing, nil)
+
+	err := h.AdminEditCourseHandler(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
-
-	var response map[string]string
-	json.Unmarshal(rec.Body.Bytes(), &response)
-	assert.Equal(t, "Status is required", response["error"])
 }
 
-func TestAdminUpdateCourseStatusHandler_InvalidStatus(t *testing.T) {
-	e := echo.New()
-	courseID := uuid.New()
-	course := &model.Course{ID: courseID.String(), Status: "draft"}
+func TestAdminEditCourse_EndDateBeforeStart(t *testing.T) {
+	e := setupEcho()
+	repo := new(MockCourseRepo)
+	h := handler.NewAdminCourseHandler(repo)
 
-	mockRepo := new(MockCourseRepository)
-	mockRepo.On("GetByID", mock.Anything, courseID.String()).Return(course, nil)
-
-	handler := NewAdminCourseHandler(mockRepo)
-
-	reqBody := UpdateCourseStatusRequest{Status: "invalid_status"}
-	body, _ := json.Marshal(reqBody)
-
-	req := httptest.NewRequest(http.MethodPatch, "/admin/courses/"+courseID.String()+"/status", bytes.NewReader(body))
-	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-	rec := httptest.NewRecorder()
+	id := uuid.New()
+	body := map[string]interface{}{
+		"start_date": "2025-12-01",
+		"end_date":   "2025-06-01",
+	}
+	req, rec := newRequest(http.MethodPatch, "/admin/courses/"+id.String(), body)
 	c := e.NewContext(req, rec)
 	c.SetParamNames("courseId")
-	c.SetParamValues(courseID.String())
+	c.SetParamValues(id.String())
 
-	err := handler.AdminUpdateCourseStatusHandler(c)
+	existing := &model.Course{ID: id, Slug: "slug"}
+	repo.On("GetCourseByID", mock.Anything, id.String()).Return(existing, nil)
 
+	err := h.AdminEditCourseHandler(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
-
-	var response map[string]string
-	json.Unmarshal(rec.Body.Bytes(), &response)
-	assert.Equal(t, "Invalid status value", response["error"])
 }
 
-func TestAdminUpdateCourseStatusHandler_UpdateError(t *testing.T) {
-	e := echo.New()
-	courseID := uuid.New()
-	course := &model.Course{ID: courseID.String(), Status: "draft"}
-
-	mockRepo := new(MockCourseRepository)
-	mockRepo.On("GetByID", mock.Anything, courseID.String()).Return(course, nil)
-	mockRepo.On("Update", mock.Anything, mock.AnythingOfType("*model.Course")).Return(assert.AnError)
-
-	handler := NewAdminCourseHandler(mockRepo)
-
-	reqBody := UpdateCourseStatusRequest{Status: "published"}
-	body, _ := json.Marshal(reqBody)
-
-	req := httptest.NewRequest(http.MethodPatch, "/admin/courses/"+courseID.String()+"/status", bytes.NewReader(body))
-	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-	rec := httptest.NewRecorder()
+func TestAdminUpdateCourseStatus_Success(t *testing.T) {
+	e := setupEcho()
+	repo := new(MockCourseRepo)
+	h := handler.NewAdminCourseHandler(repo)
+	id := uuid.New()
+	body := map[string]interface{}{"status": "doreshka"}
+	req, rec := newRequest(http.MethodPatch, "/admin/courses/"+id.String()+"/status", body)
 	c := e.NewContext(req, rec)
 	c.SetParamNames("courseId")
-	c.SetParamValues(courseID.String())
-
-	err := handler.AdminUpdateCourseStatusHandler(c)
-
+	c.SetParamValues(id.String())
+	existing := &model.Course{ID: id, Slug: "slug", Status: "created"}
+	repo.On("GetCourseByID", mock.Anything, id.String()).Return(existing, nil)
+	updated := &model.Course{ID: id, Slug: "slug", Status: "started"}
+	repo.On("UpdateCourse", mock.Anything, id.String(), mock.AnythingOfType("model.Course")).Return(updated, nil)
+	err := h.AdminUpdateCourseStatusHandler(c)
 	assert.NoError(t, err)
-	assert.Equal(t, http.StatusInternalServerError, rec.Code)
+	assert.Equal(t, http.StatusOK, rec.Code)
 }
 
-func ptrString(s string) *string {
-	return &s
+func TestAdminUpdateCourseStatus_EmptyStatus(t *testing.T) {
+	e := setupEcho()
+	repo := new(MockCourseRepo)
+	h := handler.NewAdminCourseHandler(repo)
+
+	id := uuid.New()
+	body := map[string]interface{}{"status": ""}
+	req, rec := newRequest(http.MethodPatch, "/admin/courses/"+id.String()+"/status", body)
+	c := e.NewContext(req, rec)
+	c.SetParamNames("courseId")
+	c.SetParamValues(id.String())
+
+	existing := &model.Course{ID: id, Slug: "slug"}
+	repo.On("GetCourseByID", mock.Anything, id.String()).Return(existing, nil)
+
+	err := h.AdminUpdateCourseStatusHandler(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
-func ptrType(t model.CourseType) *model.CourseType {
-	return &t
+func TestAdminUpdateCourseStatus_InvalidStatus(t *testing.T) {
+	e := setupEcho()
+	repo := new(MockCourseRepo)
+	h := handler.NewAdminCourseHandler(repo)
+
+	id := uuid.New()
+	body := map[string]interface{}{"status": "flying"}
+	req, rec := newRequest(http.MethodPatch, "/admin/courses/"+id.String()+"/status", body)
+	c := e.NewContext(req, rec)
+	c.SetParamNames("courseId")
+	c.SetParamValues(id.String())
+
+	existing := &model.Course{ID: id, Slug: "slug"}
+	repo.On("GetCourseByID", mock.Anything, id.String()).Return(existing, nil)
+
+	err := h.AdminUpdateCourseStatusHandler(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
 }

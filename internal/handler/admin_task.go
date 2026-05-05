@@ -32,22 +32,14 @@ type UpdateTaskRequest struct {
 	TaskURL *string `json:"task_url"`
 }
 
-func (h *AdminTaskHandler) resolveHwID(c echo.Context) (uuid.UUID, error) {
-	hwID, err := uuid.Parse(c.Param("hwId"))
-	if err != nil {
-		return uuid.Nil, badRequest(c, "Invalid homework ID")
-	}
-	if _, err := h.homeworkRepo.GetByID(c.Request().Context(), hwID); err != nil {
-		return uuid.Nil, notFound(c, "Homework not found")
-	}
-	return hwID, nil
-}
-
 // POST /admin/courses/:courseId/homework/:hwId/tasks
 func (h *AdminTaskHandler) AdminCreateTaskHandler(c echo.Context) error {
-	hwID, err := h.resolveHwID(c)
+	hwID, err := uuid.Parse(c.Param("hwId"))
 	if err != nil {
-		return err
+		return badRequest(c, "Invalid homework ID")
+	}
+	if _, err := h.homeworkRepo.GetByID(c.Request().Context(), hwID); err != nil {
+		return notFound(c, "Homework not found")
 	}
 
 	var req CreateTaskRequest
@@ -64,22 +56,23 @@ func (h *AdminTaskHandler) AdminCreateTaskHandler(c echo.Context) error {
 	if err := h.taskRepo.Create(c.Request().Context(), task); err != nil {
 		return internalError(c, "Failed to create task")
 	}
-
 	return c.JSON(http.StatusCreated, task)
 }
 
 // GET /admin/courses/:courseId/homework/:hwId/tasks
 func (h *AdminTaskHandler) AdminListTasksHandler(c echo.Context) error {
-	hwID, err := h.resolveHwID(c)
+	hwID, err := uuid.Parse(c.Param("hwId"))
 	if err != nil {
-		return err
+		return badRequest(c, "Invalid homework ID")
+	}
+	if _, err := h.homeworkRepo.GetByID(c.Request().Context(), hwID); err != nil {
+		return notFound(c, "Homework not found")
 	}
 
 	tasks, err := h.taskRepo.GetByHwID(c.Request().Context(), hwID)
 	if err != nil {
 		return internalError(c, "Failed to fetch tasks")
 	}
-
 	return c.JSON(http.StatusOK, tasks)
 }
 
