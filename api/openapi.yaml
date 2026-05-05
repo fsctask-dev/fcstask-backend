@@ -352,12 +352,49 @@ components:
     MeResponse:
       $ref: "./schemas/MeResponse.yaml"
     SessionWithUser:
-      $ref: "./schemas/SessionWithUser.yaml"
+      allOf:
+        - $ref: "#/components/schemas/Session"
+        - type: object
+          required:
+            - user
+          properties:
+            user:
+              $ref: "#/components/schemas/User"
+    Pagination:
+      $ref: "./schemas/Pagination.yaml"
     PaginatedSessionsResponse:
-      $ref: "./schemas/PaginatedSessionsResponse.yaml"
+      allOf:
+        - $ref: "#/components/schemas/Pagination"
+        - type: object
+          required:
+            - items
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/SessionWithUser"
     Session:
       $ref: "./schemas/Session.yaml"
     UserWithSessions:
-      $ref: "./schemas/UserWithSessions.yaml"
+      type: object
+      required:
+        - user
+        - sessions
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+        sessions:
+          type: array
+          items:
+            $ref: "#/components/schemas/Session"
     PaginatedUsersWithSessionsResponse:
-      $ref: "./schemas/PaginatedUsersWithSessionsResponse.yaml"
+      allOf:
+        - $ref: "#/components/schemas/Pagination"
+        - type: object
+          required:
+            - items
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/UserWithSessions"

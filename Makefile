@@ -1,11 +1,13 @@
 GOPATH := $(shell go env GOPATH)
-PATH := $(PATH):$(GOPATH)/bin
+export PATH := $(PATH):$(GOPATH)/bin
+OAPI_CODEGEN := $(GOPATH)/bin/oapi-codegen
+MOCKGEN := $(GOPATH)/bin/mockgen
 MODULE_NAME := fcstask-backend
 BINARY_NAME := fcstask-api
 DOCKER_IMAGE_NAME ?= miruken/$(MODULE_NAME)-backend
 DOCKER_IMAGE_TAG ?= 0.1.0
 
-.PHONY: init tidy migrate migrate install-tools gen test docker-build docker-run docker-test docker-push ci-local ci
+.PHONY: init tidy migrate migrate install-tools gen test test-integration-db postgreplication-up docker-build docker-run docker-test docker-push ci-local ci
 
 init:
 	@echo "🔧 Initializing repo: $(MODULE_NAME)..."
@@ -28,23 +30,22 @@ migrate:
 
 install-tools:
 	@echo "📦 Installing tools..."
-	@which oapi-codegen || go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest
-	@which mockgen || go install github.com/golang/mock/mockgen@latest
-	@go get github.com/golang/mock/gomock
+	@test -x "$(OAPI_CODEGEN)" || go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest
+	@test -x "$(MOCKGEN)" || go install github.com/golang/mock/mockgen@latest
 	@echo "✅ Tools installed"
 
 gen: install-tools
 	@echo "Generating API code from OpenAPI..."
-	@if command -v oapi-codegen >/dev/null 2>&1; then \
+	@if test -x "$(OAPI_CODEGEN)"; then \
 		echo "oapi-codegen is already installed"; \
 	else \
 		echo "Installing oapi-codegen..."; \
 		go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest; \
 	fi
 	@echo "Generating types..."
-	oapi-codegen -generate types -package api -o internal/api/types.gen.go api/openapi.yaml
+	$(OAPI_CODEGEN) -generate types,skip-prune -package api -o internal/api/types.gen.go api/openapi.yaml
 	@echo "Generating server..."
-	oapi-codegen -generate server -package api -o internal/api/server.gen.go api/openapi.yaml
+	$(OAPI_CODEGEN) -generate server -package api -o internal/api/server.gen.go api/openapi.yaml
 	@echo "Code generation completed!"
 	@echo "🔄 Generating code..."
 	@go generate ./...
@@ -54,6 +55,12 @@ test: gen
 	@echo "🧪 Running tests..."
 	@go test ./... -v
 	@echo "✅ Tests completed"
+
+postgreplication-up:
+	podman compose -f compose.postgres-replication.yaml up -d
+
+test-integration-db:
+	go test -tags=integration -count=1 -v ./internal/db/...
 
 docker-build:
 	@echo "🐳 Building Docker image..."
