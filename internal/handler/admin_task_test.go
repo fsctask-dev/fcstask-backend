@@ -2,7 +2,6 @@ package handler_test
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"testing"
 
@@ -12,627 +11,438 @@ import (
 
 	"fcstask-backend/internal/db/model"
 	"fcstask-backend/internal/handler"
+	"fcstask-backend/internal/service"
 )
 
-type MockTaskRepo struct {
+type MockAdminTaskService struct {
 	mock.Mock
 }
 
-func (m *MockTaskRepo) Create(ctx context.Context, task *model.Task) error {
-	return m.Called(ctx, task).Error(0)
-}
-
-func (m *MockTaskRepo) GetByID(ctx context.Context, id uuid.UUID) (*model.Task, error) {
-	args := m.Called(ctx, id)
+func (m *MockAdminTaskService) CreateTask(ctx context.Context, input service.CreateTaskInput) (*model.Task, error) {
+	args := m.Called(ctx, input)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(*model.Task), args.Error(1)
 }
 
-func (m *MockTaskRepo) GetByHwID(ctx context.Context, hwID uuid.UUID) ([]model.Task, error) {
-	args := m.Called(ctx, hwID)
-	return args.Get(0).([]model.Task), args.Error(1)
-}
-
-func (m *MockTaskRepo) Update(ctx context.Context, task *model.Task) error {
-	return m.Called(ctx, task).Error(0)
-}
-
-func (m *MockTaskRepo) Delete(ctx context.Context, id uuid.UUID) error {
-	return m.Called(ctx, id).Error(0)
-}
-
-func (m *MockTaskRepo) SetScore(ctx context.Context, id uuid.UUID, score int) error {
-	return m.Called(ctx, id, score).Error(0)
-}
-
-type MockHomeworkRepoForTask struct {
-	mock.Mock
-}
-
-func (m *MockHomeworkRepoForTask) Create(ctx context.Context, hw *model.Homework) error {
-	return m.Called(ctx, hw).Error(0)
-}
-
-func (m *MockHomeworkRepoForTask) GetByID(ctx context.Context, id uuid.UUID) (*model.Homework, error) {
-	args := m.Called(ctx, id)
+func (m *MockAdminTaskService) GetTask(ctx context.Context, taskID uuid.UUID) (*model.Task, error) {
+	args := m.Called(ctx, taskID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).(*model.Homework), args.Error(1)
+	return args.Get(0).(*model.Task), args.Error(1)
 }
 
-func (m *MockHomeworkRepoForTask) GetByCourseID(ctx context.Context, courseID uuid.UUID) ([]model.Homework, error) {
-	args := m.Called(ctx, courseID)
-	return args.Get(0).([]model.Homework), args.Error(1)
+func (m *MockAdminTaskService) ListTasks(ctx context.Context, hwID uuid.UUID) ([]model.Task, error) {
+	args := m.Called(ctx, hwID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]model.Task), args.Error(1)
 }
 
-func (m *MockHomeworkRepoForTask) Update(ctx context.Context, hw *model.Homework) error {
-	return m.Called(ctx, hw).Error(0)
+func (m *MockAdminTaskService) UpdateTask(ctx context.Context, taskID uuid.UUID, input service.UpdateTaskInput) (*model.Task, error) {
+	args := m.Called(ctx, taskID, input)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*model.Task), args.Error(1)
 }
 
-func (m *MockHomeworkRepoForTask) Delete(ctx context.Context, id uuid.UUID) error {
-	return m.Called(ctx, id).Error(0)
+func (m *MockAdminTaskService) DeleteTask(ctx context.Context, taskID uuid.UUID) error {
+	args := m.Called(ctx, taskID)
+	return args.Error(0)
 }
 
-func TestAdminCreateTask_Success(t *testing.T) {
-	e := setupEcho()
-	taskRepo := new(MockTaskRepo)
-	homeworkRepo := new(MockHomeworkRepoForTask)
-	h := handler.NewAdminTaskHandler(taskRepo, homeworkRepo)
+func (m *MockAdminTaskService) SetScore(ctx context.Context, input service.SetTaskScoreInput) (*model.Task, error) {
+	args := m.Called(ctx, input)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*model.Task), args.Error(1)
+}
 
-	courseID := uuid.New()
+func TestHandlerCreateTask_Success(t *testing.T) {
+	svc := new(MockAdminTaskService)
+	h := handler.NewAdminTaskHandler(svc)
+
 	hwID := uuid.New()
 	repoURL := "https://github.com/test/repo"
 	taskURL := "https://test.com/task"
+	Score := 100
 
 	body := map[string]interface{}{
 		"repo_url": repoURL,
 		"task_url": taskURL,
+		"score":    Score,
 	}
-	req, rec := newRequest(http.MethodPost, "/admin/courses/"+courseID.String()+"/homework/"+hwID.String()+"/tasks", body)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("courseId", "hwId")
-	c.SetParamValues(courseID.String(), hwID.String())
+	expected := &model.Task{TaskID: uuid.New(), HwID: hwID, RepoURL: &repoURL, TaskURL: &taskURL}
 
-	homework := &model.Homework{HwID: hwID}
-	homeworkRepo.On("GetByID", mock.Anything, hwID).Return(homework, nil)
-	taskRepo.On("Create", mock.Anything, mock.AnythingOfType("*model.Task")).Return(nil)
+	c, rec := newEchoContextMultiParam(http.MethodPost, "/", body,
+		[]string{"courseId", "hwId"},
+		[]string{uuid.New().String(), hwID.String()},
+	)
+	svc.On("CreateTask", mock.Anything, service.CreateTaskInput{
+		HwID:    hwID,
+		RepoURL: repoURL,
+		TaskURL: taskURL,
+		Score:   Score,
+	}).Return(expected, nil)
 
-	err := h.AdminCreateTaskHandler(c)
+	err := h.CreateTask(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusCreated, rec.Code)
-
-	var result model.Task
-	json.Unmarshal(rec.Body.Bytes(), &result)
-	assert.Equal(t, hwID, result.HwID)
-	assert.Equal(t, &repoURL, result.RepoURL)
-	assert.Equal(t, &taskURL, result.TaskURL)
+	svc.AssertExpectations(t)
 }
 
-func TestAdminCreateTask_InvalidHomeworkID(t *testing.T) {
-	e := setupEcho()
-	taskRepo := new(MockTaskRepo)
-	homeworkRepo := new(MockHomeworkRepoForTask)
-	h := handler.NewAdminTaskHandler(taskRepo, homeworkRepo)
+func TestHandlerCreateTask_InvalidHwID(t *testing.T) {
+	svc := new(MockAdminTaskService)
+	h := handler.NewAdminTaskHandler(svc)
 
-	courseID := uuid.New()
-	req, rec := newRequest(http.MethodPost, "/admin/courses/"+courseID.String()+"/homework/invalid-uuid/tasks", nil)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("courseId", "hwId")
-	c.SetParamValues(courseID.String(), "invalid-uuid")
+	c, rec := newEchoContext(http.MethodPost, "/", nil, map[string]string{"hwId": "bad"})
 
-	err := h.AdminCreateTaskHandler(c)
+	err := h.CreateTask(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
-	taskRepo.AssertNotCalled(t, "Create")
 }
 
-func TestAdminCreateTask_HomeworkNotFound(t *testing.T) {
-	e := setupEcho()
-	taskRepo := new(MockTaskRepo)
-	homeworkRepo := new(MockHomeworkRepoForTask)
-	h := handler.NewAdminTaskHandler(taskRepo, homeworkRepo)
+func TestHandlerCreateTask_HomeworkNotFound(t *testing.T) {
+	svc := new(MockAdminTaskService)
+	h := handler.NewAdminTaskHandler(svc)
 
-	courseID := uuid.New()
 	hwID := uuid.New()
-	req, rec := newRequest(http.MethodPost, "/admin/courses/"+courseID.String()+"/homework/"+hwID.String()+"/tasks", nil)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("courseId", "hwId")
-	c.SetParamValues(courseID.String(), hwID.String())
-	homeworkRepo.On("GetByID", mock.Anything, hwID).Return(nil, assert.AnError)
-	err := h.AdminCreateTaskHandler(c)
+	body := map[string]interface{}{"repo_url": "https://github.com/test/repo"}
+
+	c, rec := newEchoContext(http.MethodPost, "/", body, map[string]string{"hwId": hwID.String()})
+	svc.On("CreateTask", mock.Anything, mock.Anything).Return(nil, service.NotFound("Homework not found"))
+
+	err := h.CreateTask(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusNotFound, rec.Code)
-	taskRepo.AssertNotCalled(t, "Create")
+	svc.AssertExpectations(t)
 }
 
-func TestAdminCreateTask_InvalidRequestBody(t *testing.T) {
-	e := setupEcho()
-	taskRepo := new(MockTaskRepo)
-	homeworkRepo := new(MockHomeworkRepoForTask)
-	h := handler.NewAdminTaskHandler(taskRepo, homeworkRepo)
+func TestHandlerCreateTask_NilURLs(t *testing.T) {
+	svc := new(MockAdminTaskService)
+	h := handler.NewAdminTaskHandler(svc)
 
-	courseID := uuid.New()
 	hwID := uuid.New()
-	req, rec := newRequest(http.MethodPost, "/admin/courses/"+courseID.String()+"/homework/"+hwID.String()+"/tasks", "invalid body")
-	c := e.NewContext(req, rec)
-	c.SetParamNames("courseId", "hwId")
-	c.SetParamValues(courseID.String(), hwID.String())
+	expected := &model.Task{TaskID: uuid.New(), HwID: hwID}
 
-	homework := &model.Homework{HwID: hwID}
-	homeworkRepo.On("GetByID", mock.Anything, hwID).Return(homework, nil)
+	c, rec := newEchoContext(http.MethodPost, "/", map[string]interface{}{}, map[string]string{"hwId": hwID.String()})
+	svc.On("CreateTask", mock.Anything, service.CreateTaskInput{HwID: hwID}).Return(expected, nil)
 
-	err := h.AdminCreateTaskHandler(c)
+	err := h.CreateTask(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusCreated, rec.Code)
+	svc.AssertExpectations(t)
+}
+
+func TestHandlerGetTask_Success(t *testing.T) {
+	svc := new(MockAdminTaskService)
+	h := handler.NewAdminTaskHandler(svc)
+
+	taskID := uuid.New()
+	expected := &model.Task{TaskID: taskID}
+
+	c, rec := newEchoContext(http.MethodGet, "/", nil, map[string]string{"taskId": taskID.String()})
+	svc.On("GetTask", mock.Anything, taskID).Return(expected, nil)
+
+	err := h.GetTask(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	svc.AssertExpectations(t)
+}
+
+func TestHandlerGetTask_InvalidID(t *testing.T) {
+	svc := new(MockAdminTaskService)
+	h := handler.NewAdminTaskHandler(svc)
+
+	c, rec := newEchoContext(http.MethodGet, "/", nil, map[string]string{"taskId": "bad"})
+
+	err := h.GetTask(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
-func TestAdminListTasks_Success(t *testing.T) {
-	e := setupEcho()
-	taskRepo := new(MockTaskRepo)
-	homeworkRepo := new(MockHomeworkRepoForTask)
-	h := handler.NewAdminTaskHandler(taskRepo, homeworkRepo)
+func TestHandlerGetTask_NotFound(t *testing.T) {
+	svc := new(MockAdminTaskService)
+	h := handler.NewAdminTaskHandler(svc)
 
-	courseID := uuid.New()
+	taskID := uuid.New()
+	c, rec := newEchoContext(http.MethodGet, "/", nil, map[string]string{"taskId": taskID.String()})
+	svc.On("GetTask", mock.Anything, taskID).Return(nil, service.NotFound("Task not found"))
+
+	err := h.GetTask(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusNotFound, rec.Code)
+	svc.AssertExpectations(t)
+}
+
+func TestHandlerListTasks_Success(t *testing.T) {
+	svc := new(MockAdminTaskService)
+	h := handler.NewAdminTaskHandler(svc)
+
 	hwID := uuid.New()
-	req, rec := newRequest(http.MethodGet, "/admin/courses/"+courseID.String()+"/homework/"+hwID.String()+"/tasks", nil)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("courseId", "hwId")
-	c.SetParamValues(courseID.String(), hwID.String())
-
-	homework := &model.Homework{HwID: hwID}
-	expectedTasks := []model.Task{
+	expected := []model.Task{
 		{TaskID: uuid.New(), HwID: hwID},
 		{TaskID: uuid.New(), HwID: hwID},
 	}
-	homeworkRepo.On("GetByID", mock.Anything, hwID).Return(homework, nil)
-	taskRepo.On("GetByHwID", mock.Anything, hwID).Return(expectedTasks, nil)
 
-	err := h.AdminListTasksHandler(c)
+	c, rec := newEchoContext(http.MethodGet, "/", nil, map[string]string{"hwId": hwID.String()})
+	svc.On("ListTasks", mock.Anything, hwID).Return(expected, nil)
+
+	err := h.ListTasks(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, rec.Code)
-
-	var result []model.Task
-	json.Unmarshal(rec.Body.Bytes(), &result)
-	assert.Len(t, result, 2)
+	svc.AssertExpectations(t)
 }
 
-func TestAdminListTasks_InvalidHomeworkID(t *testing.T) {
-	e := setupEcho()
-	taskRepo := new(MockTaskRepo)
-	homeworkRepo := new(MockHomeworkRepoForTask)
-	h := handler.NewAdminTaskHandler(taskRepo, homeworkRepo)
+func TestHandlerListTasks_InvalidHwID(t *testing.T) {
+	svc := new(MockAdminTaskService)
+	h := handler.NewAdminTaskHandler(svc)
 
-	courseID := uuid.New()
-	req, rec := newRequest(http.MethodGet, "/admin/courses/"+courseID.String()+"/homework/invalid-uuid/tasks", nil)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("courseId", "hwId")
-	c.SetParamValues(courseID.String(), "invalid-uuid")
+	c, rec := newEchoContext(http.MethodGet, "/", nil, map[string]string{"hwId": "bad"})
 
-	err := h.AdminListTasksHandler(c)
-	assert.NoError(t, err)
-	assert.Equal(t, http.StatusBadRequest, rec.Code)
-	taskRepo.AssertNotCalled(t, "GetByHwID")
-}
-
-func TestAdminListTasks_HomeworkNotFound(t *testing.T) {
-	e := setupEcho()
-	taskRepo := new(MockTaskRepo)
-	homeworkRepo := new(MockHomeworkRepoForTask)
-	h := handler.NewAdminTaskHandler(taskRepo, homeworkRepo)
-
-	courseID := uuid.New()
-	hwID := uuid.New()
-	req, rec := newRequest(http.MethodGet, "/admin/courses/"+courseID.String()+"/homework/"+hwID.String()+"/tasks", nil)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("courseId", "hwId")
-	c.SetParamValues(courseID.String(), hwID.String())
-
-	homeworkRepo.On("GetByID", mock.Anything, hwID).Return(nil, assert.AnError)
-
-	err := h.AdminListTasksHandler(c)
-	assert.NoError(t, err)
-	assert.Equal(t, http.StatusNotFound, rec.Code)
-	taskRepo.AssertNotCalled(t, "GetByHwID")
-}
-
-func TestAdminGetTask_Success(t *testing.T) {
-	e := setupEcho()
-	taskRepo := new(MockTaskRepo)
-	homeworkRepo := new(MockHomeworkRepoForTask)
-	h := handler.NewAdminTaskHandler(taskRepo, homeworkRepo)
-
-	courseID := uuid.New()
-	hwID := uuid.New()
-	taskID := uuid.New()
-	req, rec := newRequest(http.MethodGet, "/admin/courses/"+courseID.String()+"/homework/"+hwID.String()+"/tasks/"+taskID.String(), nil)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("courseId", "hwId", "taskId")
-	c.SetParamValues(courseID.String(), hwID.String(), taskID.String())
-
-	expectedTask := &model.Task{TaskID: taskID, HwID: hwID}
-	taskRepo.On("GetByID", mock.Anything, taskID).Return(expectedTask, nil)
-
-	err := h.AdminGetTaskHandler(c)
-	assert.NoError(t, err)
-	assert.Equal(t, http.StatusOK, rec.Code)
-
-	var result model.Task
-	json.Unmarshal(rec.Body.Bytes(), &result)
-	assert.Equal(t, taskID, result.TaskID)
-}
-
-func TestAdminGetTask_InvalidTaskID(t *testing.T) {
-	e := setupEcho()
-	taskRepo := new(MockTaskRepo)
-	homeworkRepo := new(MockHomeworkRepoForTask)
-	h := handler.NewAdminTaskHandler(taskRepo, homeworkRepo)
-
-	courseID := uuid.New()
-	hwID := uuid.New()
-	req, rec := newRequest(http.MethodGet, "/admin/courses/"+courseID.String()+"/homework/"+hwID.String()+"/tasks/invalid-uuid", nil)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("courseId", "hwId", "taskId")
-	c.SetParamValues(courseID.String(), hwID.String(), "invalid-uuid")
-
-	err := h.AdminGetTaskHandler(c)
+	err := h.ListTasks(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
-func TestAdminGetTask_NotFound(t *testing.T) {
-	e := setupEcho()
-	taskRepo := new(MockTaskRepo)
-	homeworkRepo := new(MockHomeworkRepoForTask)
-	h := handler.NewAdminTaskHandler(taskRepo, homeworkRepo)
+func TestHandlerListTasks_HomeworkNotFound(t *testing.T) {
+	svc := new(MockAdminTaskService)
+	h := handler.NewAdminTaskHandler(svc)
 
-	courseID := uuid.New()
 	hwID := uuid.New()
-	taskID := uuid.New()
-	req, rec := newRequest(http.MethodGet, "/admin/courses/"+courseID.String()+"/homework/"+hwID.String()+"/tasks/"+taskID.String(), nil)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("courseId", "hwId", "taskId")
-	c.SetParamValues(courseID.String(), hwID.String(), taskID.String())
+	c, rec := newEchoContext(http.MethodGet, "/", nil, map[string]string{"hwId": hwID.String()})
+	svc.On("ListTasks", mock.Anything, hwID).Return(nil, service.NotFound("Homework not found"))
 
-	taskRepo.On("GetByID", mock.Anything, taskID).Return(nil, assert.AnError)
-
-	err := h.AdminGetTaskHandler(c)
+	err := h.ListTasks(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusNotFound, rec.Code)
+	svc.AssertExpectations(t)
 }
 
-func TestAdminUpdateTask_Success(t *testing.T) {
-	e := setupEcho()
-	taskRepo := new(MockTaskRepo)
-	homeworkRepo := new(MockHomeworkRepoForTask)
-	h := handler.NewAdminTaskHandler(taskRepo, homeworkRepo)
+func TestHandlerListTasks_ServiceError(t *testing.T) {
+	svc := new(MockAdminTaskService)
+	h := handler.NewAdminTaskHandler(svc)
 
-	courseID := uuid.New()
 	hwID := uuid.New()
-	taskID := uuid.New()
-	newRepoURL := "https://github.com/test/updated-repo"
-	newTaskURL := "https://test.com/updated-task"
+	c, rec := newEchoContext(http.MethodGet, "/", nil, map[string]string{"hwId": hwID.String()})
+	svc.On("ListTasks", mock.Anything, hwID).Return(nil, service.Internal("Failed to fetch tasks", nil))
 
+	err := h.ListTasks(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusInternalServerError, rec.Code)
+	svc.AssertExpectations(t)
+}
+
+func TestHandlerUpdateTask_Success(t *testing.T) {
+	svc := new(MockAdminTaskService)
+	h := handler.NewAdminTaskHandler(svc)
+
+	taskID := uuid.New()
+	newRepo := "https://github.com/test/new-repo"
+	newTask := "https://test.com/new-task"
+	newScore := 200
 	body := map[string]interface{}{
-		"repo_url": newRepoURL,
-		"task_url": newTaskURL,
+		"repo_url": newRepo,
+		"task_url": newTask,
+		"score":    newScore,
 	}
-	req, rec := newRequest(http.MethodPatch, "/admin/courses/"+courseID.String()+"/homework/"+hwID.String()+"/tasks/"+taskID.String(), body)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("courseId", "hwId", "taskId")
-	c.SetParamValues(courseID.String(), hwID.String(), taskID.String())
+	expected := &model.Task{TaskID: taskID, RepoURL: &newRepo, TaskURL: &newTask}
 
-	oldRepoURL := "https://github.com/test/old-repo"
-	oldTaskURL := "https://test.com/old-task"
-	existingTask := &model.Task{
-		TaskID:  taskID,
-		HwID:    hwID,
-		RepoURL: &oldRepoURL,
-		TaskURL: &oldTaskURL,
-	}
-	taskRepo.On("GetByID", mock.Anything, taskID).Return(existingTask, nil)
-	taskRepo.On("Update", mock.Anything, mock.AnythingOfType("*model.Task")).Return(nil)
+	c, rec := newEchoContext(http.MethodPatch, "/", body, map[string]string{"taskId": taskID.String()})
+	svc.On("UpdateTask", mock.Anything, taskID, service.UpdateTaskInput{
+		RepoURL: newRepo,
+		TaskURL: newTask,
+		Score:   newScore,
+	}).Return(expected, nil)
 
-	err := h.AdminUpdateTaskHandler(c)
+	err := h.UpdateTask(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, rec.Code)
-
-	var result model.Task
-	json.Unmarshal(rec.Body.Bytes(), &result)
-	assert.Equal(t, &newRepoURL, result.RepoURL)
-	assert.Equal(t, &newTaskURL, result.TaskURL)
+	svc.AssertExpectations(t)
 }
 
-func TestAdminUpdateTask_InvalidTaskID(t *testing.T) {
-	e := setupEcho()
-	taskRepo := new(MockTaskRepo)
-	homeworkRepo := new(MockHomeworkRepoForTask)
-	h := handler.NewAdminTaskHandler(taskRepo, homeworkRepo)
+func TestHandlerUpdateTask_InvalidID(t *testing.T) {
+	svc := new(MockAdminTaskService)
+	h := handler.NewAdminTaskHandler(svc)
 
-	courseID := uuid.New()
-	hwID := uuid.New()
-	req, rec := newRequest(http.MethodPatch, "/admin/courses/"+courseID.String()+"/homework/"+hwID.String()+"/tasks/invalid-uuid", nil)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("courseId", "hwId", "taskId")
-	c.SetParamValues(courseID.String(), hwID.String(), "invalid-uuid")
+	c, rec := newEchoContext(http.MethodPatch, "/", nil, map[string]string{"taskId": "bad"})
 
-	err := h.AdminUpdateTaskHandler(c)
+	err := h.UpdateTask(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
-func TestAdminUpdateTask_TaskNotFound(t *testing.T) {
-	e := setupEcho()
-	taskRepo := new(MockTaskRepo)
-	homeworkRepo := new(MockHomeworkRepoForTask)
-	h := handler.NewAdminTaskHandler(taskRepo, homeworkRepo)
+func TestHandlerUpdateTask_NotFound(t *testing.T) {
+	svc := new(MockAdminTaskService)
+	h := handler.NewAdminTaskHandler(svc)
 
-	courseID := uuid.New()
-	hwID := uuid.New()
 	taskID := uuid.New()
-	req, rec := newRequest(http.MethodPatch, "/admin/courses/"+courseID.String()+"/homework/"+hwID.String()+"/tasks/"+taskID.String(), nil)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("courseId", "hwId", "taskId")
-	c.SetParamValues(courseID.String(), hwID.String(), taskID.String())
+	body := map[string]interface{}{"repo_url": "https://github.com/test/repo"}
 
-	taskRepo.On("GetByID", mock.Anything, taskID).Return(nil, assert.AnError)
+	c, rec := newEchoContext(http.MethodPatch, "/", body, map[string]string{"taskId": taskID.String()})
+	svc.On("UpdateTask", mock.Anything, taskID, mock.Anything).Return(nil, service.NotFound("Task not found"))
 
-	err := h.AdminUpdateTaskHandler(c)
+	err := h.UpdateTask(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusNotFound, rec.Code)
+	svc.AssertExpectations(t)
 }
 
-func TestAdminUpdateTask_UpdateRepoURLOnly(t *testing.T) {
-	e := setupEcho()
-	taskRepo := new(MockTaskRepo)
-	homeworkRepo := new(MockHomeworkRepoForTask)
-	h := handler.NewAdminTaskHandler(taskRepo, homeworkRepo)
+func TestHandlerUpdateTask_PartialUpdate(t *testing.T) {
+	svc := new(MockAdminTaskService)
+	h := handler.NewAdminTaskHandler(svc)
 
-	courseID := uuid.New()
-	hwID := uuid.New()
 	taskID := uuid.New()
-	newRepoURL := "https://github.com/test/updated-repo"
+	newRepo := "https://github.com/test/new-repo"
+	body := map[string]interface{}{"repo_url": newRepo}
+	expected := &model.Task{TaskID: taskID, RepoURL: &newRepo}
 
-	body := map[string]interface{}{
-		"repo_url": newRepoURL,
-	}
-	req, rec := newRequest(http.MethodPatch, "/admin/courses/"+courseID.String()+"/homework/"+hwID.String()+"/tasks/"+taskID.String(), body)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("courseId", "hwId", "taskId")
-	c.SetParamValues(courseID.String(), hwID.String(), taskID.String())
+	c, rec := newEchoContext(http.MethodPatch, "/", body, map[string]string{"taskId": taskID.String()})
+	svc.On("UpdateTask", mock.Anything, taskID, service.UpdateTaskInput{RepoURL: newRepo}).Return(expected, nil)
 
-	oldRepoURL := "https://github.com/test/old-repo"
-	oldTaskURL := "https://test.com/old-task"
-	existingTask := &model.Task{
-		TaskID:  taskID,
-		HwID:    hwID,
-		RepoURL: &oldRepoURL,
-		TaskURL: &oldTaskURL,
-	}
-	taskRepo.On("GetByID", mock.Anything, taskID).Return(existingTask, nil)
-	taskRepo.On("Update", mock.Anything, mock.AnythingOfType("*model.Task")).Return(nil)
-
-	err := h.AdminUpdateTaskHandler(c)
+	err := h.UpdateTask(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, rec.Code)
-
-	var result model.Task
-	json.Unmarshal(rec.Body.Bytes(), &result)
-	assert.Equal(t, &newRepoURL, result.RepoURL)
-	assert.Equal(t, &oldTaskURL, result.TaskURL)
+	svc.AssertExpectations(t)
 }
 
-func TestAdminDeleteTask_Success(t *testing.T) {
-	e := setupEcho()
-	taskRepo := new(MockTaskRepo)
-	homeworkRepo := new(MockHomeworkRepoForTask)
-	h := handler.NewAdminTaskHandler(taskRepo, homeworkRepo)
+func TestHandlerDeleteTask_Success(t *testing.T) {
+	svc := new(MockAdminTaskService)
+	h := handler.NewAdminTaskHandler(svc)
 
-	courseID := uuid.New()
-	hwID := uuid.New()
 	taskID := uuid.New()
-	req, rec := newRequest(http.MethodDelete, "/admin/courses/"+courseID.String()+"/homework/"+hwID.String()+"/tasks/"+taskID.String(), nil)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("courseId", "hwId", "taskId")
-	c.SetParamValues(courseID.String(), hwID.String(), taskID.String())
+	c, rec := newEchoContext(http.MethodDelete, "/", nil, map[string]string{"taskId": taskID.String()})
+	svc.On("DeleteTask", mock.Anything, taskID).Return(nil)
 
-	existingTask := &model.Task{TaskID: taskID, HwID: hwID}
-	taskRepo.On("GetByID", mock.Anything, taskID).Return(existingTask, nil)
-	taskRepo.On("Delete", mock.Anything, taskID).Return(nil)
-
-	err := h.AdminDeleteTaskHandler(c)
+	err := h.DeleteTask(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusNoContent, rec.Code)
+	svc.AssertExpectations(t)
 }
 
-func TestAdminDeleteTask_InvalidTaskID(t *testing.T) {
-	e := setupEcho()
-	taskRepo := new(MockTaskRepo)
-	homeworkRepo := new(MockHomeworkRepoForTask)
-	h := handler.NewAdminTaskHandler(taskRepo, homeworkRepo)
+func TestHandlerDeleteTask_InvalidID(t *testing.T) {
+	svc := new(MockAdminTaskService)
+	h := handler.NewAdminTaskHandler(svc)
 
-	courseID := uuid.New()
-	hwID := uuid.New()
-	req, rec := newRequest(http.MethodDelete, "/admin/courses/"+courseID.String()+"/homework/"+hwID.String()+"/tasks/invalid-uuid", nil)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("courseId", "hwId", "taskId")
-	c.SetParamValues(courseID.String(), hwID.String(), "invalid-uuid")
+	c, rec := newEchoContext(http.MethodDelete, "/", nil, map[string]string{"taskId": "bad"})
 
-	err := h.AdminDeleteTaskHandler(c)
+	err := h.DeleteTask(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
-func TestAdminDeleteTask_TaskNotFound(t *testing.T) {
-	e := setupEcho()
-	taskRepo := new(MockTaskRepo)
-	homeworkRepo := new(MockHomeworkRepoForTask)
-	h := handler.NewAdminTaskHandler(taskRepo, homeworkRepo)
+func TestHandlerDeleteTask_NotFound(t *testing.T) {
+	svc := new(MockAdminTaskService)
+	h := handler.NewAdminTaskHandler(svc)
 
-	courseID := uuid.New()
-	hwID := uuid.New()
 	taskID := uuid.New()
-	req, rec := newRequest(http.MethodDelete, "/admin/courses/"+courseID.String()+"/homework/"+hwID.String()+"/tasks/"+taskID.String(), nil)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("courseId", "hwId", "taskId")
-	c.SetParamValues(courseID.String(), hwID.String(), taskID.String())
+	c, rec := newEchoContext(http.MethodDelete, "/", nil, map[string]string{"taskId": taskID.String()})
+	svc.On("DeleteTask", mock.Anything, taskID).Return(service.NotFound("Task not found"))
 
-	taskRepo.On("GetByID", mock.Anything, taskID).Return(nil, assert.AnError)
-
-	err := h.AdminDeleteTaskHandler(c)
+	err := h.DeleteTask(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusNotFound, rec.Code)
+	svc.AssertExpectations(t)
 }
 
-func TestAdminSetTaskScore_Success(t *testing.T) {
-	e := setupEcho()
-	taskRepo := new(MockTaskRepo)
-	homeworkRepo := new(MockHomeworkRepoForTask)
-	h := handler.NewAdminTaskHandler(taskRepo, homeworkRepo)
+func TestHandlerDeleteTask_DeleteError(t *testing.T) {
+	svc := new(MockAdminTaskService)
+	h := handler.NewAdminTaskHandler(svc)
 
-	courseID := uuid.New()
-	hwID := uuid.New()
 	taskID := uuid.New()
-	score := 95
+	c, rec := newEchoContext(http.MethodDelete, "/", nil, map[string]string{"taskId": taskID.String()})
+	svc.On("DeleteTask", mock.Anything, taskID).Return(service.Internal("Failed to delete task", nil))
 
-	body := map[string]interface{}{
-		"score": score,
-	}
-	req, rec := newRequest(http.MethodPatch, "/admin/courses/"+courseID.String()+"/homework/"+hwID.String()+"/tasks/"+taskID.String()+"/score", body)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("courseId", "hwId", "taskId")
-	c.SetParamValues(courseID.String(), hwID.String(), taskID.String())
+	err := h.DeleteTask(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusInternalServerError, rec.Code)
+	svc.AssertExpectations(t)
+}
 
-	existingTask := &model.Task{TaskID: taskID, HwID: hwID}
-	taskRepo.On("GetByID", mock.Anything, taskID).Return(existingTask, nil)
-	taskRepo.On("SetScore", mock.Anything, taskID, score).Return(nil)
+func TestHandlerSetScore_Success(t *testing.T) {
+	svc := new(MockAdminTaskService)
+	h := handler.NewAdminTaskHandler(svc)
 
-	err := h.AdminSetTaskScoreHandler(c)
+	taskID := uuid.New()
+	score := 250
+	body := map[string]interface{}{"score": score}
+	expected := &model.Task{TaskID: taskID}
+
+	c, rec := newEchoContext(http.MethodPatch, "/", body, map[string]string{"taskId": taskID.String()})
+	svc.On("SetScore", mock.Anything, service.SetTaskScoreInput{
+		TaskID: taskID,
+		Score:  score,
+	}).Return(expected, nil)
+
+	err := h.SetScore(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, rec.Code)
-
-	var result map[string]interface{}
-	json.Unmarshal(rec.Body.Bytes(), &result)
-	assert.Equal(t, taskID.String(), result["task_id"])
-	assert.Equal(t, float64(score), result["score"])
+	svc.AssertExpectations(t)
 }
 
-func TestAdminSetTaskScore_InvalidTaskID(t *testing.T) {
-	e := setupEcho()
-	taskRepo := new(MockTaskRepo)
-	homeworkRepo := new(MockHomeworkRepoForTask)
-	h := handler.NewAdminTaskHandler(taskRepo, homeworkRepo)
+func TestHandlerSetScore_InvalidTaskID(t *testing.T) {
+	svc := new(MockAdminTaskService)
+	h := handler.NewAdminTaskHandler(svc)
 
-	courseID := uuid.New()
-	hwID := uuid.New()
-	req, rec := newRequest(http.MethodPatch, "/admin/courses/"+courseID.String()+"/homework/"+hwID.String()+"/tasks/invalid-uuid/score", nil)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("courseId", "hwId", "taskId")
-	c.SetParamValues(courseID.String(), hwID.String(), "invalid-uuid")
+	c, rec := newEchoContext(http.MethodPatch, "/", nil, map[string]string{"taskId": "bad"})
 
-	err := h.AdminSetTaskScoreHandler(c)
+	err := h.SetScore(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
-func TestAdminSetTaskScore_TaskNotFound(t *testing.T) {
-	e := setupEcho()
-	taskRepo := new(MockTaskRepo)
-	homeworkRepo := new(MockHomeworkRepoForTask)
-	h := handler.NewAdminTaskHandler(taskRepo, homeworkRepo)
+func TestHandlerSetScore_NegativeScore(t *testing.T) {
+	svc := new(MockAdminTaskService)
+	h := handler.NewAdminTaskHandler(svc)
 
-	courseID := uuid.New()
-	hwID := uuid.New()
-	taskID := uuid.New()
-	body := map[string]interface{}{"score": 100}
-	req, rec := newRequest(http.MethodPatch, "/admin/courses/"+courseID.String()+"/homework/"+hwID.String()+"/tasks/"+taskID.String()+"/score", body)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("courseId", "hwId", "taskId")
-	c.SetParamValues(courseID.String(), hwID.String(), taskID.String())
-
-	taskRepo.On("GetByID", mock.Anything, taskID).Return(nil, assert.AnError)
-
-	err := h.AdminSetTaskScoreHandler(c)
-	assert.NoError(t, err)
-	assert.Equal(t, http.StatusNotFound, rec.Code)
-}
-
-func TestAdminSetTaskScore_InvalidRequestBody(t *testing.T) {
-	e := setupEcho()
-	taskRepo := new(MockTaskRepo)
-	homeworkRepo := new(MockHomeworkRepoForTask)
-	h := handler.NewAdminTaskHandler(taskRepo, homeworkRepo)
-
-	courseID := uuid.New()
-	hwID := uuid.New()
-	taskID := uuid.New()
-	req, rec := newRequest(http.MethodPatch, "/admin/courses/"+courseID.String()+"/homework/"+hwID.String()+"/tasks/"+taskID.String()+"/score", "invalid")
-	c := e.NewContext(req, rec)
-	c.SetParamNames("courseId", "hwId", "taskId")
-	c.SetParamValues(courseID.String(), hwID.String(), taskID.String())
-
-	existingTask := &model.Task{TaskID: taskID, HwID: hwID}
-	taskRepo.On("GetByID", mock.Anything, taskID).Return(existingTask, nil)
-
-	err := h.AdminSetTaskScoreHandler(c)
-	assert.NoError(t, err)
-	assert.Equal(t, http.StatusBadRequest, rec.Code)
-}
-
-func TestAdminSetTaskScore_NegativeScore(t *testing.T) {
-	e := setupEcho()
-	taskRepo := new(MockTaskRepo)
-	homeworkRepo := new(MockHomeworkRepoForTask)
-	h := handler.NewAdminTaskHandler(taskRepo, homeworkRepo)
-
-	courseID := uuid.New()
-	hwID := uuid.New()
 	taskID := uuid.New()
 	body := map[string]interface{}{"score": -10}
-	req, rec := newRequest(http.MethodPatch, "/admin/courses/"+courseID.String()+"/homework/"+hwID.String()+"/tasks/"+taskID.String()+"/score", body)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("courseId", "hwId", "taskId")
-	c.SetParamValues(courseID.String(), hwID.String(), taskID.String())
 
-	existingTask := &model.Task{TaskID: taskID, HwID: hwID}
-	taskRepo.On("GetByID", mock.Anything, taskID).Return(existingTask, nil)
+	c, rec := newEchoContext(http.MethodPatch, "/", body, map[string]string{"taskId": taskID.String()})
+	svc.On("SetScore", mock.Anything, service.SetTaskScoreInput{TaskID: taskID, Score: -10}).
+		Return(nil, service.BadRequest("score must be positive"))
 
-	err := h.AdminSetTaskScoreHandler(c)
+	err := h.SetScore(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	svc.AssertExpectations(t)
 }
 
-func TestAdminSetTaskScore_ZeroScore(t *testing.T) {
-	e := setupEcho()
-	taskRepo := new(MockTaskRepo)
-	homeworkRepo := new(MockHomeworkRepoForTask)
-	h := handler.NewAdminTaskHandler(taskRepo, homeworkRepo)
+func TestHandlerSetScore_TaskNotFound(t *testing.T) {
+	svc := new(MockAdminTaskService)
+	h := handler.NewAdminTaskHandler(svc)
 
-	courseID := uuid.New()
-	hwID := uuid.New()
 	taskID := uuid.New()
-	score := 0
+	body := map[string]interface{}{"score": 100}
 
-	body := map[string]interface{}{
-		"score": score,
-	}
-	req, rec := newRequest(http.MethodPatch, "/admin/courses/"+courseID.String()+"/homework/"+hwID.String()+"/tasks/"+taskID.String()+"/score", body)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("courseId", "hwId", "taskId")
-	c.SetParamValues(courseID.String(), hwID.String(), taskID.String())
+	c, rec := newEchoContext(http.MethodPatch, "/", body, map[string]string{"taskId": taskID.String()})
+	svc.On("SetScore", mock.Anything, service.SetTaskScoreInput{TaskID: taskID, Score: 100}).
+		Return(nil, service.NotFound("Task not found"))
 
-	existingTask := &model.Task{TaskID: taskID, HwID: hwID}
-	taskRepo.On("GetByID", mock.Anything, taskID).Return(existingTask, nil)
-	taskRepo.On("SetScore", mock.Anything, taskID, score).Return(nil)
-
-	err := h.AdminSetTaskScoreHandler(c)
+	err := h.SetScore(c)
 	assert.NoError(t, err)
-	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, http.StatusNotFound, rec.Code)
+	svc.AssertExpectations(t)
+}
 
-	var result map[string]interface{}
-	json.Unmarshal(rec.Body.Bytes(), &result)
-	assert.Equal(t, taskID.String(), result["task_id"])
-	assert.Equal(t, float64(score), result["score"])
+func TestHandlerSetScore_ServiceError(t *testing.T) {
+	svc := new(MockAdminTaskService)
+	h := handler.NewAdminTaskHandler(svc)
+
+	taskID := uuid.New()
+	body := map[string]interface{}{"score": 100}
+
+	c, rec := newEchoContext(http.MethodPatch, "/", body, map[string]string{"taskId": taskID.String()})
+	svc.On("SetScore", mock.Anything, service.SetTaskScoreInput{TaskID: taskID, Score: 100}).
+		Return(nil, service.Internal("Failed to set score", nil))
+
+	err := h.SetScore(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusInternalServerError, rec.Code)
+	svc.AssertExpectations(t)
 }

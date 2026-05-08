@@ -1,348 +1,378 @@
 package handler_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
 	"fcstask-backend/internal/db/model"
 	"fcstask-backend/internal/handler"
+	"fcstask-backend/internal/service"
 )
 
-type MockHomeworkRepo struct {
+type MockAdminHomeworkService struct {
 	mock.Mock
 }
 
-func (m *MockHomeworkRepo) Create(ctx context.Context, hw *model.Homework) error {
-	return m.Called(ctx, hw).Error(0)
-}
-
-func (m *MockHomeworkRepo) GetByID(ctx context.Context, id uuid.UUID) (*model.Homework, error) {
-	args := m.Called(ctx, id)
+func (m *MockAdminHomeworkService) CreateHomework(ctx context.Context, input service.CreateHomeworkInput) (*model.Homework, error) {
+	args := m.Called(ctx, input)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(*model.Homework), args.Error(1)
 }
 
-func (m *MockHomeworkRepo) GetByCourseID(ctx context.Context, courseID uuid.UUID) ([]model.Homework, error) {
+func (m *MockAdminHomeworkService) GetHomework(ctx context.Context, hwID uuid.UUID) (*model.Homework, error) {
+	args := m.Called(ctx, hwID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*model.Homework), args.Error(1)
+}
+
+func (m *MockAdminHomeworkService) ListHomework(ctx context.Context, courseID uuid.UUID) ([]model.Homework, error) {
 	args := m.Called(ctx, courseID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
 	return args.Get(0).([]model.Homework), args.Error(1)
 }
 
-func (m *MockHomeworkRepo) Update(ctx context.Context, hw *model.Homework) error {
-	return m.Called(ctx, hw).Error(0)
+func (m *MockAdminHomeworkService) UpdateHomework(ctx context.Context, hwID uuid.UUID, input service.UpdateHomeworkInput) (*model.Homework, error) {
+	args := m.Called(ctx, hwID, input)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*model.Homework), args.Error(1)
 }
 
-func (m *MockHomeworkRepo) Delete(ctx context.Context, id uuid.UUID) error {
-	return m.Called(ctx, id).Error(0)
+func (m *MockAdminHomeworkService) DeleteHomework(ctx context.Context, hwID uuid.UUID) error {
+	args := m.Called(ctx, hwID)
+	return args.Error(0)
 }
 
-type MockDeadlineRepo struct {
-	mock.Mock
+func (m *MockAdminHomeworkService) PublishHomework(ctx context.Context, hwID uuid.UUID, isPublic bool) (*model.Homework, error) {
+	args := m.Called(ctx, hwID, isPublic)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*model.Homework), args.Error(1)
 }
 
-func (m *MockDeadlineRepo) Create(ctx context.Context, deadline *model.Deadline) error {
-	return m.Called(ctx, deadline).Error(0)
-}
-
-func (m *MockDeadlineRepo) GetByID(ctx context.Context, id uuid.UUID) (*model.Deadline, error) {
-	args := m.Called(ctx, id)
+func (m *MockAdminHomeworkService) SetDeadline(ctx context.Context, input service.SetDeadlineInput) (*model.Deadline, error) {
+	args := m.Called(ctx, input)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(*model.Deadline), args.Error(1)
 }
 
-func (m *MockDeadlineRepo) GetByCourseID(ctx context.Context, courseID uuid.UUID) ([]model.Deadline, error) {
-	args := m.Called(ctx, courseID)
-	return args.Get(0).([]model.Deadline), args.Error(1)
+func (m *MockAdminHomeworkService) UpdateDeadline(ctx context.Context, deadlineID uuid.UUID, input service.UpdateDeadlineInput) (*model.Deadline, error) {
+	args := m.Called(ctx, deadlineID, input)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*model.Deadline), args.Error(1)
 }
 
-func (m *MockDeadlineRepo) Update(ctx context.Context, deadline *model.Deadline) error {
-	return m.Called(ctx, deadline).Error(0)
+func (m *MockAdminHomeworkService) DeleteDeadline(ctx context.Context, deadlineID uuid.UUID) error {
+	args := m.Called(ctx, deadlineID)
+	return args.Error(0)
 }
 
-func (m *MockDeadlineRepo) Delete(ctx context.Context, id uuid.UUID) error {
-	return m.Called(ctx, id).Error(0)
+func newEchoContext(method, path string, body interface{}, params map[string]string) (echo.Context, *httptest.ResponseRecorder) {
+	e := echo.New()
+	var req *http.Request
+	if body != nil {
+		b, _ := json.Marshal(body)
+		req = httptest.NewRequest(method, path, bytes.NewReader(b))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	} else {
+		req = httptest.NewRequest(method, path, nil)
+	}
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	for k, v := range params {
+		c.SetParamNames(k)
+		c.SetParamValues(v)
+	}
+	return c, rec
 }
 
-func TestAdminCreateHomework_Success(t *testing.T) {
-	e := setupEcho()
-	hwRepo := new(MockHomeworkRepo)
-	dlRepo := new(MockDeadlineRepo)
-	h := handler.NewAdminHomeworkHandler(hwRepo, dlRepo)
+func newEchoContextMultiParam(method, path string, body interface{}, paramNames []string, paramValues []string) (echo.Context, *httptest.ResponseRecorder) {
+	e := echo.New()
+	var req *http.Request
+	if body != nil {
+		b, _ := json.Marshal(body)
+		req = httptest.NewRequest(method, path, bytes.NewReader(b))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	} else {
+		req = httptest.NewRequest(method, path, nil)
+	}
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames(paramNames...)
+	c.SetParamValues(paramValues...)
+	return c, rec
+}
+
+func TestHandlerCreateHomework_Success(t *testing.T) {
+	svc := new(MockAdminHomeworkService)
+	h := handler.NewAdminHomeworkHandler(svc)
+
+	courseID := uuid.New()
+	hwID := uuid.New()
+	startDate := "2025-01-01"
+	endDate := "2025-06-01"
+
+	body := map[string]interface{}{
+		"start_date": startDate,
+		"end_date":   endDate,
+	}
+
+	expected := &model.Homework{HwID: hwID, CourseID: courseID}
+
+	c, rec := newEchoContext(http.MethodPost, "/", body, map[string]string{"courseId": courseID.String()})
+	svc.On("CreateHomework", mock.Anything, service.CreateHomeworkInput{
+		CourseID:  courseID,
+		StartDate: startDate,
+		EndDate:   endDate,
+	}).Return(expected, nil)
+
+	err := h.CreateHomework(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusCreated, rec.Code)
+	svc.AssertExpectations(t)
+}
+
+func TestHandlerCreateHomework_InvalidCourseID(t *testing.T) {
+	svc := new(MockAdminHomeworkService)
+	h := handler.NewAdminHomeworkHandler(svc)
+
+	c, rec := newEchoContext(http.MethodPost, "/", nil, map[string]string{"courseId": "not-a-uuid"})
+
+	err := h.CreateHomework(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestHandlerCreateHomework_ServiceError(t *testing.T) {
+	svc := new(MockAdminHomeworkService)
+	h := handler.NewAdminHomeworkHandler(svc)
 
 	courseID := uuid.New()
 	body := map[string]interface{}{
-		"course_id":  courseID,
 		"start_date": "2025-01-01",
 		"end_date":   "2025-06-01",
 	}
-	req, rec := newRequest(http.MethodPost, "/", body)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("courseId")
-	c.SetParamValues(courseID.String())
 
-	hwRepo.On("Create", mock.Anything, mock.AnythingOfType("*model.Homework")).Return(nil)
+	c, rec := newEchoContext(http.MethodPost, "/", body, map[string]string{"courseId": courseID.String()})
+	svc.On("CreateHomework", mock.Anything, mock.Anything).Return(nil, service.BadRequest("end date must be after start_date"))
 
-	err := h.AdminCreateHomeworkHandler(c)
-	assert.NoError(t, err)
-	assert.Equal(t, http.StatusCreated, rec.Code)
-}
-
-func TestAdminCreateHomework_InvalidCourseID(t *testing.T) {
-	e := setupEcho()
-	hwRepo := new(MockHomeworkRepo)
-	dlRepo := new(MockDeadlineRepo)
-	h := handler.NewAdminHomeworkHandler(hwRepo, dlRepo)
-
-	req, rec := newRequest(http.MethodPost, "/", nil)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("courseId")
-	c.SetParamValues("bad-uuid")
-
-	err := h.AdminCreateHomeworkHandler(c)
+	err := h.CreateHomework(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	svc.AssertExpectations(t)
 }
 
-func TestAdminCreateHomework_InvalidStartDate(t *testing.T) {
-	e := setupEcho()
-	hwRepo := new(MockHomeworkRepo)
-	dlRepo := new(MockDeadlineRepo)
-	h := handler.NewAdminHomeworkHandler(hwRepo, dlRepo)
-
-	courseID := uuid.New()
-	body := map[string]interface{}{"start_date": "not-a-date"}
-	req, rec := newRequest(http.MethodPost, "/", body)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("courseId")
-	c.SetParamValues(courseID.String())
-
-	err := h.AdminCreateHomeworkHandler(c)
-	assert.NoError(t, err)
-	assert.Equal(t, http.StatusBadRequest, rec.Code)
-}
-
-func TestAdminCreateHomework_EndBeforeStart(t *testing.T) {
-	e := setupEcho()
-	hwRepo := new(MockHomeworkRepo)
-	dlRepo := new(MockDeadlineRepo)
-	h := handler.NewAdminHomeworkHandler(hwRepo, dlRepo)
-
-	courseID := uuid.New()
-	body := map[string]interface{}{
-		"start_date": "2025-12-01",
-		"end_date":   "2025-01-01",
-	}
-	req, rec := newRequest(http.MethodPost, "/", body)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("courseId")
-	c.SetParamValues(courseID.String())
-
-	err := h.AdminCreateHomeworkHandler(c)
-	assert.NoError(t, err)
-	assert.Equal(t, http.StatusBadRequest, rec.Code)
-}
-
-func TestAdminGetHomework_Success(t *testing.T) {
-	e := setupEcho()
-	hwRepo := new(MockHomeworkRepo)
-	dlRepo := new(MockDeadlineRepo)
-	h := handler.NewAdminHomeworkHandler(hwRepo, dlRepo)
+func TestHandlerGetHomework_Success(t *testing.T) {
+	svc := new(MockAdminHomeworkService)
+	h := handler.NewAdminHomeworkHandler(svc)
 
 	hwID := uuid.New()
-	req, rec := newRequest(http.MethodGet, "/", nil)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("hwId")
-	c.SetParamValues(hwID.String())
+	expected := &model.Homework{HwID: hwID}
 
-	hw := &model.Homework{HwID: hwID}
-	hwRepo.On("GetByID", mock.Anything, hwID).Return(hw, nil)
+	c, rec := newEchoContextMultiParam(http.MethodGet, "/", nil,
+		[]string{"courseId", "hwId"},
+		[]string{uuid.New().String(), hwID.String()},
+	)
+	svc.On("GetHomework", mock.Anything, hwID).Return(expected, nil)
 
-	err := h.AdminGetHomeworkHandler(c)
+	err := h.GetHomework(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, rec.Code)
+	svc.AssertExpectations(t)
 }
 
-func TestAdminGetHomework_InvalidID(t *testing.T) {
-	e := setupEcho()
-	hwRepo := new(MockHomeworkRepo)
-	dlRepo := new(MockDeadlineRepo)
-	h := handler.NewAdminHomeworkHandler(hwRepo, dlRepo)
+func TestHandlerGetHomework_InvalidID(t *testing.T) {
+	svc := new(MockAdminHomeworkService)
+	h := handler.NewAdminHomeworkHandler(svc)
 
-	req, rec := newRequest(http.MethodGet, "/", nil)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("hwId")
-	c.SetParamValues("bad-uuid")
+	c, rec := newEchoContext(http.MethodGet, "/", nil, map[string]string{"hwId": "invalid"})
 
-	err := h.AdminGetHomeworkHandler(c)
+	err := h.GetHomework(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
-func TestAdminGetHomework_NotFound(t *testing.T) {
-	e := setupEcho()
-	hwRepo := new(MockHomeworkRepo)
-	dlRepo := new(MockDeadlineRepo)
-	h := handler.NewAdminHomeworkHandler(hwRepo, dlRepo)
+func TestHandlerGetHomework_NotFound(t *testing.T) {
+	svc := new(MockAdminHomeworkService)
+	h := handler.NewAdminHomeworkHandler(svc)
 
 	hwID := uuid.New()
-	req, rec := newRequest(http.MethodGet, "/", nil)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("hwId")
-	c.SetParamValues(hwID.String())
+	c, rec := newEchoContext(http.MethodGet, "/", nil, map[string]string{"hwId": hwID.String()})
+	svc.On("GetHomework", mock.Anything, hwID).Return(nil, service.NotFound("Homework not found"))
 
-	hwRepo.On("GetByID", mock.Anything, hwID).Return(nil, assert.AnError)
-
-	err := h.AdminGetHomeworkHandler(c)
+	err := h.GetHomework(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusNotFound, rec.Code)
+	svc.AssertExpectations(t)
 }
 
-func TestAdminListHomework_Success(t *testing.T) {
-	e := setupEcho()
-	hwRepo := new(MockHomeworkRepo)
-	dlRepo := new(MockDeadlineRepo)
-	h := handler.NewAdminHomeworkHandler(hwRepo, dlRepo)
+func TestHandlerListHomework_Success(t *testing.T) {
+	svc := new(MockAdminHomeworkService)
+	h := handler.NewAdminHomeworkHandler(svc)
 
 	courseID := uuid.New()
-	req, rec := newRequest(http.MethodGet, "/", nil)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("courseId")
-	c.SetParamValues(courseID.String())
+	expected := []model.Homework{{HwID: uuid.New(), CourseID: courseID}}
 
-	hwRepo.On("GetByCourseID", mock.Anything, courseID).Return([]model.Homework{{HwID: uuid.New()}}, nil)
+	c, rec := newEchoContext(http.MethodGet, "/", nil, map[string]string{"courseId": courseID.String()})
+	svc.On("ListHomework", mock.Anything, courseID).Return(expected, nil)
 
-	err := h.AdminListHomeworkHandler(c)
+	err := h.ListHomework(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, rec.Code)
+	svc.AssertExpectations(t)
 }
 
-func TestAdminUpdateHomework_Success(t *testing.T) {
-	e := setupEcho()
-	hwRepo := new(MockHomeworkRepo)
-	dlRepo := new(MockDeadlineRepo)
-	h := handler.NewAdminHomeworkHandler(hwRepo, dlRepo)
+func TestHandlerListHomework_InvalidCourseID(t *testing.T) {
+	svc := new(MockAdminHomeworkService)
+	h := handler.NewAdminHomeworkHandler(svc)
 
-	hwID := uuid.New()
-	body := map[string]interface{}{"end_date": "2026-01-01"}
-	req, rec := newRequest(http.MethodPatch, "/", body)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("hwId")
-	c.SetParamValues(hwID.String())
+	c, rec := newEchoContext(http.MethodGet, "/", nil, map[string]string{"courseId": "bad"})
 
-	hw := &model.Homework{HwID: hwID}
-	hwRepo.On("GetByID", mock.Anything, hwID).Return(hw, nil)
-	hwRepo.On("Update", mock.Anything, mock.AnythingOfType("*model.Homework")).Return(nil)
-
-	err := h.AdminUpdateHomeworkHandler(c)
-	assert.NoError(t, err)
-	assert.Equal(t, http.StatusOK, rec.Code)
-}
-
-func TestAdminUpdateHomework_EndBeforeStart(t *testing.T) {
-	e := setupEcho()
-	hwRepo := new(MockHomeworkRepo)
-	dlRepo := new(MockDeadlineRepo)
-	h := handler.NewAdminHomeworkHandler(hwRepo, dlRepo)
-
-	hwID := uuid.New()
-	start := time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC)
-	body := map[string]interface{}{"end_date": "2025-01-01"}
-	req, rec := newRequest(http.MethodPatch, "/", body)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("hwId")
-	c.SetParamValues(hwID.String())
-
-	hw := &model.Homework{HwID: hwID, StartDate: &start}
-	hwRepo.On("GetByID", mock.Anything, hwID).Return(hw, nil)
-
-	err := h.AdminUpdateHomeworkHandler(c)
+	err := h.ListHomework(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
-func TestAdminDeleteHomework_Success(t *testing.T) {
-	e := setupEcho()
-	hwRepo := new(MockHomeworkRepo)
-	dlRepo := new(MockDeadlineRepo)
-	h := handler.NewAdminHomeworkHandler(hwRepo, dlRepo)
+func TestHandlerUpdateHomework_Success(t *testing.T) {
+	svc := new(MockAdminHomeworkService)
+	h := handler.NewAdminHomeworkHandler(svc)
 
 	hwID := uuid.New()
-	req, rec := newRequest(http.MethodDelete, "/", nil)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("hwId")
-	c.SetParamValues(hwID.String())
+	newEnd := "2026-01-01"
+	body := map[string]interface{}{"end_date": newEnd}
+	expected := &model.Homework{HwID: hwID}
 
-	hw := &model.Homework{HwID: hwID}
-	hwRepo.On("GetByID", mock.Anything, hwID).Return(hw, nil)
-	hwRepo.On("Delete", mock.Anything, hwID).Return(nil)
+	c, rec := newEchoContextMultiParam(http.MethodPatch, "/", body,
+		[]string{"courseId", "hwId"},
+		[]string{uuid.New().String(), hwID.String()},
+	)
+	svc.On("UpdateHomework", mock.Anything, hwID, service.UpdateHomeworkInput{EndDate: newEnd}).Return(expected, nil)
 
-	err := h.AdminDeleteHomeworkHandler(c)
+	err := h.UpdateHomework(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	svc.AssertExpectations(t)
+}
+
+func TestHandlerUpdateHomework_InvalidID(t *testing.T) {
+	svc := new(MockAdminHomeworkService)
+	h := handler.NewAdminHomeworkHandler(svc)
+
+	c, rec := newEchoContext(http.MethodPatch, "/", nil, map[string]string{"hwId": "bad"})
+
+	err := h.UpdateHomework(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestHandlerUpdateHomework_ServiceError(t *testing.T) {
+	svc := new(MockAdminHomeworkService)
+	h := handler.NewAdminHomeworkHandler(svc)
+
+	hwID := uuid.New()
+	body := map[string]interface{}{"end_date": "2025-01-01"}
+
+	c, rec := newEchoContext(http.MethodPatch, "/", body, map[string]string{"hwId": hwID.String()})
+	svc.On("UpdateHomework", mock.Anything, hwID, mock.Anything).Return(nil, service.NotFound("Homework not found"))
+
+	err := h.UpdateHomework(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusNotFound, rec.Code)
+	svc.AssertExpectations(t)
+}
+
+func TestHandlerDeleteHomework_Success(t *testing.T) {
+	svc := new(MockAdminHomeworkService)
+	h := handler.NewAdminHomeworkHandler(svc)
+
+	hwID := uuid.New()
+	c, rec := newEchoContext(http.MethodDelete, "/", nil, map[string]string{"hwId": hwID.String()})
+	svc.On("DeleteHomework", mock.Anything, hwID).Return(nil)
+
+	err := h.DeleteHomework(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusNoContent, rec.Code)
+	svc.AssertExpectations(t)
 }
 
-func TestAdminDeleteHomework_NotFound(t *testing.T) {
-	e := setupEcho()
-	hwRepo := new(MockHomeworkRepo)
-	dlRepo := new(MockDeadlineRepo)
-	h := handler.NewAdminHomeworkHandler(hwRepo, dlRepo)
+func TestHandlerDeleteHomework_InvalidID(t *testing.T) {
+	svc := new(MockAdminHomeworkService)
+	h := handler.NewAdminHomeworkHandler(svc)
+
+	c, rec := newEchoContext(http.MethodDelete, "/", nil, map[string]string{"hwId": "bad"})
+
+	err := h.DeleteHomework(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestHandlerDeleteHomework_NotFound(t *testing.T) {
+	svc := new(MockAdminHomeworkService)
+	h := handler.NewAdminHomeworkHandler(svc)
 
 	hwID := uuid.New()
-	req, rec := newRequest(http.MethodDelete, "/", nil)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("hwId")
-	c.SetParamValues(hwID.String())
+	c, rec := newEchoContext(http.MethodDelete, "/", nil, map[string]string{"hwId": hwID.String()})
+	svc.On("DeleteHomework", mock.Anything, hwID).Return(service.NotFound("Homework not found"))
 
-	hwRepo.On("GetByID", mock.Anything, hwID).Return(nil, assert.AnError)
-
-	err := h.AdminDeleteHomeworkHandler(c)
+	err := h.DeleteHomework(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusNotFound, rec.Code)
+	svc.AssertExpectations(t)
 }
 
-func TestAdminPublishHomework_Success(t *testing.T) {
-	e := setupEcho()
-	hwRepo := new(MockHomeworkRepo)
-	dlRepo := new(MockDeadlineRepo)
-	h := handler.NewAdminHomeworkHandler(hwRepo, dlRepo)
+func TestHandlerPublishHomework_Success(t *testing.T) {
+	svc := new(MockAdminHomeworkService)
+	h := handler.NewAdminHomeworkHandler(svc)
 
 	hwID := uuid.New()
-	body := map[string]interface{}{"is_public": true}
-	req, rec := newRequest(http.MethodPatch, "/", body)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("hwId")
-	c.SetParamValues(hwID.String())
+	isPublic := true
+	body := map[string]interface{}{"is_public": isPublic}
+	expected := &model.Homework{HwID: hwID, IsPublic: &isPublic}
 
-	hw := &model.Homework{HwID: hwID}
-	hwRepo.On("GetByID", mock.Anything, hwID).Return(hw, nil)
-	hwRepo.On("Update", mock.Anything, mock.AnythingOfType("*model.Homework")).Return(nil)
+	c, rec := newEchoContext(http.MethodPatch, "/", body, map[string]string{"hwId": hwID.String()})
+	svc.On("PublishHomework", mock.Anything, hwID, isPublic).Return(expected, nil)
 
-	err := h.AdminPublishHomeworkHandler(c)
+	err := h.PublishHomework(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, rec.Code)
-
-	var result model.Homework
-	_ = json.NewDecoder(rec.Body).Decode(&result)
-	assert.NotNil(t, result.IsPublic)
-	assert.True(t, *result.IsPublic)
+	svc.AssertExpectations(t)
 }
 
-func TestAdminSetHomeworkDeadline_Success(t *testing.T) {
-	e := setupEcho()
-	hwRepo := new(MockHomeworkRepo)
-	dlRepo := new(MockDeadlineRepo)
-	h := handler.NewAdminHomeworkHandler(hwRepo, dlRepo)
+func TestHandlerPublishHomework_InvalidID(t *testing.T) {
+	svc := new(MockAdminHomeworkService)
+	h := handler.NewAdminHomeworkHandler(svc)
+
+	c, rec := newEchoContext(http.MethodPatch, "/", nil, map[string]string{"hwId": "bad"})
+
+	err := h.PublishHomework(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestHandlerSetDeadline_Success(t *testing.T) {
+	svc := new(MockAdminHomeworkService)
+	h := handler.NewAdminHomeworkHandler(svc)
 
 	courseID := uuid.New()
 	hwID := uuid.New()
@@ -350,149 +380,150 @@ func TestAdminSetHomeworkDeadline_Success(t *testing.T) {
 		"title":    "Deadline 1",
 		"due_date": "2025-12-31T23:59:59Z",
 	}
-	req, rec := newRequest(http.MethodPut, "/", body)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("courseId", "hwId")
-	c.SetParamValues(courseID.String(), hwID.String())
+	expected := &model.Deadline{Title: "Deadline 1", CourseID: courseID}
 
-	hw := &model.Homework{HwID: hwID}
-	hwRepo.On("GetByID", mock.Anything, hwID).Return(hw, nil)
-	dlRepo.On("Create", mock.Anything, mock.AnythingOfType("*model.Deadline")).Return(nil)
+	c, rec := newEchoContextMultiParam(http.MethodPut, "/", body,
+		[]string{"courseId", "hwId"},
+		[]string{courseID.String(), hwID.String()},
+	)
+	svc.On("SetDeadline", mock.Anything, mock.MatchedBy(func(inp service.SetDeadlineInput) bool {
+		return inp.CourseID == courseID && inp.HomeworkID == hwID && inp.Title == "Deadline 1"
+	})).Return(expected, nil)
 
-	err := h.AdminSetHomeworkDeadlineHandler(c)
+	err := h.SetDeadline(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusCreated, rec.Code)
+	svc.AssertExpectations(t)
 }
 
-func TestAdminSetHomeworkDeadline_MissingTitle(t *testing.T) {
-	e := setupEcho()
-	hwRepo := new(MockHomeworkRepo)
-	dlRepo := new(MockDeadlineRepo)
-	h := handler.NewAdminHomeworkHandler(hwRepo, dlRepo)
+func TestHandlerSetDeadline_InvalidCourseID(t *testing.T) {
+	svc := new(MockAdminHomeworkService)
+	h := handler.NewAdminHomeworkHandler(svc)
 
-	courseID := uuid.New()
-	hwID := uuid.New()
-	body := map[string]interface{}{"due_date": "2025-12-31T23:59:59Z"}
-	req, rec := newRequest(http.MethodPut, "/", body)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("courseId", "hwId")
-	c.SetParamValues(courseID.String(), hwID.String())
+	c, rec := newEchoContextMultiParam(http.MethodPut, "/", nil,
+		[]string{"courseId", "hwId"},
+		[]string{"bad", uuid.New().String()},
+	)
 
-	hw := &model.Homework{HwID: hwID}
-	hwRepo.On("GetByID", mock.Anything, hwID).Return(hw, nil)
-
-	err := h.AdminSetHomeworkDeadlineHandler(c)
+	err := h.SetDeadline(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
-func TestAdminSetHomeworkDeadline_InvalidDueDate(t *testing.T) {
-	e := setupEcho()
-	hwRepo := new(MockHomeworkRepo)
-	dlRepo := new(MockDeadlineRepo)
-	h := handler.NewAdminHomeworkHandler(hwRepo, dlRepo)
+func TestHandlerSetDeadline_InvalidHomeworkID(t *testing.T) {
+	svc := new(MockAdminHomeworkService)
+	h := handler.NewAdminHomeworkHandler(svc)
 
-	courseID := uuid.New()
-	hwID := uuid.New()
-	body := map[string]interface{}{
-		"title":    "X",
-		"due_date": "not-a-date",
-	}
-	req, rec := newRequest(http.MethodPut, "/", body)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("courseId", "hwId")
-	c.SetParamValues(courseID.String(), hwID.String())
+	c, rec := newEchoContextMultiParam(http.MethodPut, "/", nil,
+		[]string{"courseId", "hwId"},
+		[]string{uuid.New().String(), "bad"},
+	)
 
-	hw := &model.Homework{HwID: hwID}
-	hwRepo.On("GetByID", mock.Anything, hwID).Return(hw, nil)
-
-	err := h.AdminSetHomeworkDeadlineHandler(c)
+	err := h.SetDeadline(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
-func TestAdminUpdateDeadline_Success(t *testing.T) {
-	e := setupEcho()
-	hwRepo := new(MockHomeworkRepo)
-	dlRepo := new(MockDeadlineRepo)
-	h := handler.NewAdminHomeworkHandler(hwRepo, dlRepo)
+func TestHandlerSetDeadline_ServiceError(t *testing.T) {
+	svc := new(MockAdminHomeworkService)
+	h := handler.NewAdminHomeworkHandler(svc)
+
+	courseID := uuid.New()
+	hwID := uuid.New()
+	body := map[string]interface{}{"title": "", "due_date": "2025-12-31T23:59:59Z"}
+
+	c, rec := newEchoContextMultiParam(http.MethodPut, "/", body,
+		[]string{"courseId", "hwId"},
+		[]string{courseID.String(), hwID.String()},
+	)
+	svc.On("SetDeadline", mock.Anything, mock.Anything).Return(nil, service.BadRequest("title is required"))
+
+	err := h.SetDeadline(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	svc.AssertExpectations(t)
+}
+
+func TestHandlerUpdateDeadline_Success(t *testing.T) {
+	svc := new(MockAdminHomeworkService)
+	h := handler.NewAdminHomeworkHandler(svc)
 
 	dlID := uuid.New()
 	newTitle := "Updated Title"
 	body := map[string]interface{}{"title": newTitle}
-	req, rec := newRequest(http.MethodPatch, "/", body)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("deadlineId")
-	c.SetParamValues(dlID.String())
+	expected := &model.Deadline{ID: dlID, Title: newTitle}
 
-	dl := &model.Deadline{ID: dlID, Title: "Old Title"}
-	dlRepo.On("GetByID", mock.Anything, dlID).Return(dl, nil)
-	dlRepo.On("Update", mock.Anything, mock.AnythingOfType("*model.Deadline")).Return(nil)
+	c, rec := newEchoContext(http.MethodPatch, "/", body, map[string]string{"deadlineId": dlID.String()})
+	svc.On("UpdateDeadline", mock.Anything, dlID, service.UpdateDeadlineInput{Title: newTitle}).Return(expected, nil)
 
-	err := h.AdminUpdateDeadlineHandler(c)
+	err := h.UpdateDeadline(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, rec.Code)
+	svc.AssertExpectations(t)
 }
 
-func TestAdminUpdateDeadline_EmptyTitle(t *testing.T) {
-	e := setupEcho()
-	hwRepo := new(MockHomeworkRepo)
-	dlRepo := new(MockDeadlineRepo)
-	h := handler.NewAdminHomeworkHandler(hwRepo, dlRepo)
+func TestHandlerUpdateDeadline_InvalidID(t *testing.T) {
+	svc := new(MockAdminHomeworkService)
+	h := handler.NewAdminHomeworkHandler(svc)
 
-	dlID := uuid.New()
-	body := map[string]interface{}{"title": ""}
-	req, rec := newRequest(http.MethodPatch, "/", body)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("deadlineId")
-	c.SetParamValues(dlID.String())
+	c, rec := newEchoContext(http.MethodPatch, "/", nil, map[string]string{"deadlineId": "bad"})
 
-	dl := &model.Deadline{ID: dlID, Title: "Old Title"}
-	dlRepo.On("GetByID", mock.Anything, dlID).Return(dl, nil)
-
-	err := h.AdminUpdateDeadlineHandler(c)
+	err := h.UpdateDeadline(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
-func TestAdminDeleteDeadline_Success(t *testing.T) {
-	e := setupEcho()
-	hwRepo := new(MockHomeworkRepo)
-	dlRepo := new(MockDeadlineRepo)
-	h := handler.NewAdminHomeworkHandler(hwRepo, dlRepo)
+func TestHandlerUpdateDeadline_NotFound(t *testing.T) {
+	svc := new(MockAdminHomeworkService)
+	h := handler.NewAdminHomeworkHandler(svc)
 
 	dlID := uuid.New()
-	req, rec := newRequest(http.MethodDelete, "/", nil)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("deadlineId")
-	c.SetParamValues(dlID.String())
+	body := map[string]interface{}{"title": "New"}
 
-	dl := &model.Deadline{ID: dlID}
-	dlRepo.On("GetByID", mock.Anything, dlID).Return(dl, nil)
-	dlRepo.On("Delete", mock.Anything, dlID).Return(nil)
+	c, rec := newEchoContext(http.MethodPatch, "/", body, map[string]string{"deadlineId": dlID.String()})
+	svc.On("UpdateDeadline", mock.Anything, dlID, mock.Anything).Return(nil, service.NotFound("Deadline not found"))
 
-	err := h.AdminDeleteDeadlineHandler(c)
-	assert.NoError(t, err)
-	assert.Equal(t, http.StatusNoContent, rec.Code)
-}
-
-func TestAdminDeleteDeadline_NotFound(t *testing.T) {
-	e := setupEcho()
-	hwRepo := new(MockHomeworkRepo)
-	dlRepo := new(MockDeadlineRepo)
-	h := handler.NewAdminHomeworkHandler(hwRepo, dlRepo)
-
-	dlID := uuid.New()
-	req, rec := newRequest(http.MethodDelete, "/", nil)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("deadlineId")
-	c.SetParamValues(dlID.String())
-
-	dlRepo.On("GetByID", mock.Anything, dlID).Return(nil, assert.AnError)
-
-	err := h.AdminDeleteDeadlineHandler(c)
+	err := h.UpdateDeadline(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusNotFound, rec.Code)
+	svc.AssertExpectations(t)
 }
 
-var _ = httptest.NewRecorder
+func TestHandlerDeleteDeadline_Success(t *testing.T) {
+	svc := new(MockAdminHomeworkService)
+	h := handler.NewAdminHomeworkHandler(svc)
+
+	dlID := uuid.New()
+	c, rec := newEchoContext(http.MethodDelete, "/", nil, map[string]string{"deadlineId": dlID.String()})
+	svc.On("DeleteDeadline", mock.Anything, dlID).Return(nil)
+
+	err := h.DeleteDeadline(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusNoContent, rec.Code)
+	svc.AssertExpectations(t)
+}
+
+func TestHandlerDeleteDeadline_InvalidID(t *testing.T) {
+	svc := new(MockAdminHomeworkService)
+	h := handler.NewAdminHomeworkHandler(svc)
+
+	c, rec := newEchoContext(http.MethodDelete, "/", nil, map[string]string{"deadlineId": "bad"})
+
+	err := h.DeleteDeadline(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestHandlerDeleteDeadline_NotFound(t *testing.T) {
+	svc := new(MockAdminHomeworkService)
+	h := handler.NewAdminHomeworkHandler(svc)
+
+	dlID := uuid.New()
+	c, rec := newEchoContext(http.MethodDelete, "/", nil, map[string]string{"deadlineId": dlID.String()})
+	svc.On("DeleteDeadline", mock.Anything, dlID).Return(service.NotFound("Deadline not found"))
+
+	err := h.DeleteDeadline(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusNotFound, rec.Code)
+	svc.AssertExpectations(t)
+}

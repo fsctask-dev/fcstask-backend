@@ -6,20 +6,15 @@ import (
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 
-	"fcstask-backend/internal/db/model"
-	"fcstask-backend/internal/db/repo"
+	"fcstask-backend/internal/service"
 )
 
 type AdminRoleHandler struct {
-	roleRepo repo.IRoleRepo
-	userRepo repo.IUserRepo
+	roleService IAdminRoleService
 }
 
-func NewAdminRoleHandler(roleRepo repo.IRoleRepo, userRepo repo.IUserRepo) *AdminRoleHandler {
-	return &AdminRoleHandler{
-		roleRepo: roleRepo,
-		userRepo: userRepo,
-	}
+func NewAdminRoleHandler(roleService IAdminRoleService) *AdminRoleHandler {
+	return &AdminRoleHandler{roleService: roleService}
 }
 
 type AssignRoleRequest struct {
@@ -37,7 +32,7 @@ type AddPermissionRequest struct {
 }
 
 // POST /admin/courses/:courseId/roles
-func (h *AdminRoleHandler) AdminAssignRoleHandler(c echo.Context) error {
+func (h *AdminRoleHandler) AssignRole(c echo.Context) error {
 	courseID, err := uuid.Parse(c.Param("courseId"))
 	if err != nil {
 		return badRequest(c, "Invalid course ID")
@@ -48,32 +43,20 @@ func (h *AdminRoleHandler) AdminAssignRoleHandler(c echo.Context) error {
 		return badRequest(c, "Invalid request body")
 	}
 
-	if req.UserID == uuid.Nil {
-		return badRequest(c, "user_id is required")
-	}
-	if req.RoleID == uuid.Nil {
-		return badRequest(c, "role_id is required")
-	}
-
-	if _, err := h.userRepo.GetUserByID(c.Request().Context(), req.UserID); err != nil {
-		return notFound(c, "User not found")
-	}
-
-	userRole := &model.UserRole{
+	userRole, err := h.roleService.AssignRole(c.Request().Context(), service.AssignRoleInput{
 		UserID:   req.UserID,
 		CourseID: courseID,
 		RoleID:   req.RoleID,
-	}
-
-	if err := h.roleRepo.AssignRole(c.Request().Context(), userRole); err != nil {
-		return internalError(c, "Failed to assign role")
+	})
+	if err != nil {
+		return serviceError(c, err)
 	}
 
 	return c.JSON(http.StatusCreated, userRole)
 }
 
 // DELETE /admin/courses/:courseId/roles
-func (h *AdminRoleHandler) AdminRevokeRoleHandler(c echo.Context) error {
+func (h *AdminRoleHandler) RevokeRole(c echo.Context) error {
 	courseID, err := uuid.Parse(c.Param("courseId"))
 	if err != nil {
 		return badRequest(c, "Invalid course ID")
@@ -84,37 +67,34 @@ func (h *AdminRoleHandler) AdminRevokeRoleHandler(c echo.Context) error {
 		return badRequest(c, "Invalid request body")
 	}
 
-	if req.UserID == uuid.Nil {
-		return badRequest(c, "user_id is required")
-	}
-	if req.RoleID == uuid.Nil {
-		return badRequest(c, "role_id is required")
-	}
-
-	if err := h.roleRepo.RevokeRole(c.Request().Context(), req.UserID, courseID, req.RoleID); err != nil {
-		return internalError(c, "Failed to revoke role")
+	if err := h.roleService.RevokeRole(c.Request().Context(), service.RevokeRoleInput{
+		UserID:   req.UserID,
+		CourseID: courseID,
+		RoleID:   req.RoleID,
+	}); err != nil {
+		return serviceError(c, err)
 	}
 
 	return c.NoContent(http.StatusNoContent)
 }
 
 // GET /admin/courses/:courseId/roles
-func (h *AdminRoleHandler) AdminListUserRolesHandler(c echo.Context) error {
+func (h *AdminRoleHandler) ListUserRoles(c echo.Context) error {
 	courseID, err := uuid.Parse(c.Param("courseId"))
 	if err != nil {
 		return badRequest(c, "Invalid course ID")
 	}
 
-	roles, err := h.roleRepo.GetByCourseID(c.Request().Context(), courseID)
+	roles, err := h.roleService.ListUserRoles(c.Request().Context(), courseID)
 	if err != nil {
-		return internalError(c, "Failed to fetch roles")
+		return serviceError(c, err)
 	}
 
 	return c.JSON(http.StatusOK, roles)
 }
 
 // POST /admin/roles/:roleId/permissions
-func (h *AdminRoleHandler) AdminAddPermissionHandler(c echo.Context) error {
+func (h *AdminRoleHandler) AddPermission(c echo.Context) error {
 	roleID, err := uuid.Parse(c.Param("roleId"))
 	if err != nil {
 		return badRequest(c, "Invalid role ID")
@@ -125,51 +105,43 @@ func (h *AdminRoleHandler) AdminAddPermissionHandler(c echo.Context) error {
 		return badRequest(c, "Invalid request body")
 	}
 
-	if req.Permission == "" {
-		return badRequest(c, "Permission is required")
-	}
-
-	perm := &model.CourseAdminPermission{
+	perm, err := h.roleService.AddPermission(c.Request().Context(), service.AddPermissionInput{
 		RoleID:     roleID,
 		Permission: req.Permission,
-	}
-
-	if err := h.roleRepo.AddPermission(c.Request().Context(), perm); err != nil {
-		return internalError(c, "Failed to add permission")
+	})
+	if err != nil {
+		return serviceError(c, err)
 	}
 
 	return c.JSON(http.StatusCreated, perm)
 }
 
 // DELETE /admin/roles/:roleId/permissions/:permission
-func (h *AdminRoleHandler) AdminRemovePermissionHandler(c echo.Context) error {
+func (h *AdminRoleHandler) RemovePermission(c echo.Context) error {
 	roleID, err := uuid.Parse(c.Param("roleId"))
 	if err != nil {
 		return badRequest(c, "Invalid role ID")
 	}
 
 	permission := c.Param("permission")
-	if permission == "" {
-		return badRequest(c, "Permission is required")
-	}
 
-	if err := h.roleRepo.RemovePermission(c.Request().Context(), roleID, permission); err != nil {
-		return internalError(c, "Failed to remove permission")
+	if err := h.roleService.RemovePermission(c.Request().Context(), roleID, permission); err != nil {
+		return serviceError(c, err)
 	}
 
 	return c.NoContent(http.StatusNoContent)
 }
 
 // GET /admin/roles/:roleId/permissions
-func (h *AdminRoleHandler) AdminListPermissionsHandler(c echo.Context) error {
+func (h *AdminRoleHandler) ListPermissions(c echo.Context) error {
 	roleID, err := uuid.Parse(c.Param("roleId"))
 	if err != nil {
 		return badRequest(c, "Invalid role ID")
 	}
 
-	perms, err := h.roleRepo.GetPermissions(c.Request().Context(), roleID)
+	perms, err := h.roleService.ListPermissions(c.Request().Context(), roleID)
 	if err != nil {
-		return internalError(c, "Failed to fetch permissions")
+		return serviceError(c, err)
 	}
 
 	return c.JSON(http.StatusOK, perms)
