@@ -1,0 +1,163 @@
+package service
+
+import (
+	"context"
+
+	"github.com/google/uuid"
+
+	"fcstask-backend/internal/db/model"
+	"fcstask-backend/internal/db/repo"
+)
+
+type AdminTaskService struct {
+	taskRepo     repo.ITaskRepo
+	homeworkRepo repo.IHomeworkRepo
+}
+
+func NewAdminTaskService(taskRepo repo.ITaskRepo, homeworkRepo repo.IHomeworkRepo) *AdminTaskService {
+	return &AdminTaskService{
+		taskRepo:     taskRepo,
+		homeworkRepo: homeworkRepo,
+	}
+}
+
+type CreateTaskInput struct {
+	HwID    uuid.UUID
+	RepoURL string
+	TaskURL string
+	Score   int
+}
+
+type UpdateTaskInput struct {
+	RepoURL string
+	TaskURL string
+	Score   int
+}
+
+type SetTaskScoreInput struct {
+	TaskID uuid.UUID
+	Score  int
+}
+
+func (s *AdminTaskService) CreateTask(ctx context.Context, input CreateTaskInput) (*model.Task, error) {
+	if input.HwID == uuid.Nil {
+		return nil, BadRequest("homework_id is required")
+	}
+
+	if _, err := s.homeworkRepo.GetByID(ctx, input.HwID); err != nil {
+		return nil, NotFound("Homework not found")
+	}
+
+	if input.Score <= 0 {
+		return nil, BadRequest("score must be positive")
+	}
+
+	task := &model.Task{
+		HwID:  input.HwID,
+		Score: &input.Score,
+	}
+	if input.RepoURL != "" {
+		task.RepoURL = stringPtr(input.RepoURL)
+	}
+	if input.TaskURL != "" {
+		task.TaskURL = stringPtr(input.TaskURL)
+	}
+	if err := s.taskRepo.Create(ctx, task); err != nil {
+		return nil, Internal("Failed to create task", err)
+	}
+
+	return task, nil
+}
+
+func (s *AdminTaskService) GetTask(ctx context.Context, taskID uuid.UUID) (*model.Task, error) {
+	if taskID == uuid.Nil {
+		return nil, BadRequest("task_id is required")
+	}
+
+	task, err := s.taskRepo.GetByID(ctx, taskID)
+	if err != nil {
+		return nil, NotFound("Task not found")
+	}
+
+	return task, nil
+}
+
+func (s *AdminTaskService) ListTasks(ctx context.Context, hwID uuid.UUID) ([]model.Task, error) {
+	if hwID == uuid.Nil {
+		return nil, BadRequest("homework_id is required")
+	}
+
+	if _, err := s.homeworkRepo.GetByID(ctx, hwID); err != nil {
+		return nil, NotFound("Homework not found")
+	}
+
+	tasks, err := s.taskRepo.GetByHwID(ctx, hwID)
+	if err != nil {
+		return nil, Internal("Failed to fetch tasks", err)
+	}
+
+	return tasks, nil
+}
+
+func (s *AdminTaskService) UpdateTask(ctx context.Context, taskID uuid.UUID, input UpdateTaskInput) (*model.Task, error) {
+	task, err := s.GetTask(ctx, taskID)
+	if err != nil {
+		return nil, err
+	}
+
+	if input.RepoURL != "" {
+		task.RepoURL = stringPtr(input.RepoURL)
+	}
+	if input.TaskURL != "" {
+		task.TaskURL = stringPtr(input.TaskURL)
+	}
+	if input.Score > 0 {
+		task.Score = &input.Score
+	}
+
+	if err := s.taskRepo.Update(ctx, task); err != nil {
+		return nil, Internal("Failed to update task", err)
+	}
+
+	return task, nil
+}
+
+func (s *AdminTaskService) DeleteTask(ctx context.Context, taskID uuid.UUID) error {
+	if taskID == uuid.Nil {
+		return BadRequest("task_id is required")
+	}
+
+	if _, err := s.GetTask(ctx, taskID); err != nil {
+		return err
+	}
+
+	if err := s.taskRepo.Delete(ctx, taskID); err != nil {
+		return Internal("Failed to delete task", err)
+	}
+
+	return nil
+}
+
+func (s *AdminTaskService) SetScore(ctx context.Context, input SetTaskScoreInput) (*model.Task, error) {
+	if input.TaskID == uuid.Nil {
+		return nil, BadRequest("task_id is required")
+	}
+	if input.Score <= 0 {
+		return nil, BadRequest("score must be positive")
+	}
+
+	if _, err := s.GetTask(ctx, input.TaskID); err != nil {
+		return nil, err
+	}
+
+	if err := s.taskRepo.SetScore(ctx, input.TaskID, input.Score); err != nil {
+		return nil, Internal("Failed to set score", err)
+	}
+
+	task, err := s.GetTask(ctx, input.TaskID)
+	if err != nil {
+		return nil, err
+	}
+
+	return task, nil
+}

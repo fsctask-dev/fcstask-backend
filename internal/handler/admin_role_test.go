@@ -2,7 +2,6 @@ package handler_test
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"testing"
 
@@ -12,530 +11,373 @@ import (
 
 	"fcstask-backend/internal/db/model"
 	"fcstask-backend/internal/handler"
+	"fcstask-backend/internal/service"
 )
 
-type MockRoleRepo struct {
+type MockAdminRoleService struct {
 	mock.Mock
 }
 
-func (m *MockRoleRepo) AssignRole(ctx context.Context, userRole *model.UserRole) error {
-	return m.Called(ctx, userRole).Error(0)
+func (m *MockAdminRoleService) AssignRole(ctx context.Context, input service.AssignRoleInput) (*model.UserRole, error) {
+	args := m.Called(ctx, input)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*model.UserRole), args.Error(1)
 }
 
-func (m *MockRoleRepo) RevokeRole(ctx context.Context, userID, courseID, roleID uuid.UUID) error {
-	return m.Called(ctx, userID, courseID, roleID).Error(0)
+func (m *MockAdminRoleService) RevokeRole(ctx context.Context, input service.RevokeRoleInput) error {
+	args := m.Called(ctx, input)
+	return args.Error(0)
 }
 
-func (m *MockRoleRepo) GetByCourseID(ctx context.Context, courseID uuid.UUID) ([]model.UserRole, error) {
+func (m *MockAdminRoleService) ListUserRoles(ctx context.Context, courseID uuid.UUID) ([]model.UserRole, error) {
 	args := m.Called(ctx, courseID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
 	return args.Get(0).([]model.UserRole), args.Error(1)
 }
 
-func (m *MockRoleRepo) AddPermission(ctx context.Context, perm *model.CourseAdminPermission) error {
-	return m.Called(ctx, perm).Error(0)
+func (m *MockAdminRoleService) AddPermission(ctx context.Context, input service.AddPermissionInput) (*model.CourseAdminPermission, error) {
+	args := m.Called(ctx, input)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*model.CourseAdminPermission), args.Error(1)
 }
 
-func (m *MockRoleRepo) RemovePermission(ctx context.Context, roleID uuid.UUID, permission string) error {
-	return m.Called(ctx, roleID, permission).Error(0)
+func (m *MockAdminRoleService) RemovePermission(ctx context.Context, roleID uuid.UUID, permission string) error {
+	args := m.Called(ctx, roleID, permission)
+	return args.Error(0)
 }
 
-func (m *MockRoleRepo) GetPermissions(ctx context.Context, roleID uuid.UUID) ([]model.CourseAdminPermission, error) {
+func (m *MockAdminRoleService) ListPermissions(ctx context.Context, roleID uuid.UUID) ([]model.CourseAdminPermission, error) {
 	args := m.Called(ctx, roleID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
 	return args.Get(0).([]model.CourseAdminPermission), args.Error(1)
 }
 
-type MockUserRepoForRole struct {
-	mock.Mock
-}
-
-func (m *MockUserRepoForRole) CreateUser(ctx context.Context, user *model.User) error {
-	return m.Called(ctx, user).Error(0)
-}
-
-func (m *MockUserRepoForRole) GetUserByID(ctx context.Context, id uuid.UUID) (*model.User, error) {
-	args := m.Called(ctx, id)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*model.User), args.Error(1)
-}
-
-func (m *MockUserRepoForRole) GetUserByEmail(ctx context.Context, email string) (*model.User, error) {
-	args := m.Called(ctx, email)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*model.User), args.Error(1)
-}
-
-func (m *MockUserRepoForRole) GetUserByUsername(ctx context.Context, username string) (*model.User, error) {
-	args := m.Called(ctx, username)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*model.User), args.Error(1)
-}
-
-func (m *MockUserRepoForRole) GetUserByUserID(ctx context.Context, userID uuid.UUID) (*model.User, error) {
-	args := m.Called(ctx, userID)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*model.User), args.Error(1)
-}
-
-func (m *MockUserRepoForRole) GetUserByTgUID(ctx context.Context, tgUID int64) (*model.User, error) {
-	args := m.Called(ctx, tgUID)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*model.User), args.Error(1)
-}
-
-func (m *MockUserRepoForRole) UpdateUser(ctx context.Context, user *model.User) error {
-	return m.Called(ctx, user).Error(0)
-}
-
-func (m *MockUserRepoForRole) DeleteUser(ctx context.Context, id uuid.UUID) error {
-	return m.Called(ctx, id).Error(0)
-}
-
-func (m *MockUserRepoForRole) GetUsersWithSessions(ctx context.Context, limit, offset int) ([]model.User, error) {
-	args := m.Called(ctx, limit, offset)
-	return args.Get(0).([]model.User), args.Error(1)
-}
-
-func (m *MockUserRepoForRole) CountUsersWithSessions(ctx context.Context) (int64, error) {
-	args := m.Called(ctx)
-	return args.Get(0).(int64), args.Error(1)
-}
-
-func (m *MockUserRepoForRole) ExistsUserByEmail(ctx context.Context, email string) (bool, error) {
-	args := m.Called(ctx, email)
-	return args.Bool(0), args.Error(1)
-}
-
-func (m *MockUserRepoForRole) ExistsUserByUsername(ctx context.Context, username string) (bool, error) {
-	args := m.Called(ctx, username)
-	return args.Bool(0), args.Error(1)
-}
-
-func (m *MockUserRepoForRole) CountUsers(ctx context.Context) (int64, error) {
-	args := m.Called(ctx)
-	return args.Get(0).(int64), args.Error(1)
-}
-
-func TestAdminAssignRole_Success(t *testing.T) {
-	e := setupEcho()
-	roleRepo := new(MockRoleRepo)
-	userRepo := new(MockUserRepoForRole)
-	h := handler.NewAdminRoleHandler(roleRepo, userRepo)
+func TestHandlerAssignRole_Success(t *testing.T) {
+	svc := new(MockAdminRoleService)
+	h := handler.NewAdminRoleHandler(svc)
 
 	courseID := uuid.New()
 	userID := uuid.New()
 	roleID := uuid.New()
 
 	body := map[string]interface{}{
-		"user_id": userID,
-		"role_id": roleID,
+		"user_id": userID.String(),
+		"role_id": roleID.String(),
 	}
-	req, rec := newRequest(http.MethodPost, "/admin/courses/"+courseID.String()+"/roles", body)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("courseId")
-	c.SetParamValues(courseID.String())
+	expected := &model.UserRole{UserID: userID, CourseID: courseID, RoleID: roleID}
 
-	user := &model.User{ID: userID}
-	userRepo.On("GetUserByID", mock.Anything, userID).Return(user, nil)
-	roleRepo.On("AssignRole", mock.Anything, mock.AnythingOfType("*model.UserRole")).Return(nil)
+	c, rec := newEchoContext(http.MethodPost, "/", body, map[string]string{"courseId": courseID.String()})
+	svc.On("AssignRole", mock.Anything, service.AssignRoleInput{
+		UserID:   userID,
+		CourseID: courseID,
+		RoleID:   roleID,
+	}).Return(expected, nil)
 
-	err := h.AdminAssignRoleHandler(c)
+	err := h.AssignRole(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusCreated, rec.Code)
+	svc.AssertExpectations(t)
 }
 
-func TestAdminAssignRole_InvalidCourseID(t *testing.T) {
-	e := setupEcho()
-	roleRepo := new(MockRoleRepo)
-	userRepo := new(MockUserRepoForRole)
-	h := handler.NewAdminRoleHandler(roleRepo, userRepo)
+func TestHandlerAssignRole_InvalidCourseID(t *testing.T) {
+	svc := new(MockAdminRoleService)
+	h := handler.NewAdminRoleHandler(svc)
 
-	req, rec := newRequest(http.MethodPost, "/admin/courses/invalid-uuid/roles", nil)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("courseId")
-	c.SetParamValues("invalid-uuid")
+	c, rec := newEchoContext(http.MethodPost, "/", nil, map[string]string{"courseId": "bad"})
 
-	err := h.AdminAssignRoleHandler(c)
+	err := h.AssignRole(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
-func TestAdminAssignRole_MissingUserID(t *testing.T) {
-	e := setupEcho()
-	roleRepo := new(MockRoleRepo)
-	userRepo := new(MockUserRepoForRole)
-	h := handler.NewAdminRoleHandler(roleRepo, userRepo)
-
-	courseID := uuid.New()
-	roleID := uuid.New()
-
-	body := map[string]interface{}{
-		"role_id": roleID,
-	}
-	req, rec := newRequest(http.MethodPost, "/admin/courses/"+courseID.String()+"/roles", body)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("courseId")
-	c.SetParamValues(courseID.String())
-
-	err := h.AdminAssignRoleHandler(c)
-	assert.NoError(t, err)
-	assert.Equal(t, http.StatusBadRequest, rec.Code)
-}
-
-func TestAdminAssignRole_MissingRoleID(t *testing.T) {
-	e := setupEcho()
-	roleRepo := new(MockRoleRepo)
-	userRepo := new(MockUserRepoForRole)
-	h := handler.NewAdminRoleHandler(roleRepo, userRepo)
-
-	courseID := uuid.New()
-	userID := uuid.New()
-
-	body := map[string]interface{}{
-		"user_id": userID,
-	}
-	req, rec := newRequest(http.MethodPost, "/admin/courses/"+courseID.String()+"/roles", body)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("courseId")
-	c.SetParamValues(courseID.String())
-
-	err := h.AdminAssignRoleHandler(c)
-	assert.NoError(t, err)
-	assert.Equal(t, http.StatusBadRequest, rec.Code)
-}
-
-func TestAdminAssignRole_UserNotFound(t *testing.T) {
-	e := setupEcho()
-	roleRepo := new(MockRoleRepo)
-	userRepo := new(MockUserRepoForRole)
-	h := handler.NewAdminRoleHandler(roleRepo, userRepo)
+func TestHandlerAssignRole_ServiceError_UserNotFound(t *testing.T) {
+	svc := new(MockAdminRoleService)
+	h := handler.NewAdminRoleHandler(svc)
 
 	courseID := uuid.New()
 	userID := uuid.New()
 	roleID := uuid.New()
 
 	body := map[string]interface{}{
-		"user_id": userID,
-		"role_id": roleID,
+		"user_id": userID.String(),
+		"role_id": roleID.String(),
 	}
-	req, rec := newRequest(http.MethodPost, "/admin/courses/"+courseID.String()+"/roles", body)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("courseId")
-	c.SetParamValues(courseID.String())
 
-	userRepo.On("GetUserByID", mock.Anything, userID).Return(nil, assert.AnError)
+	c, rec := newEchoContext(http.MethodPost, "/", body, map[string]string{"courseId": courseID.String()})
+	svc.On("AssignRole", mock.Anything, mock.Anything).Return(nil, service.NotFound("User not found"))
 
-	err := h.AdminAssignRoleHandler(c)
+	err := h.AssignRole(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusNotFound, rec.Code)
+	svc.AssertExpectations(t)
 }
 
-func TestAdminRevokeRole_Success(t *testing.T) {
-	e := setupEcho()
-	roleRepo := new(MockRoleRepo)
-	userRepo := new(MockUserRepoForRole)
-	h := handler.NewAdminRoleHandler(roleRepo, userRepo)
+func TestHandlerAssignRole_ServiceError_BadRequest(t *testing.T) {
+	svc := new(MockAdminRoleService)
+	h := handler.NewAdminRoleHandler(svc)
+
+	courseID := uuid.New()
+	body := map[string]interface{}{
+		"user_id": uuid.Nil.String(),
+		"role_id": uuid.New().String(),
+	}
+
+	c, rec := newEchoContext(http.MethodPost, "/", body, map[string]string{"courseId": courseID.String()})
+	svc.On("AssignRole", mock.Anything, mock.Anything).Return(nil, service.BadRequest("user_id is required"))
+
+	err := h.AssignRole(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	svc.AssertExpectations(t)
+}
+
+func TestHandlerRevokeRole_Success(t *testing.T) {
+	svc := new(MockAdminRoleService)
+	h := handler.NewAdminRoleHandler(svc)
 
 	courseID := uuid.New()
 	userID := uuid.New()
 	roleID := uuid.New()
 
 	body := map[string]interface{}{
-		"user_id": userID,
-		"role_id": roleID,
+		"user_id": userID.String(),
+		"role_id": roleID.String(),
 	}
-	req, rec := newRequest(http.MethodDelete, "/admin/courses/"+courseID.String()+"/roles", body)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("courseId")
-	c.SetParamValues(courseID.String())
 
-	roleRepo.On("RevokeRole", mock.Anything, userID, courseID, roleID).Return(nil)
+	c, rec := newEchoContext(http.MethodDelete, "/", body, map[string]string{"courseId": courseID.String()})
+	svc.On("RevokeRole", mock.Anything, service.RevokeRoleInput{
+		UserID:   userID,
+		CourseID: courseID,
+		RoleID:   roleID,
+	}).Return(nil)
 
-	err := h.AdminRevokeRoleHandler(c)
+	err := h.RevokeRole(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusNoContent, rec.Code)
+	svc.AssertExpectations(t)
 }
 
-func TestAdminRevokeRole_InvalidCourseID(t *testing.T) {
-	e := setupEcho()
-	roleRepo := new(MockRoleRepo)
-	userRepo := new(MockUserRepoForRole)
-	h := handler.NewAdminRoleHandler(roleRepo, userRepo)
+func TestHandlerRevokeRole_InvalidCourseID(t *testing.T) {
+	svc := new(MockAdminRoleService)
+	h := handler.NewAdminRoleHandler(svc)
 
-	req, rec := newRequest(http.MethodDelete, "/admin/courses/invalid-uuid/roles", nil)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("courseId")
-	c.SetParamValues("invalid-uuid")
+	c, rec := newEchoContext(http.MethodDelete, "/", nil, map[string]string{"courseId": "bad"})
 
-	err := h.AdminRevokeRoleHandler(c)
+	err := h.RevokeRole(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
-func TestAdminRevokeRole_MissingUserID(t *testing.T) {
-	e := setupEcho()
-	roleRepo := new(MockRoleRepo)
-	userRepo := new(MockUserRepoForRole)
-	h := handler.NewAdminRoleHandler(roleRepo, userRepo)
+func TestHandlerRevokeRole_ServiceError(t *testing.T) {
+	svc := new(MockAdminRoleService)
+	h := handler.NewAdminRoleHandler(svc)
 
 	courseID := uuid.New()
-	roleID := uuid.New()
-
 	body := map[string]interface{}{
-		"role_id": roleID,
+		"user_id": uuid.New().String(),
+		"role_id": uuid.New().String(),
 	}
-	req, rec := newRequest(http.MethodDelete, "/admin/courses/"+courseID.String()+"/roles", body)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("courseId")
-	c.SetParamValues(courseID.String())
 
-	err := h.AdminRevokeRoleHandler(c)
+	c, rec := newEchoContext(http.MethodDelete, "/", body, map[string]string{"courseId": courseID.String()})
+	svc.On("RevokeRole", mock.Anything, mock.Anything).Return(service.Internal("Failed to revoke role", nil))
+
+	err := h.RevokeRole(c)
 	assert.NoError(t, err)
-	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.Equal(t, http.StatusInternalServerError, rec.Code)
+	svc.AssertExpectations(t)
 }
 
-func TestAdminRevokeRole_MissingRoleID(t *testing.T) {
-	e := setupEcho()
-	roleRepo := new(MockRoleRepo)
-	userRepo := new(MockUserRepoForRole)
-	h := handler.NewAdminRoleHandler(roleRepo, userRepo)
+func TestHandlerListUserRoles_Success(t *testing.T) {
+	svc := new(MockAdminRoleService)
+	h := handler.NewAdminRoleHandler(svc)
 
 	courseID := uuid.New()
-	userID := uuid.New()
-
-	body := map[string]interface{}{
-		"user_id": userID,
-	}
-	req, rec := newRequest(http.MethodDelete, "/admin/courses/"+courseID.String()+"/roles", body)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("courseId")
-	c.SetParamValues(courseID.String())
-
-	err := h.AdminRevokeRoleHandler(c)
-	assert.NoError(t, err)
-	assert.Equal(t, http.StatusBadRequest, rec.Code)
-}
-
-func TestAdminListUserRoles_Success(t *testing.T) {
-	e := setupEcho()
-	roleRepo := new(MockRoleRepo)
-	userRepo := new(MockUserRepoForRole)
-	h := handler.NewAdminRoleHandler(roleRepo, userRepo)
-
-	courseID := uuid.New()
-	req, rec := newRequest(http.MethodGet, "/admin/courses/"+courseID.String()+"/roles", nil)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("courseId")
-	c.SetParamValues(courseID.String())
-
-	expectedRoles := []model.UserRole{
-		{UserID: uuid.New(), CourseID: courseID, RoleID: uuid.New()},
+	expected := []model.UserRole{
 		{UserID: uuid.New(), CourseID: courseID, RoleID: uuid.New()},
 	}
-	roleRepo.On("GetByCourseID", mock.Anything, courseID).Return(expectedRoles, nil)
 
-	err := h.AdminListUserRolesHandler(c)
+	c, rec := newEchoContext(http.MethodGet, "/", nil, map[string]string{"courseId": courseID.String()})
+	svc.On("ListUserRoles", mock.Anything, courseID).Return(expected, nil)
+
+	err := h.ListUserRoles(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, rec.Code)
-
-	var result []model.UserRole
-	json.Unmarshal(rec.Body.Bytes(), &result)
-	assert.Len(t, result, 2)
+	svc.AssertExpectations(t)
 }
 
-func TestAdminListUserRoles_InvalidCourseID(t *testing.T) {
-	e := setupEcho()
-	roleRepo := new(MockRoleRepo)
-	userRepo := new(MockUserRepoForRole)
-	h := handler.NewAdminRoleHandler(roleRepo, userRepo)
+func TestHandlerListUserRoles_InvalidCourseID(t *testing.T) {
+	svc := new(MockAdminRoleService)
+	h := handler.NewAdminRoleHandler(svc)
 
-	req, rec := newRequest(http.MethodGet, "/admin/courses/invalid-uuid/roles", nil)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("courseId")
-	c.SetParamValues("invalid-uuid")
+	c, rec := newEchoContext(http.MethodGet, "/", nil, map[string]string{"courseId": "bad"})
 
-	err := h.AdminListUserRolesHandler(c)
+	err := h.ListUserRoles(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
-func TestAdminAddPermission_Success(t *testing.T) {
-	e := setupEcho()
-	roleRepo := new(MockRoleRepo)
-	userRepo := new(MockUserRepoForRole)
-	h := handler.NewAdminRoleHandler(roleRepo, userRepo)
+func TestHandlerListUserRoles_ServiceError(t *testing.T) {
+	svc := new(MockAdminRoleService)
+	h := handler.NewAdminRoleHandler(svc)
 
-	roleID := uuid.New()
-	body := map[string]interface{}{
-		"permission": "edit_course",
-	}
-	req, rec := newRequest(http.MethodPost, "/admin/roles/"+roleID.String()+"/permissions", body)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("roleId")
-	c.SetParamValues(roleID.String())
+	courseID := uuid.New()
+	c, rec := newEchoContext(http.MethodGet, "/", nil, map[string]string{"courseId": courseID.String()})
+	svc.On("ListUserRoles", mock.Anything, courseID).Return(nil, service.Internal("Failed to fetch roles", nil))
 
-	roleRepo.On("AddPermission", mock.Anything, mock.AnythingOfType("*model.CourseAdminPermission")).Return(nil)
-
-	err := h.AdminAddPermissionHandler(c)
+	err := h.ListUserRoles(c)
 	assert.NoError(t, err)
-	assert.Equal(t, http.StatusCreated, rec.Code)
+	assert.Equal(t, http.StatusInternalServerError, rec.Code)
+	svc.AssertExpectations(t)
 }
 
-func TestAdminAddPermission_InvalidRoleID(t *testing.T) {
-	e := setupEcho()
-	roleRepo := new(MockRoleRepo)
-	userRepo := new(MockUserRepoForRole)
-	h := handler.NewAdminRoleHandler(roleRepo, userRepo)
-
-	req, rec := newRequest(http.MethodPost, "/admin/roles/invalid-uuid/permissions", nil)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("roleId")
-	c.SetParamValues("invalid-uuid")
-
-	err := h.AdminAddPermissionHandler(c)
-	assert.NoError(t, err)
-	assert.Equal(t, http.StatusBadRequest, rec.Code)
-}
-
-func TestAdminAddPermission_MissingPermission(t *testing.T) {
-	e := setupEcho()
-	roleRepo := new(MockRoleRepo)
-	userRepo := new(MockUserRepoForRole)
-	h := handler.NewAdminRoleHandler(roleRepo, userRepo)
-
-	roleID := uuid.New()
-	body := map[string]interface{}{}
-	req, rec := newRequest(http.MethodPost, "/admin/roles/"+roleID.String()+"/permissions", body)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("roleId")
-	c.SetParamValues(roleID.String())
-
-	err := h.AdminAddPermissionHandler(c)
-	assert.NoError(t, err)
-	assert.Equal(t, http.StatusBadRequest, rec.Code)
-}
-
-func TestAdminAddPermission_EmptyPermission(t *testing.T) {
-	e := setupEcho()
-	roleRepo := new(MockRoleRepo)
-	userRepo := new(MockUserRepoForRole)
-	h := handler.NewAdminRoleHandler(roleRepo, userRepo)
-
-	roleID := uuid.New()
-	body := map[string]interface{}{
-		"permission": "",
-	}
-	req, rec := newRequest(http.MethodPost, "/admin/roles/"+roleID.String()+"/permissions", body)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("roleId")
-	c.SetParamValues(roleID.String())
-
-	err := h.AdminAddPermissionHandler(c)
-	assert.NoError(t, err)
-	assert.Equal(t, http.StatusBadRequest, rec.Code)
-}
-
-func TestAdminRemovePermission_Success(t *testing.T) {
-	e := setupEcho()
-	roleRepo := new(MockRoleRepo)
-	userRepo := new(MockUserRepoForRole)
-	h := handler.NewAdminRoleHandler(roleRepo, userRepo)
+func TestHandlerAddPermission_Success(t *testing.T) {
+	svc := new(MockAdminRoleService)
+	h := handler.NewAdminRoleHandler(svc)
 
 	roleID := uuid.New()
 	permission := "edit_course"
-	req, rec := newRequest(http.MethodDelete, "/admin/roles/"+roleID.String()+"/permissions/"+permission, nil)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("roleId", "permission")
-	c.SetParamValues(roleID.String(), permission)
+	body := map[string]interface{}{"permission": permission}
+	expected := &model.CourseAdminPermission{RoleID: roleID, Permission: permission}
 
-	roleRepo.On("RemovePermission", mock.Anything, roleID, permission).Return(nil)
+	c, rec := newEchoContext(http.MethodPost, "/", body, map[string]string{"roleId": roleID.String()})
+	svc.On("AddPermission", mock.Anything, service.AddPermissionInput{
+		RoleID:     roleID,
+		Permission: permission,
+	}).Return(expected, nil)
 
-	err := h.AdminRemovePermissionHandler(c)
+	err := h.AddPermission(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusCreated, rec.Code)
+	svc.AssertExpectations(t)
+}
+
+func TestHandlerAddPermission_InvalidRoleID(t *testing.T) {
+	svc := new(MockAdminRoleService)
+	h := handler.NewAdminRoleHandler(svc)
+
+	c, rec := newEchoContext(http.MethodPost, "/", nil, map[string]string{"roleId": "bad"})
+
+	err := h.AddPermission(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestHandlerAddPermission_ServiceError(t *testing.T) {
+	svc := new(MockAdminRoleService)
+	h := handler.NewAdminRoleHandler(svc)
+
+	roleID := uuid.New()
+	body := map[string]interface{}{"permission": ""}
+
+	c, rec := newEchoContext(http.MethodPost, "/", body, map[string]string{"roleId": roleID.String()})
+	svc.On("AddPermission", mock.Anything, mock.Anything).Return(nil, service.BadRequest("permission is required"))
+
+	err := h.AddPermission(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	svc.AssertExpectations(t)
+}
+
+func TestHandlerRemovePermission_Success(t *testing.T) {
+	svc := new(MockAdminRoleService)
+	h := handler.NewAdminRoleHandler(svc)
+
+	roleID := uuid.New()
+	permission := "edit_course"
+
+	c, rec := newEchoContextMultiParam(http.MethodDelete, "/", nil,
+		[]string{"roleId", "permission"},
+		[]string{roleID.String(), permission},
+	)
+	svc.On("RemovePermission", mock.Anything, roleID, permission).Return(nil)
+
+	err := h.RemovePermission(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusNoContent, rec.Code)
+	svc.AssertExpectations(t)
 }
 
-func TestAdminRemovePermission_InvalidRoleID(t *testing.T) {
-	e := setupEcho()
-	roleRepo := new(MockRoleRepo)
-	userRepo := new(MockUserRepoForRole)
-	h := handler.NewAdminRoleHandler(roleRepo, userRepo)
+func TestHandlerRemovePermission_InvalidRoleID(t *testing.T) {
+	svc := new(MockAdminRoleService)
+	h := handler.NewAdminRoleHandler(svc)
 
-	req, rec := newRequest(http.MethodDelete, "/admin/roles/invalid-uuid/permissions/edit_course", nil)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("roleId", "permission")
-	c.SetParamValues("invalid-uuid", "edit_course")
+	c, rec := newEchoContextMultiParam(http.MethodDelete, "/", nil,
+		[]string{"roleId", "permission"},
+		[]string{"bad", "edit_course"},
+	)
 
-	err := h.AdminRemovePermissionHandler(c)
+	err := h.RemovePermission(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
-func TestAdminRemovePermission_EmptyPermission(t *testing.T) {
-	e := setupEcho()
-	roleRepo := new(MockRoleRepo)
-	userRepo := new(MockUserRepoForRole)
-	h := handler.NewAdminRoleHandler(roleRepo, userRepo)
+func TestHandlerRemovePermission_ServiceError(t *testing.T) {
+	svc := new(MockAdminRoleService)
+	h := handler.NewAdminRoleHandler(svc)
 
 	roleID := uuid.New()
-	req, rec := newRequest(http.MethodDelete, "/admin/roles/"+roleID.String()+"/permissions/", nil)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("roleId", "permission")
-	c.SetParamValues(roleID.String(), "")
+	permission := "edit_course"
 
-	err := h.AdminRemovePermissionHandler(c)
+	c, rec := newEchoContextMultiParam(http.MethodDelete, "/", nil,
+		[]string{"roleId", "permission"},
+		[]string{roleID.String(), permission},
+	)
+	svc.On("RemovePermission", mock.Anything, roleID, permission).Return(service.Internal("Failed to remove permission", nil))
+
+	err := h.RemovePermission(c)
 	assert.NoError(t, err)
-	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.Equal(t, http.StatusInternalServerError, rec.Code)
+	svc.AssertExpectations(t)
 }
 
-func TestAdminListPermissions_Success(t *testing.T) {
-	e := setupEcho()
-	roleRepo := new(MockRoleRepo)
-	userRepo := new(MockUserRepoForRole)
-	h := handler.NewAdminRoleHandler(roleRepo, userRepo)
+func TestHandlerListPermissions_Success(t *testing.T) {
+	svc := new(MockAdminRoleService)
+	h := handler.NewAdminRoleHandler(svc)
 
 	roleID := uuid.New()
-	req, rec := newRequest(http.MethodGet, "/admin/roles/"+roleID.String()+"/permissions", nil)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("roleId")
-	c.SetParamValues(roleID.String())
-
-	expectedPerms := []model.CourseAdminPermission{
+	expected := []model.CourseAdminPermission{
 		{RoleID: roleID, Permission: "edit_course"},
 		{RoleID: roleID, Permission: "delete_course"},
 	}
-	roleRepo.On("GetPermissions", mock.Anything, roleID).Return(expectedPerms, nil)
 
-	err := h.AdminListPermissionsHandler(c)
+	c, rec := newEchoContext(http.MethodGet, "/", nil, map[string]string{"roleId": roleID.String()})
+	svc.On("ListPermissions", mock.Anything, roleID).Return(expected, nil)
+
+	err := h.ListPermissions(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, rec.Code)
-
-	var result []model.CourseAdminPermission
-	json.Unmarshal(rec.Body.Bytes(), &result)
-	assert.Len(t, result, 2)
+	svc.AssertExpectations(t)
 }
 
-func TestAdminListPermissions_InvalidRoleID(t *testing.T) {
-	e := setupEcho()
-	roleRepo := new(MockRoleRepo)
-	userRepo := new(MockUserRepoForRole)
-	h := handler.NewAdminRoleHandler(roleRepo, userRepo)
+func TestHandlerListPermissions_InvalidRoleID(t *testing.T) {
+	svc := new(MockAdminRoleService)
+	h := handler.NewAdminRoleHandler(svc)
 
-	req, rec := newRequest(http.MethodGet, "/admin/roles/invalid-uuid/permissions", nil)
-	c := e.NewContext(req, rec)
-	c.SetParamNames("roleId")
-	c.SetParamValues("invalid-uuid")
+	c, rec := newEchoContext(http.MethodGet, "/", nil, map[string]string{"roleId": "bad"})
 
-	err := h.AdminListPermissionsHandler(c)
+	err := h.ListPermissions(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestHandlerListPermissions_ServiceError(t *testing.T) {
+	svc := new(MockAdminRoleService)
+	h := handler.NewAdminRoleHandler(svc)
+
+	roleID := uuid.New()
+	c, rec := newEchoContext(http.MethodGet, "/", nil, map[string]string{"roleId": roleID.String()})
+	svc.On("ListPermissions", mock.Anything, roleID).Return(nil, service.Internal("Failed to fetch permissions", nil))
+
+	err := h.ListPermissions(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusInternalServerError, rec.Code)
+	svc.AssertExpectations(t)
 }

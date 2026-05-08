@@ -6,40 +6,38 @@ import (
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 
-	"fcstask-backend/internal/db/model"
-	"fcstask-backend/internal/db/repo"
+	"fcstask-backend/internal/service"
 )
 
 type AdminTaskHandler struct {
-	taskRepo     repo.ITaskRepo
-	homeworkRepo repo.IHomeworkRepo
+	taskService IAdminTaskService
 }
 
-func NewAdminTaskHandler(taskRepo repo.ITaskRepo, homeworkRepo repo.IHomeworkRepo) *AdminTaskHandler {
-	return &AdminTaskHandler{
-		taskRepo:     taskRepo,
-		homeworkRepo: homeworkRepo,
-	}
+func NewAdminTaskHandler(taskService IAdminTaskService) *AdminTaskHandler {
+	return &AdminTaskHandler{taskService: taskService}
 }
 
 type CreateTaskRequest struct {
 	RepoURL *string `json:"repo_url"`
 	TaskURL *string `json:"task_url"`
+	Score   *int    `json:"score"`
 }
 
 type UpdateTaskRequest struct {
 	RepoURL *string `json:"repo_url"`
 	TaskURL *string `json:"task_url"`
+	Score   *int    `json:"score"`
+}
+
+type SetTaskScoreRequest struct {
+	Score int `json:"score"`
 }
 
 // POST /admin/courses/:courseId/homework/:hwId/tasks
-func (h *AdminTaskHandler) AdminCreateTaskHandler(c echo.Context) error {
+func (h *AdminTaskHandler) CreateTask(c echo.Context) error {
 	hwID, err := uuid.Parse(c.Param("hwId"))
 	if err != nil {
 		return badRequest(c, "Invalid homework ID")
-	}
-	if _, err := h.homeworkRepo.GetByID(c.Request().Context(), hwID); err != nil {
-		return notFound(c, "Homework not found")
 	}
 
 	var req CreateTaskRequest
@@ -47,60 +45,62 @@ func (h *AdminTaskHandler) AdminCreateTaskHandler(c echo.Context) error {
 		return badRequest(c, "Invalid request body")
 	}
 
-	task := &model.Task{
-		HwID:    hwID,
-		RepoURL: req.RepoURL,
-		TaskURL: req.TaskURL,
+	input := service.CreateTaskInput{
+		HwID: hwID,
+	}
+	if req.RepoURL != nil {
+		input.RepoURL = *req.RepoURL
+	}
+	if req.TaskURL != nil {
+		input.TaskURL = *req.TaskURL
+	}
+	if req.Score != nil {
+		input.Score = *req.Score
 	}
 
-	if err := h.taskRepo.Create(c.Request().Context(), task); err != nil {
-		return internalError(c, "Failed to create task")
+	task, err := h.taskService.CreateTask(c.Request().Context(), input)
+	if err != nil {
+		return serviceError(c, err)
 	}
+
 	return c.JSON(http.StatusCreated, task)
 }
 
 // GET /admin/courses/:courseId/homework/:hwId/tasks
-func (h *AdminTaskHandler) AdminListTasksHandler(c echo.Context) error {
+func (h *AdminTaskHandler) ListTasks(c echo.Context) error {
 	hwID, err := uuid.Parse(c.Param("hwId"))
 	if err != nil {
 		return badRequest(c, "Invalid homework ID")
 	}
-	if _, err := h.homeworkRepo.GetByID(c.Request().Context(), hwID); err != nil {
-		return notFound(c, "Homework not found")
+
+	tasks, err := h.taskService.ListTasks(c.Request().Context(), hwID)
+	if err != nil {
+		return serviceError(c, err)
 	}
 
-	tasks, err := h.taskRepo.GetByHwID(c.Request().Context(), hwID)
-	if err != nil {
-		return internalError(c, "Failed to fetch tasks")
-	}
 	return c.JSON(http.StatusOK, tasks)
 }
 
 // GET /admin/courses/:courseId/homework/:hwId/tasks/:taskId
-func (h *AdminTaskHandler) AdminGetTaskHandler(c echo.Context) error {
+func (h *AdminTaskHandler) GetTask(c echo.Context) error {
 	taskID, err := uuid.Parse(c.Param("taskId"))
 	if err != nil {
 		return badRequest(c, "Invalid task ID")
 	}
 
-	task, err := h.taskRepo.GetByID(c.Request().Context(), taskID)
+	task, err := h.taskService.GetTask(c.Request().Context(), taskID)
 	if err != nil {
-		return notFound(c, "Task not found")
+		return serviceError(c, err)
 	}
 
 	return c.JSON(http.StatusOK, task)
 }
 
 // PATCH /admin/courses/:courseId/homework/:hwId/tasks/:taskId
-func (h *AdminTaskHandler) AdminUpdateTaskHandler(c echo.Context) error {
+func (h *AdminTaskHandler) UpdateTask(c echo.Context) error {
 	taskID, err := uuid.Parse(c.Param("taskId"))
 	if err != nil {
 		return badRequest(c, "Invalid task ID")
-	}
-
-	task, err := h.taskRepo.GetByID(c.Request().Context(), taskID)
-	if err != nil {
-		return notFound(c, "Task not found")
 	}
 
 	var req UpdateTaskRequest
@@ -108,65 +108,58 @@ func (h *AdminTaskHandler) AdminUpdateTaskHandler(c echo.Context) error {
 		return badRequest(c, "Invalid request body")
 	}
 
+	input := service.UpdateTaskInput{}
 	if req.RepoURL != nil {
-		task.RepoURL = req.RepoURL
+		input.RepoURL = *req.RepoURL
 	}
 	if req.TaskURL != nil {
-		task.TaskURL = req.TaskURL
+		input.TaskURL = *req.TaskURL
+	}
+	if req.Score != nil {
+		input.Score = *req.Score
 	}
 
-	if err := h.taskRepo.Update(c.Request().Context(), task); err != nil {
-		return internalError(c, "Failed to update task")
+	task, err := h.taskService.UpdateTask(c.Request().Context(), taskID, input)
+	if err != nil {
+		return serviceError(c, err)
 	}
 
 	return c.JSON(http.StatusOK, task)
 }
 
 // DELETE /admin/courses/:courseId/homework/:hwId/tasks/:taskId
-func (h *AdminTaskHandler) AdminDeleteTaskHandler(c echo.Context) error {
+func (h *AdminTaskHandler) DeleteTask(c echo.Context) error {
 	taskID, err := uuid.Parse(c.Param("taskId"))
 	if err != nil {
 		return badRequest(c, "Invalid task ID")
 	}
 
-	if _, err := h.taskRepo.GetByID(c.Request().Context(), taskID); err != nil {
-		return notFound(c, "Task not found")
-	}
-
-	if err := h.taskRepo.Delete(c.Request().Context(), taskID); err != nil {
-		return internalError(c, "Failed to delete task")
+	if err := h.taskService.DeleteTask(c.Request().Context(), taskID); err != nil {
+		return serviceError(c, err)
 	}
 
 	return c.NoContent(http.StatusNoContent)
 }
 
 // PATCH /admin/courses/:courseId/homework/:hwId/tasks/:taskId/score
-func (h *AdminTaskHandler) AdminSetTaskScoreHandler(c echo.Context) error {
+func (h *AdminTaskHandler) SetScore(c echo.Context) error {
 	taskID, err := uuid.Parse(c.Param("taskId"))
 	if err != nil {
 		return badRequest(c, "Invalid task ID")
 	}
 
-	if _, err := h.taskRepo.GetByID(c.Request().Context(), taskID); err != nil {
-		return notFound(c, "Task not found")
-	}
-
-	var req struct {
-		Score int `json:"score"`
-	}
+	var req SetTaskScoreRequest
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "Invalid request body")
 	}
-	if req.Score < 0 {
-		return badRequest(c, "Score must be non-negative")
-	}
 
-	if err := h.taskRepo.SetScore(c.Request().Context(), taskID, req.Score); err != nil {
-		return internalError(c, "Failed to set score")
-	}
-
-	return c.JSON(http.StatusOK, map[string]interface{}{
-		"task_id": taskID,
-		"score":   req.Score,
+	task, err := h.taskService.SetScore(c.Request().Context(), service.SetTaskScoreInput{
+		TaskID: taskID,
+		Score:  req.Score,
 	})
+	if err != nil {
+		return serviceError(c, err)
+	}
+
+	return c.JSON(http.StatusOK, task)
 }
