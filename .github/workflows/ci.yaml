@@ -30,9 +30,9 @@ jobs:
         run: make gen
 
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v9
         with:
-          version: v1.64
+          version: v2.12
           install-mode: go
           args: --timeout=5m --max-issues-per-linter=0 --max-same-issues=0
 
