@@ -1,12 +1,13 @@
 package handler
 
 import (
-	"net/http"
-	"github.com/labstack/echo/v4"
-	"github.com/google/uuid"
-	"fcstask-backend/internal/db/repo"
 	"fcstask-backend/internal/db/model"
+	"fcstask-backend/internal/db/repo"
 	"fcstask-backend/internal/service"
+	"net/http"
+
+	"github.com/google/uuid"
+	"github.com/labstack/echo/v4"
 )
 
 type Course = model.Course
@@ -19,6 +20,8 @@ type PostCourseRequest struct {
 	Name         string `json:"name"`
 	Slug         string `json:"slug"`
 	Status       string `json:"status"`
+	Type         string `json:"type"`
+	InviteCode   string `json:"inviteCode,omitempty"`
 	StartDate    string `json:"startDate"`
 	EndDate      string `json:"endDate"`
 	RepoTemplate string `json:"repoTemplate"`
@@ -108,11 +111,36 @@ func (h *CourseHandler) GetCourseBoard(ctx echo.Context) error {
 	return ctx.JSON(http.StatusOK, board)
 }
 
+type JoinCourseRequest struct {
+	Code string `json:"code"`
+}
+
+func (h *CourseHandler) JoinCourse(ctx echo.Context) error {
+	user := ctx.Get(UserContextKey).(*model.User)
+	if user == nil {
+		return unauthorized(ctx, "User not found in context")
+	}
+
+	var req JoinCourseRequest
+	if err := ctx.Bind(&req); err != nil {
+		return badRequest(ctx, "invalid JSON payload")
+	}
+
+	courseID := ctx.Param("courseId")
+	if err := h.courseService.JoinCourse(ctx.Request().Context(), user.ID, courseID, req.Code); err != nil {
+		return serviceError(ctx, err)
+	}
+
+	return ctx.JSON(http.StatusOK, courseID)
+}
+
 func courseInput(req PostCourseRequest) service.CourseInput {
 	return service.CourseInput{
 		Name:         req.Name,
 		Slug:         req.Slug,
 		Status:       req.Status,
+		Type:         model.CourseType(req.Type),
+		InviteCode:   req.InviteCode,
 		StartDate:    req.StartDate,
 		EndDate:      req.EndDate,
 		RepoTemplate: req.RepoTemplate,

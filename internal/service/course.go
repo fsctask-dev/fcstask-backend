@@ -2,10 +2,13 @@ package service
 
 import (
 	"context"
-	"time"
-	"github.com/google/uuid"
+	"crypto/rand"
+	"encoding/hex"
 	models "fcstask-backend/internal/db/model"
 	"fcstask-backend/internal/db/repo"
+	"time"
+
+	"github.com/google/uuid"
 )
 
 type CourseService struct {
@@ -22,6 +25,7 @@ type CourseInput struct {
 	Slug         string
 	Status       string
 	Type         models.CourseType
+	InviteCode   string
 	StartDate    string
 	EndDate      string
 	RepoTemplate string
@@ -70,6 +74,15 @@ func (s *CourseService) CreateCourse(ctx context.Context, userID uuid.UUID, inpu
 		RepoTemplate: stringPtr(input.RepoTemplate),
 		Description:  stringPtr(input.Description),
 		URL:          "/course/" + input.Slug,
+	}
+
+	if course.Type == models.CourseTypePrivate {
+		if input.InviteCode == "" {
+			code := generateInviteCode()
+			course.InviteCode = &code
+		} else {
+			course.InviteCode = &input.InviteCode
+		}
 	}
 
 	created, err := s.courseRepo.CreateCourse(ctx, course)
@@ -134,6 +147,13 @@ func (s *CourseService) UpdateCourse(ctx context.Context, userID uuid.UUID, cour
 	}
 	if input.Type != "" {
 		updated.Type = input.Type
+		if input.Type == models.CourseTypePrivate && input.InviteCode == "" {
+			code := generateInviteCode()
+			updated.InviteCode = &code
+		}
+		if input.Type == models.CourseTypePublic {
+			updated.InviteCode = nil
+		}
 	}
 	if input.StartDate != "" {
 		updated.StartDate = parseCourseDate(input.StartDate)
@@ -178,6 +198,53 @@ func (s *CourseService) GetCourseBoard(ctx context.Context, courseID string) (*m
 		CourseStatus: course.Status,
 		Groups:       []models.BoardGroup{},
 	}, nil
+}
+
+func (s *CourseService) JoinCourse(ctx context.Context, userID uuid.UUID, courseID string, code string) error {
+	course, err := s.courseRepo.GetCourseByID(ctx, courseID)
+	if err != nil {
+		return Internal("Failed to get course by ID", err)
+	}
+	if course == nil {
+		return NotFound("course not found")
+	}
+
+	if course.Type == models.CourseTypePublic {
+		return s.addParticipant(ctx, userID, course.ID)
+	}
+	if course.InviteCode == nil {
+		return BadRequest("course has no invite code")
+	}
+	if *course.InviteCode != code {
+		return Forbidden("invalid invite code")
+	}
+
+	return s.addParticipant(ctx, userID, course.ID)
+}
+
+func (s *CourseService) addParticipant(ctx context.Context, userID uuid.UUID, courseID uuid.UUID) error {
+	exists, err := IsCourseParticipant(ctx, s.roleRepo, userID, courseID)
+	if err != nil {
+		return Internal("Failed to check participation", err)
+	}
+	if exists {
+		return Conflict("already a participant")
+	}
+
+	roleID := uuid.New()
+	userRole := &models.UserRole{
+		UserID:   userID,
+		CourseID: courseID,
+		RoleID:   roleID,
+	}
+	if err := s.roleRepo.AssignRole(ctx, userRole); err != nil {
+		return Internal("Failed to assign participant role", err)
+	}
+	studentPerm := &models.CourseAdminPermission{
+		RoleID:     roleID,
+		Permission: "student",
+	}
+	return s.roleRepo.AddPermission(ctx, studentPerm)
 }
 
 func validateCreateCourse(input CourseInput) error {
@@ -268,4 +335,10 @@ func formatCourseDate(date *time.Time) string {
 
 func stringPtr(value string) *string {
 	return &value
+}
+
+func generateInviteCode() string {
+	code := make([]byte, 6)
+	rand.Read(code)
+	return hex.EncodeToString(code)
 }
