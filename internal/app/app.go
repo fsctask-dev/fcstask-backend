@@ -39,18 +39,32 @@ func New(cfg *config.Config) (*App, error) {
 	userRepo := repo.NewUserRepository(dbClient)
 	sessionRepo := repo.NewSessionRepository(dbClient)
 	courseRepo := repo.NewCourseRepository(dbClient)
-
+    roleRepo := repo.NewRoleRepository(dbClient.WriteDB())
 	userService := service.NewUserService(userRepo)
 	authService := service.NewAuthService(userRepo, sessionRepo)
 	sessionService := service.NewSessionService(sessionRepo)
-	courseService := service.NewCourseService(courseRepo)
+	courseService := service.NewCourseService(courseRepo, roleRepo)
 
 	apiController := controller.NewAPIController(
 		handler.NewAuthHandler(authService),
 		handler.NewUserHandler(userService),
 		handler.NewSessionHandler(sessionService, userService),
-		handler.NewCourseHandler(courseService),
+		handler.NewCourseHandler(courseService, roleRepo),
 	)
+	adminHomeworkService := service.NewAdminHomeworkService(
+    	repo.NewHomeworkRepository(dbClient.WriteDB()),
+    	repo.NewDeadlineRepository(dbClient.WriteDB()),
+    	roleRepo,
+	)
+    adminTaskService := service.NewAdminTaskService(
+    	repo.NewTaskRepository(dbClient.WriteDB()),
+    	repo.NewHomeworkRepository(dbClient.WriteDB()),
+    	roleRepo,
+	)
+	adminRoleService := service.NewAdminRoleService(roleRepo, userRepo)
+	adminHomeworkHandler := handler.NewAdminHomeworkHandler(adminHomeworkService)
+	adminTaskHandler := handler.NewAdminTaskHandler(adminTaskService)
+	adminRoleHandler := handler.NewAdminRoleHandler(adminRoleService)
 
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
 		AllowOrigins: []string{"http://localhost:5173", "http://localhost:3000"},
@@ -67,6 +81,29 @@ func New(cfg *config.Config) (*App, error) {
 
 	api.RegisterHandlers(e, apiController)
 	apiController.RegisterCourseRoutes(e)
+
+	adminGroup := e.Group("/admin")
+	adminGroup.POST("/courses/:courseId/homework", adminHomeworkHandler.CreateHomework)
+	adminGroup.GET("/courses/:courseId/homework", adminHomeworkHandler.ListHomework)
+	adminGroup.GET("/courses/:courseId/homework/:hwId", adminHomeworkHandler.GetHomework)
+	adminGroup.PATCH("/courses/:courseId/homework/:hwId", adminHomeworkHandler.UpdateHomework)
+	adminGroup.DELETE("/courses/:courseId/homework/:hwId", adminHomeworkHandler.DeleteHomework)
+	adminGroup.PATCH("/courses/:courseId/homework/:hwId/publish", adminHomeworkHandler.PublishHomework)
+	adminGroup.PUT("/courses/:courseId/homework/:hwId/deadline", adminHomeworkHandler.SetDeadline)
+	adminGroup.PATCH("/deadlines/:deadlineId", adminHomeworkHandler.UpdateDeadline)
+	adminGroup.DELETE("/deadlines/:deadlineId", adminHomeworkHandler.DeleteDeadline)
+	adminGroup.POST("/courses/:courseId/homework/:hwId/tasks", adminTaskHandler.CreateTask)
+	adminGroup.GET("/courses/:courseId/homework/:hwId/tasks", adminTaskHandler.ListTasks)
+	adminGroup.GET("/courses/:courseId/homework/:hwId/tasks/:taskId", adminTaskHandler.GetTask)
+	adminGroup.PATCH("/courses/:courseId/homework/:hwId/tasks/:taskId", adminTaskHandler.UpdateTask)
+	adminGroup.DELETE("/courses/:courseId/homework/:hwId/tasks/:taskId", adminTaskHandler.DeleteTask)
+	adminGroup.PATCH("/courses/:courseId/homework/:hwId/tasks/:taskId/score", adminTaskHandler.SetScore)
+	adminGroup.POST("/courses/:courseId/roles", adminRoleHandler.AssignRole)
+	adminGroup.DELETE("/courses/:courseId/roles", adminRoleHandler.RevokeRole)
+	adminGroup.GET("/courses/:courseId/roles", adminRoleHandler.ListUserRoles)
+	adminGroup.POST("/roles/:roleId/permissions", adminRoleHandler.AddPermission)
+	adminGroup.DELETE("/roles/:roleId/permissions/:permission", adminRoleHandler.RemovePermission)
+	adminGroup.GET("/roles/:roleId/permissions", adminRoleHandler.ListPermissions)
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 	metrics.EchoPrometheus(e)

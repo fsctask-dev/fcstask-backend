@@ -13,12 +13,14 @@ import (
 type AdminHomeworkService struct {
 	homeworkRepo repo.IHomeworkRepo
 	deadlineRepo repo.IDeadlineRepo
+	roleRepo     repo.IRoleRepo
 }
 
-func NewAdminHomeworkService(homeworkRepo repo.IHomeworkRepo, deadlineRepo repo.IDeadlineRepo) *AdminHomeworkService {
+func NewAdminHomeworkService(homeworkRepo repo.IHomeworkRepo, deadlineRepo repo.IDeadlineRepo, roleRepo repo.IRoleRepo) *AdminHomeworkService {
 	return &AdminHomeworkService{
 		homeworkRepo: homeworkRepo,
 		deadlineRepo: deadlineRepo,
+		roleRepo:     roleRepo,
 	}
 }
 
@@ -48,9 +50,16 @@ type UpdateDeadlineInput struct {
 	DueDate     string // RFC3339
 }
 
-func (s *AdminHomeworkService) CreateHomework(ctx context.Context, input CreateHomeworkInput) (*model.Homework, error) {
+func (s *AdminHomeworkService) CreateHomework(ctx context.Context, userID uuid.UUID, input CreateHomeworkInput) (*model.Homework, error) {
 	if input.CourseID == uuid.Nil {
 		return nil, BadRequest("course_id is required")
+	}
+	isAdmin, err := IsCourseAdmin(ctx, s.roleRepo, userID, input.CourseID)
+	if err != nil {
+		return nil, Internal("Failed to check permissions", err)
+	}
+	if !isAdmin {
+		return nil, Forbidden("You don't have permission to manage this course")
 	}
 	if input.StartDate == "" {
 		return nil, BadRequest("start date is required")
@@ -88,38 +97,54 @@ func (s *AdminHomeworkService) CreateHomework(ctx context.Context, input CreateH
 	return hw, nil
 }
 
-func (s *AdminHomeworkService) GetHomework(ctx context.Context, hwID uuid.UUID) (*model.Homework, error) {
+func (s *AdminHomeworkService) GetHomework(ctx context.Context, userID uuid.UUID, hwID uuid.UUID) (*model.Homework, error) {
 	if hwID == uuid.Nil {
 		return nil, BadRequest("homework ID is required")
 	}
-
 	hw, err := s.homeworkRepo.GetByID(ctx, hwID)
 	if err != nil {
 		return nil, NotFound("Homework not found")
 	}
-
+	isAdmin, err := IsCourseAdmin(ctx, s.roleRepo, userID, hw.CourseID)
+	if err != nil {
+		return nil, Internal("Failed to check permissions", err)
+	}
+	if !isAdmin {
+		return nil, Forbidden("You don't have permission to manage this course")
+	}
 	return hw, nil
 }
 
-func (s *AdminHomeworkService) ListHomework(ctx context.Context, courseID uuid.UUID) ([]model.Homework, error) {
+func (s *AdminHomeworkService) ListHomework(ctx context.Context, userID uuid.UUID, courseID uuid.UUID) ([]model.Homework, error) {
 	if courseID == uuid.Nil {
 		return nil, BadRequest("course ID is required")
 	}
-
+	isAdmin, err := IsCourseAdmin(ctx, s.roleRepo, userID, courseID)
+	if err != nil {
+		return nil, Internal("Failed to check permissions", err)
+	}
+	if !isAdmin {
+		return nil, Forbidden("You don't have permission to manage this course")
+	}
 	hws, err := s.homeworkRepo.GetByCourseID(ctx, courseID)
 	if err != nil {
 		return nil, Internal("Failed to fetch homework list", err)
 	}
-
 	return hws, nil
 }
 
-func (s *AdminHomeworkService) UpdateHomework(ctx context.Context, hwID uuid.UUID, input UpdateHomeworkInput) (*model.Homework, error) {
-	hw, err := s.GetHomework(ctx, hwID)
+func (s *AdminHomeworkService) UpdateHomework(ctx context.Context, userID uuid.UUID, hwID uuid.UUID, input UpdateHomeworkInput) (*model.Homework, error) {
+	hw, err := s.homeworkRepo.GetByID(ctx, hwID)
 	if err != nil {
-		return nil, err
+		return nil, NotFound("Homework not found")
 	}
-
+	isAdmin, err := IsCourseAdmin(ctx, s.roleRepo, userID, hw.CourseID)
+	if err != nil {
+		return nil, Internal("Failed to check permissions", err)
+	}
+	if !isAdmin {
+		return nil, Forbidden("You don't have permission to manage this course")
+	}
 	if input.StartDate != "" {
 		if !IsValidDate(input.StartDate) {
 			return nil, BadRequest("start date must be in format YYYY-MM-DD")
@@ -150,15 +175,21 @@ func (s *AdminHomeworkService) UpdateHomework(ctx context.Context, hwID uuid.UUI
 	return hw, nil
 }
 
-func (s *AdminHomeworkService) DeleteHomework(ctx context.Context, hwID uuid.UUID) error {
+func (s *AdminHomeworkService) DeleteHomework(ctx context.Context, userID uuid.UUID, hwID uuid.UUID) error {
 	if hwID == uuid.Nil {
 		return BadRequest("homework ID is required")
 	}
-
-	if _, err := s.GetHomework(ctx, hwID); err != nil {
-		return err
+	hw, err := s.homeworkRepo.GetByID(ctx, hwID)
+	if err != nil {
+		return NotFound("Homework not found")
 	}
-
+	isAdmin, err := IsCourseAdmin(ctx, s.roleRepo, userID, hw.CourseID)
+	if err != nil {
+		return Internal("Failed to check permissions", err)
+	}
+	if !isAdmin {
+		return Forbidden("You don't have permission to manage this course")
+	}
 	if err := s.homeworkRepo.Delete(ctx, hwID); err != nil {
 		return Internal("Failed to delete homework", err)
 	}
@@ -166,14 +197,19 @@ func (s *AdminHomeworkService) DeleteHomework(ctx context.Context, hwID uuid.UUI
 	return nil
 }
 
-func (s *AdminHomeworkService) PublishHomework(ctx context.Context, hwID uuid.UUID, isPublic bool) (*model.Homework, error) {
-	hw, err := s.GetHomework(ctx, hwID)
+func (s *AdminHomeworkService) PublishHomework(ctx context.Context, userID uuid.UUID, hwID uuid.UUID, isPublic bool) (*model.Homework, error) {
+	hw, err := s.homeworkRepo.GetByID(ctx, hwID)
 	if err != nil {
-		return nil, err
+		return nil, NotFound("Homework not found")
 	}
-
+	isAdmin, err := IsCourseAdmin(ctx, s.roleRepo, userID, hw.CourseID)
+	if err != nil {
+		return nil, Internal("Failed to check permissions", err)
+	}
+	if !isAdmin {
+		return nil, Forbidden("You don't have permission to manage this course")
+	}
 	hw.IsPublic = &isPublic
-
 	if err := s.homeworkRepo.Update(ctx, hw); err != nil {
 		return nil, Internal("Failed to publish homework", err)
 	}
@@ -181,9 +217,16 @@ func (s *AdminHomeworkService) PublishHomework(ctx context.Context, hwID uuid.UU
 	return hw, nil
 }
 
-func (s *AdminHomeworkService) SetDeadline(ctx context.Context, input SetDeadlineInput) (*model.Deadline, error) {
+func (s *AdminHomeworkService) SetDeadline(ctx context.Context, userID uuid.UUID, input SetDeadlineInput) (*model.Deadline, error) {
 	if input.CourseID == uuid.Nil {
 		return nil, BadRequest("course_id is required")
+	}
+	isAdmin, err := IsCourseAdmin(ctx, s.roleRepo, userID, input.CourseID)
+	if err != nil {
+		return nil, Internal("Failed to check permissions", err)
+	}
+	if !isAdmin {
+		return nil, Forbidden("You don't have permission to manage this course")
 	}
 	if input.HomeworkID == uuid.Nil {
 		return nil, BadRequest("homework ID is required")
@@ -191,13 +234,11 @@ func (s *AdminHomeworkService) SetDeadline(ctx context.Context, input SetDeadlin
 	if input.Title == "" {
 		return nil, BadRequest("title is required")
 	}
-
 	dueDate, err := time.Parse(time.RFC3339, input.DueDate)
 	if err != nil {
 		return nil, BadRequest("due date must be in RFC3339 format")
 	}
-
-	if _, err := s.GetHomework(ctx, input.HomeworkID); err != nil {
+	if _, err := s.GetHomework(ctx, userID, input.HomeworkID); err != nil {
 		return nil, err
 	}
 
@@ -208,7 +249,6 @@ func (s *AdminHomeworkService) SetDeadline(ctx context.Context, input SetDeadlin
 		DueDate:     dueDate,
 		AssignedBy:  input.AssignedBy,
 	}
-
 	if err := s.deadlineRepo.Create(ctx, deadline); err != nil {
 		return nil, Internal("Failed to set deadline", err)
 	}
@@ -216,16 +256,21 @@ func (s *AdminHomeworkService) SetDeadline(ctx context.Context, input SetDeadlin
 	return deadline, nil
 }
 
-func (s *AdminHomeworkService) UpdateDeadline(ctx context.Context, deadlineID uuid.UUID, input UpdateDeadlineInput) (*model.Deadline, error) {
+func (s *AdminHomeworkService) UpdateDeadline(ctx context.Context, userID uuid.UUID, deadlineID uuid.UUID, input UpdateDeadlineInput) (*model.Deadline, error) {
 	if deadlineID == uuid.Nil {
 		return nil, BadRequest("deadline ID is required")
 	}
-
 	deadline, err := s.deadlineRepo.GetByID(ctx, deadlineID)
 	if err != nil {
 		return nil, NotFound("Deadline not found")
 	}
-
+	isAdmin, err := IsCourseAdmin(ctx, s.roleRepo, userID, deadline.CourseID)
+	if err != nil {
+		return nil, Internal("Failed to check permissions", err)
+	}
+	if !isAdmin {
+		return nil, Forbidden("You don't have permission to manage this course")
+	}
 	if input.Title != "" {
 		deadline.Title = input.Title
 	}
@@ -239,7 +284,6 @@ func (s *AdminHomeworkService) UpdateDeadline(ctx context.Context, deadlineID uu
 		}
 		deadline.DueDate = dueDate
 	}
-
 	if err := s.deadlineRepo.Update(ctx, deadline); err != nil {
 		return nil, Internal("Failed to update deadline", err)
 	}
@@ -247,15 +291,21 @@ func (s *AdminHomeworkService) UpdateDeadline(ctx context.Context, deadlineID uu
 	return deadline, nil
 }
 
-func (s *AdminHomeworkService) DeleteDeadline(ctx context.Context, deadlineID uuid.UUID) error {
+func (s *AdminHomeworkService) DeleteDeadline(ctx context.Context, userID uuid.UUID, deadlineID uuid.UUID) error {
 	if deadlineID == uuid.Nil {
 		return BadRequest("deadline ID is required")
 	}
-
-	if _, err := s.deadlineRepo.GetByID(ctx, deadlineID); err != nil {
+	deadline, err := s.deadlineRepo.GetByID(ctx, deadlineID)
+	if err != nil {
 		return NotFound("Deadline not found")
 	}
-
+	isAdmin, err := IsCourseAdmin(ctx, s.roleRepo, userID, deadline.CourseID)
+	if err != nil {
+		return Internal("Failed to check permissions", err)
+	}
+	if !isAdmin {
+		return Forbidden("You don't have permission to manage this course")
+	}
 	if err := s.deadlineRepo.Delete(ctx, deadlineID); err != nil {
 		return Internal("Failed to delete deadline", err)
 	}

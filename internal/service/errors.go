@@ -5,6 +5,7 @@ import "errors"
 var (
 	ErrBadRequest         = errors.New("bad_request")
 	ErrUnauthorized       = errors.New("unauthorized")
+	ErrForbidden 		  = errors.New("forbidden")
 	ErrNotFound           = errors.New("not_found")
 	ErrConflict           = errors.New("conflict")
 	ErrInvalidCredentials = errors.New("invalid_credentials")
@@ -35,6 +36,10 @@ func BadRequest(message string) *Error {
 
 func Unauthorized(message string) *Error {
 	return NewError("unauthorized", message, ErrUnauthorized)
+}
+
+func Forbidden(message string) *Error {
+	return NewError("forbidden", message, ErrForbidden)
 }
 
 func NotFound(message string) *Error {

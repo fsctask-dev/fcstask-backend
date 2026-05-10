@@ -14,10 +14,11 @@ type IRoleRepo interface {
 	AssignRole(ctx context.Context, userRole *model.UserRole) error
 	RevokeRole(ctx context.Context, userID, courseID, roleID uuid.UUID) error
 	GetByCourseID(ctx context.Context, courseID uuid.UUID) ([]model.UserRole, error)
-
 	AddPermission(ctx context.Context, perm *model.CourseAdminPermission) error
 	RemovePermission(ctx context.Context, roleID uuid.UUID, permission string) error
 	GetPermissions(ctx context.Context, roleID uuid.UUID) ([]model.CourseAdminPermission, error)
+	GetUserCourseRoles(ctx context.Context, userID, courseID uuid.UUID) ([]model.UserRole, error)
+	GetUserCourses(ctx context.Context, userID uuid.UUID) ([]uuid.UUID, error)
 }
 
 type RoleRepository struct {
@@ -74,4 +75,27 @@ func (r *RoleRepository) GetPermissions(ctx context.Context, roleID uuid.UUID) (
 		return nil, err
 	}
 	return perms, nil
+}
+
+func (r *RoleRepository) GetUserCourseRoles(ctx context.Context, userID, courseID uuid.UUID) ([]model.UserRole, error) {
+	var roles []model.UserRole
+	err := r.db.WithContext(ctx).
+		Where("user_id = ? AND course_id = ?", userID, courseID).
+		Find(&roles).Error
+	if err != nil {
+		return nil, err
+	}
+	return roles, nil
+}
+
+func (r *RoleRepository) GetUserCourses(ctx context.Context, userID uuid.UUID) ([]uuid.UUID, error) {
+	var courseIDs []uuid.UUID
+	err := r.db.WithContext(ctx).
+		Model(&model.UserRole{}).
+		Where("user_id = ?", userID).
+		Pluck("course_id", &courseIDs).Error
+	if err != nil {
+		return nil, err
+	}
+	return courseIDs, nil
 }

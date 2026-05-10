@@ -3,17 +3,18 @@ package service
 import (
 	"context"
 	"time"
-
+	"github.com/google/uuid"
 	models "fcstask-backend/internal/db/model"
 	"fcstask-backend/internal/db/repo"
 )
 
 type CourseService struct {
 	courseRepo repo.CourseRepositoryInterface
+	roleRepo   repo.IRoleRepo
 }
 
-func NewCourseService(courseRepo repo.CourseRepositoryInterface) *CourseService {
-	return &CourseService{courseRepo: courseRepo}
+func NewCourseService(courseRepo repo.CourseRepositoryInterface, roleRepo repo.IRoleRepo) *CourseService {
+	return &CourseService{courseRepo: courseRepo, roleRepo: roleRepo}
 }
 
 type CourseInput struct {
@@ -27,19 +28,13 @@ type CourseInput struct {
 	Description  string
 }
 
-func (s *CourseService) GetCourses(ctx context.Context, status string) ([]models.Course, error) {
-	courses, err := s.courseRepo.GetCourses(ctx)
+func (s *CourseService) GetCourses(ctx context.Context, userID uuid.UUID, status string) ([]models.Course, error) {
+	courses, err := s.courseRepo.GetCoursesByUserID(ctx, userID, status)
 	if err != nil {
 		return nil, Internal("Failed to get courses", err)
 	}
 
-	filtered := make([]models.Course, 0, len(courses))
-	for _, course := range courses {
-		if status == "" || course.Status == status {
-			filtered = append(filtered, course)
-		}
-	}
-	return filtered, nil
+	return courses, nil
 }
 
 func (s *CourseService) GetCourse(ctx context.Context, courseID string) (*models.Course, error) {
@@ -52,8 +47,7 @@ func (s *CourseService) GetCourse(ctx context.Context, courseID string) (*models
 	}
 	return course, nil
 }
-
-func (s *CourseService) CreateCourse(ctx context.Context, input CourseInput) (*models.Course, error) {
+func (s *CourseService) CreateCourse(ctx context.Context, userID uuid.UUID, input CourseInput) (*models.Course, error) {
 	if err := validateCreateCourse(input); err != nil {
 		return nil, err
 	}
@@ -78,15 +72,46 @@ func (s *CourseService) CreateCourse(ctx context.Context, input CourseInput) (*m
 		URL:          "/course/" + input.Slug,
 	}
 
-	return s.courseRepo.CreateCourse(ctx, course)
+	created, err := s.courseRepo.CreateCourse(ctx, course)
+	if err != nil {
+		return nil, Internal("Failed to create course", err)
+	}
+
+	roleID := uuid.New()
+	userRole := &models.UserRole{
+		UserID:   userID,
+		CourseID: created.ID,
+		RoleID:   roleID,
+	}
+	if err := s.roleRepo.AssignRole(ctx, userRole); err != nil {
+		return nil, Internal("Failed to assign creator role", err)
+	}
+
+	adminPerm := &models.CourseAdminPermission{
+		RoleID:     roleID,
+		Permission: "admin",
+	}
+	if err := s.roleRepo.AddPermission(ctx, adminPerm); err != nil {
+		return nil, Internal("Failed to assign admin permission", err)
+	}
+
+	return created, nil
 }
 
-func (s *CourseService) UpdateCourse(ctx context.Context, courseID string, input CourseInput) (*models.Course, error) {
+func (s *CourseService) UpdateCourse(ctx context.Context, userID uuid.UUID, courseID string, input CourseInput) (*models.Course, error) {
 	course, err := s.GetCourse(ctx, courseID)
 	if err != nil {
 		return nil, err
 	}
 
+	courseUUID, _ := uuid.Parse(courseID)
+	isAdmin, err := IsCourseAdmin(ctx, s.roleRepo, userID, courseUUID)
+	if err != nil {
+		return nil, Internal("Failed to check permissions", err)
+	}
+	if !isAdmin {
+		return nil, Forbidden("You don't have permission to update this course")
+	}
 	if input.Status != "" && !IsValidCourseStatus(input.Status) {
 		return nil, BadRequest("invalid status value")
 	}
