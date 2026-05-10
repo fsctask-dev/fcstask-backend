@@ -26,6 +26,9 @@ jobs:
           go-version: "1.26"
           cache: true
 
+      - name: Generate code
+        run: make gen
+
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v6
         with:
@@ -44,6 +47,9 @@ jobs:
           go-version: "1.26"
           cache: true
 
+      - name: Generate code
+        run: make gen
+
       - name: Run tests with race detector
         run: go test ./... -race -coverprofile=coverage.out -covermode=atomic
 
@@ -52,34 +58,10 @@ jobs:
           COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
           echo "Total coverage: $COVERAGE%"
           if (( $(echo "$COVERAGE < 80" | bc -l) )); then
-            echo "❌ Test coverage < 80% ($COVERAGE%)"
+            echo "❌ Test coverage is below 80% ($COVERAGE%)"
             exit 1
           fi
           echo "✅ Coverage check passed"
-
-  gen-check:
-    name: Generated Code Check (make gen)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: "1.26"
-          cache: true
-
-      - name: Run make gen
-        run: make gen
-
-      - name: Verify generated files are up to date
-        run: |
-          if ! git diff --exit-code; then
-            echo "❌ Generated files are not up to date!"
-            echo "Run 'make gen' locally and commit changes."
-            exit 1
-          fi
-          echo "✅ Generated code is up to date"
 
   build:
     name: Build
@@ -92,6 +74,9 @@ jobs:
         with:
           go-version: "1.26"
           cache: true
+
+      - name: Generate code
+        run: make gen
 
       - name: Build all packages
         run: go build -v ./...
