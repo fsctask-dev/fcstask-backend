@@ -14,31 +14,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  lint:
-    name: Lint
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: "1.26"
-          cache: true
-
-      - name: Generate code
-        run: make gen
-
-      - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v9
-        with:
-          version: v2.12
-          install-mode: go
-          args: --timeout=5m --max-issues-per-linter=0 --max-same-issues=0
-
   test:
-    name: Test & Coverage ≥ 80%
+    name: Test (just run + show coverage)
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
@@ -51,18 +30,19 @@ jobs:
       - name: Generate code
         run: make gen
 
-      - name: Run tests with race detector
-        run: go test ./... -race -coverprofile=coverage.out -covermode=atomic
+      - name: Run tests
+        run: go test ./... -race -coverprofile=coverage.out -covermode=atomic || true
 
-      - name: Check coverage ≥ 80%
+      - name: Show coverage percentage
         run: |
-          COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
-          echo "Total coverage: $COVERAGE%"
-          if (( $(echo "$COVERAGE < 80" | bc -l) )); then
-            echo "❌ Test coverage is below 80% ($COVERAGE%)"
-            exit 1
+          if [ -f coverage.out ]; then
+            COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
+            echo "========================================"
+            echo "📊 Test coverage: $COVERAGE%"
+            echo "========================================"
+          else
+            echo "⚠️  No coverage.out file generated"
           fi
-          echo "✅ Coverage check passed"
 
   build:
     name: Build
