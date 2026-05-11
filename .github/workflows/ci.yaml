@@ -33,7 +33,6 @@ jobs:
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v6
         with:
-          version: v1.64
           install-mode: go
           args: --timeout=5m --max-issues-per-linter=0 --max-same-issues=0 --issues-exit-code=0
 
