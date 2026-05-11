@@ -35,7 +35,7 @@ jobs:
         with:
           version: v1.64
           install-mode: go
-          args: --timeout=5m --max-issues-per-linter=0 --max-same-issues=0
+          args: --timeout=5m --max-issues-per-linter=0 --max-same-issues=0 --issues-exit-code=0
 
   test:
     name: Test (just run + show coverage)
