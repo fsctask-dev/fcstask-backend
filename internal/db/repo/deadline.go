@@ -13,6 +13,7 @@ type IDeadlineRepo interface {
 	Create(ctx context.Context, deadline *model.Deadline) error
 	GetByID(ctx context.Context, id uuid.UUID) (*model.Deadline, error)
 	GetByCourseID(ctx context.Context, courseID uuid.UUID) ([]model.Deadline, error)
+	GetByHomeworkID(ctx context.Context, homeworkID uuid.UUID) (*model.Deadline, error)
 	Update(ctx context.Context, deadline *model.Deadline) error
 	Delete(ctx context.Context, id uuid.UUID) error
 }
@@ -50,6 +51,15 @@ func (r *DeadlineRepository) GetByCourseID(ctx context.Context, courseID uuid.UU
 		return nil, err
 	}
 	return deadlines, nil
+}
+
+func (r *DeadlineRepository) GetByHomeworkID(ctx context.Context, homeworkID uuid.UUID) (*model.Deadline, error) {
+	var deadline model.Deadline
+	err := r.db.WithContext(ctx).Where("homework_id = ?", homeworkID).First(&deadline).Error
+	if err != nil {
+		return nil, err
+	}
+	return &deadline, nil
 }
 
 func (r *DeadlineRepository) Update(ctx context.Context, deadline *model.Deadline) error {

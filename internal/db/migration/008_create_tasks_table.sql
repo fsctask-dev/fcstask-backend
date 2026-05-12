@@ -1,3 +1,4 @@
+-- +goose Up
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 CREATE TABLE IF NOT EXISTS tasks (
@@ -6,8 +7,9 @@ CREATE TABLE IF NOT EXISTS tasks (
     repo_url VARCHAR(500),
     task_url VARCHAR(255),
     score INT DEFAULT NULL
-)
+);
 
 CREATE INDEX idx_tasks_hw_id ON tasks(hw_id);
 
+-- +goose Down
 DROP TABLE IF EXISTS tasks;

@@ -252,3 +252,18 @@ func (h *AdminHomeworkHandler) DeleteDeadline(c echo.Context) error {
 
 	return c.NoContent(http.StatusNoContent)
 }
+
+// GET /admin/homework/:hwId/deadline
+func (h *AdminHomeworkHandler) GetDeadlineByHomeworkID(c echo.Context) error {
+	hwID, err := uuid.Parse(c.Param("hwId"))
+	if err != nil {
+		return badRequest(c, "Invalid homework ID")
+	}
+
+	deadline, err := h.homeworkService.GetDeadlineByHomeworkID(c.Request().Context(), hwID)
+	if err != nil {
+		return serviceError(c, err)
+	}
+
+	return c.JSON(http.StatusOK, deadline.DueDate.Format("2006-01-02"))
+}
