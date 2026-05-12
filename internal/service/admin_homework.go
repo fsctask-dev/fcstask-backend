@@ -273,3 +273,20 @@ func parseDatePtr(date string) (*time.Time, error) {
 	}
 	return &parsed, nil
 }
+
+func (s *AdminHomeworkService) GetDeadlineByHomeworkID(ctx context.Context, hwID uuid.UUID) (*model.Deadline, error) {
+	if hwID == uuid.Nil {
+		return nil, BadRequest("homework ID is required")
+	}
+
+	if _, err := s.homeworkRepo.GetByID(ctx, hwID); err != nil {
+		return nil, NotFound("Homework not found")
+	}
+
+	deadline, err := s.deadlineRepo.GetByHomeworkID(ctx, hwID)
+	if err != nil {
+		return nil, NotFound("Deadline not found")
+	}
+
+	return deadline, nil
+}

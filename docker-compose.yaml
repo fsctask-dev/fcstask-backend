@@ -1,5 +1,3 @@
-version: '3.8'  # Можно убрать, но оставим для совместимости
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -13,6 +11,25 @@ services:
       - "6432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d fcstask"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fcstask-api
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./config/config.docker.yaml:/home/fcstask-admin/config/config.yaml
+    depends_on:
+      postgres:
+        condition: service_healthy
 
 volumes:
   postgres_data:

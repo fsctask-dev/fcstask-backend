@@ -7,7 +7,7 @@ BINARY_NAME := fcstask-api
 DOCKER_IMAGE_NAME ?= miruken/$(MODULE_NAME)-backend
 DOCKER_IMAGE_TAG ?= 0.1.0
 
-.PHONY: init tidy migrate migrate install-tools gen test test-integration-db postgreplication-up docker-build docker-run docker-test docker-push ci-local ci
+.PHONY: init tidy migrate migrate install-tools gen test test-integration-db postgreplication-up docker-build docker-run compose-up compose-down docker-test docker-push ci-local ci
 
 init:
 	@echo "🔧 Initializing repo: $(MODULE_NAME)..."
@@ -67,16 +67,22 @@ docker-build:
 	@docker build -t $(DOCKER_IMAGE_NAME):$(DOCKER_IMAGE_TAG) .
 	@echo "✅ Docker image built"
 
-docker-run: docker-build
-	@echo "🚀 Running container on http://localhost:8080"
-	@docker run --rm -p 8080:8080 $(DOCKER_IMAGE_NAME):$(DOCKER_IMAGE_TAG)
+compose-up:
+	@echo "🚀 Starting full stack (PostgreSQL + API)..."
+	docker compose up --build -d
+	@echo "✅ API доступно на http://localhost:8080"
+
+compose-down:
+	docker compose down
+
+docker-run: compose-up
 
 docker-test:
 	@echo "🧪 Running tests inside container..."
 	docker run --rm \
 		-v "$(PWD):/app" \
 		-w /app \
-		golang:1.25-alpine \
+		golang:1.26-alpine \
 		go test ./... -v
 
 docker-push:

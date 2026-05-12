@@ -39,17 +39,23 @@ func New(cfg *config.Config) (*App, error) {
 	userRepo := repo.NewUserRepository(dbClient)
 	sessionRepo := repo.NewSessionRepository(dbClient)
 	courseRepo := repo.NewCourseRepository(dbClient)
+	homeworkRepo := repo.NewHomeworkRepository(dbClient.DB())
+	deadlineRepo := repo.NewDeadlineRepository(dbClient.DB())
 
 	userService := service.NewUserService(userRepo)
 	authService := service.NewAuthService(userRepo, sessionRepo)
 	sessionService := service.NewSessionService(sessionRepo)
 	courseService := service.NewCourseService(courseRepo)
+	adminHomeworkService := service.NewAdminHomeworkService(homeworkRepo, deadlineRepo)
+
+	adminHomeworkHandler := handler.NewAdminHomeworkHandler(adminHomeworkService)
 
 	apiController := controller.NewAPIController(
 		handler.NewAuthHandler(authService),
 		handler.NewUserHandler(userService),
 		handler.NewSessionHandler(sessionService, userService),
 		handler.NewCourseHandler(courseService),
+		adminHomeworkHandler,
 	)
 
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
@@ -67,6 +73,7 @@ func New(cfg *config.Config) (*App, error) {
 
 	api.RegisterHandlers(e, apiController)
 	apiController.RegisterCourseRoutes(e)
+	apiController.RegisterHomeworkRoutes(e)
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 	metrics.EchoPrometheus(e)

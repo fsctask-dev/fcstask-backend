@@ -38,3 +38,7 @@ func (h *Homework) BeforeCreate(tx *gorm.DB) error {
 	}
 	return nil
 }
+
+func (Homework) TableName() string {
+	return "homework"
+}
