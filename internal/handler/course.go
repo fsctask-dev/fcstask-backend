@@ -10,12 +10,6 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-type Course = model.Course
-type BoardDeadline = model.BoardDeadline
-type BoardTask = model.BoardTask
-type BoardGroup = model.BoardGroup
-type TaskBoardSummary = model.TaskBoardSummary
-
 type PostCourseRequest struct {
 	Name         string `json:"name"`
 	Slug         string `json:"slug"`

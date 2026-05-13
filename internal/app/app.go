@@ -77,6 +77,8 @@ func New(cfg *config.Config) (*App, error) {
 		"/api/signout",
 		"/v1/sessions",
 		"/v1/users/sessions",
+		"/api/courses",
+		"/api/courses/*",
 	}))
 
 	api.RegisterHandlers(e, apiController)

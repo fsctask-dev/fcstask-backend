@@ -100,10 +100,10 @@ func (r *CourseRepository) GetCoursesByUserID(ctx context.Context, userID uuid.U
 		Pluck("course_id", &courseIDs).Error; err != nil {
 		return nil, err
 	}
-	if len(courseIDs) == 0 {
-		return []models.Course{}, nil
-	}
 	var courses []models.Course
+	if len(courseIDs) == 0 {
+		return courses, nil
+	}
 	query := r.rw.ReadDB().WithContext(ctx).Where("id IN ?", courseIDs)
 	if status != "" {
 		query = query.Where("status = ?", status)
