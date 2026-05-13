@@ -12,7 +12,8 @@ import (
 )
 
 type CourseRepositoryInterface interface {
-	GetCourses(ctx context.Context) ([]models.Course, error)
+    GetCourses(ctx context.Context) ([]models.Course, error)
+	GetCoursesByUserID(ctx context.Context, userID uuid.UUID, status string) ([]models.Course, error)
 	GetCourseByID(ctx context.Context, courseID string) (*models.Course, error)
 	CreateCourse(ctx context.Context, course models.Course) (*models.Course, error)
 	UpdateCourse(ctx context.Context, courseID string, course models.Course) (*models.Course, error)
@@ -89,4 +90,26 @@ func (r *CourseRepository) DeleteCourse(ctx context.Context, courseID string) er
 
 func (r *CourseRepository) GetCourseBoard(ctx context.Context, courseID string) (*models.TaskBoardSummary, bool, error) {
 	return nil, false, nil
+}
+
+func (r *CourseRepository) GetCoursesByUserID(ctx context.Context, userID uuid.UUID, status string) ([]models.Course, error) {
+	var courseIDs []uuid.UUID
+	if err := r.rw.ReadDB().WithContext(ctx).
+		Model(&models.UserRole{}).
+		Where("user_id = ?", userID).
+		Pluck("course_id", &courseIDs).Error; err != nil {
+		return nil, err
+	}
+	var courses []models.Course
+	if len(courseIDs) == 0 {
+		return courses, nil
+	}
+	query := r.rw.ReadDB().WithContext(ctx).Where("id IN ?", courseIDs)
+	if status != "" {
+		query = query.Where("status = ?", status)
+	}
+	if err := query.Find(&courses).Error; err != nil {
+		return nil, err
+	}
+	return courses, nil
 }

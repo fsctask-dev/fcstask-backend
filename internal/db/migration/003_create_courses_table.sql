@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS courses (
     description TEXT,
     status VARCHAR(50) NOT NULL DEFAULT 'created',
     type VARCHAR(20) NOT NULL DEFAULT 'private',
-    invite_code VARCHAR(50) UNIQUE,
+    invite_code VARCHAR(50),
     start_date TIMESTAMP WITH TIME ZONE,
     end_date TIMESTAMP WITH TIME ZONE,
     repo_template VARCHAR(500),

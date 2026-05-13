@@ -12,6 +12,7 @@ import (
 const (
 	errorCodeBadRequest   = "bad_request"
 	errorCodeUnauthorized = "unauthorized"
+	errorCodeForbidden    = "forbidden"
 	errorCodeNotFound     = "not_found"
 	errorCodeConflict     = "conflict"
 	errorCodeInternal     = "internal_error"
@@ -32,6 +33,10 @@ func badRequest(ctx echo.Context, message string) error {
 
 func unauthorized(ctx echo.Context, message string) error {
 	return apiError(ctx, http.StatusUnauthorized, errorCodeUnauthorized, message)
+}
+
+func forbidden(ctx echo.Context, message string) error {
+	return apiError(ctx, http.StatusForbidden, errorCodeForbidden, message)
 }
 
 func conflict(ctx echo.Context, message string) error {

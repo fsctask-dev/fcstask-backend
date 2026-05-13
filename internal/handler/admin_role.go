@@ -5,7 +5,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
-
+    "fcstask-backend/internal/db/model"
 	"fcstask-backend/internal/service"
 )
 
@@ -33,17 +33,19 @@ type AddPermissionRequest struct {
 
 // POST /admin/courses/:courseId/roles
 func (h *AdminRoleHandler) AssignRole(c echo.Context) error {
+	user := c.Get(UserContextKey).(*model.User)
+	if user == nil {
+		return unauthorized(c, "User not found")
+	}
 	courseID, err := uuid.Parse(c.Param("courseId"))
 	if err != nil {
 		return badRequest(c, "Invalid course ID")
 	}
-
 	var req AssignRoleRequest
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "Invalid request body")
 	}
-
-	userRole, err := h.roleService.AssignRole(c.Request().Context(), service.AssignRoleInput{
+	userRole, err := h.roleService.AssignRole(c.Request().Context(), user.ID, service.AssignRoleInput{
 		UserID:   req.UserID,
 		CourseID: courseID,
 		RoleID:   req.RoleID,
@@ -51,45 +53,47 @@ func (h *AdminRoleHandler) AssignRole(c echo.Context) error {
 	if err != nil {
 		return serviceError(c, err)
 	}
-
 	return c.JSON(http.StatusCreated, userRole)
 }
 
 // DELETE /admin/courses/:courseId/roles
 func (h *AdminRoleHandler) RevokeRole(c echo.Context) error {
+	user := c.Get(UserContextKey).(*model.User)
+	if user == nil {
+		return unauthorized(c, "User not found")
+	}
 	courseID, err := uuid.Parse(c.Param("courseId"))
 	if err != nil {
 		return badRequest(c, "Invalid course ID")
 	}
-
 	var req RevokeRoleRequest
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "Invalid request body")
 	}
-
-	if err := h.roleService.RevokeRole(c.Request().Context(), service.RevokeRoleInput{
+	if err := h.roleService.RevokeRole(c.Request().Context(), user.ID, service.RevokeRoleInput{
 		UserID:   req.UserID,
 		CourseID: courseID,
 		RoleID:   req.RoleID,
 	}); err != nil {
 		return serviceError(c, err)
 	}
-
 	return c.NoContent(http.StatusNoContent)
 }
 
 // GET /admin/courses/:courseId/roles
 func (h *AdminRoleHandler) ListUserRoles(c echo.Context) error {
+	user := c.Get(UserContextKey).(*model.User)
+	if user == nil {
+		return unauthorized(c, "User not found")
+	}
 	courseID, err := uuid.Parse(c.Param("courseId"))
 	if err != nil {
 		return badRequest(c, "Invalid course ID")
 	}
-
-	roles, err := h.roleService.ListUserRoles(c.Request().Context(), courseID)
+	roles, err := h.roleService.ListUserRoles(c.Request().Context(), user.ID, courseID)
 	if err != nil {
 		return serviceError(c, err)
 	}
-
 	return c.JSON(http.StatusOK, roles)
 }
 
