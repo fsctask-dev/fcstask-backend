@@ -6,6 +6,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 
+	"fcstask-backend/internal/db/model"
 	"fcstask-backend/internal/service"
 )
 
@@ -31,8 +32,39 @@ type AddPermissionRequest struct {
 	Permission string `json:"permission"`
 }
 
+type CreateSuperAdminRequest struct {
+	UserID uuid.UUID `json:"user_id"`
+}
+
+// POST /admin/super-admins
+func (h *AdminRoleHandler) CreateSuperAdmin(c echo.Context) error {
+	user, ok := c.Get(UserContextKey).(*model.User)
+	if !ok || user == nil {
+		return unauthorized(c, "User not found")
+	}
+
+	var req CreateSuperAdminRequest
+	if err := c.Bind(&req); err != nil {
+		return badRequest(c, "Invalid request body")
+	}
+
+	userRole, err := h.roleService.CreateSuperAdmin(c.Request().Context(), user.ID, service.CreateSuperAdminInput{
+		UserID: req.UserID,
+	})
+	if err != nil {
+		return serviceError(c, err)
+	}
+
+	return c.JSON(http.StatusCreated, userRole)
+}
+
 // POST /admin/courses/:courseId/roles
 func (h *AdminRoleHandler) AssignRole(c echo.Context) error {
+	user, ok := c.Get(UserContextKey).(*model.User)
+	if !ok || user == nil {
+		return unauthorized(c, "User not found")
+	}
+
 	courseID, err := uuid.Parse(c.Param("courseId"))
 	if err != nil {
 		return badRequest(c, "Invalid course ID")
@@ -43,7 +75,7 @@ func (h *AdminRoleHandler) AssignRole(c echo.Context) error {
 		return badRequest(c, "Invalid request body")
 	}
 
-	userRole, err := h.roleService.AssignRole(c.Request().Context(), service.AssignRoleInput{
+	userRole, err := h.roleService.AssignRole(c.Request().Context(), user.ID, service.AssignRoleInput{
 		UserID:   req.UserID,
 		CourseID: courseID,
 		RoleID:   req.RoleID,
@@ -57,6 +89,11 @@ func (h *AdminRoleHandler) AssignRole(c echo.Context) error {
 
 // DELETE /admin/courses/:courseId/roles
 func (h *AdminRoleHandler) RevokeRole(c echo.Context) error {
+	user, ok := c.Get(UserContextKey).(*model.User)
+	if !ok || user == nil {
+		return unauthorized(c, "User not found")
+	}
+
 	courseID, err := uuid.Parse(c.Param("courseId"))
 	if err != nil {
 		return badRequest(c, "Invalid course ID")
@@ -67,7 +104,7 @@ func (h *AdminRoleHandler) RevokeRole(c echo.Context) error {
 		return badRequest(c, "Invalid request body")
 	}
 
-	if err := h.roleService.RevokeRole(c.Request().Context(), service.RevokeRoleInput{
+	if err := h.roleService.RevokeRole(c.Request().Context(), user.ID, service.RevokeRoleInput{
 		UserID:   req.UserID,
 		CourseID: courseID,
 		RoleID:   req.RoleID,
@@ -80,12 +117,17 @@ func (h *AdminRoleHandler) RevokeRole(c echo.Context) error {
 
 // GET /admin/courses/:courseId/roles
 func (h *AdminRoleHandler) ListUserRoles(c echo.Context) error {
+	user, ok := c.Get(UserContextKey).(*model.User)
+	if !ok || user == nil {
+		return unauthorized(c, "User not found")
+	}
+
 	courseID, err := uuid.Parse(c.Param("courseId"))
 	if err != nil {
 		return badRequest(c, "Invalid course ID")
 	}
 
-	roles, err := h.roleService.ListUserRoles(c.Request().Context(), courseID)
+	roles, err := h.roleService.ListUserRoles(c.Request().Context(), user.ID, courseID)
 	if err != nil {
 		return serviceError(c, err)
 	}
@@ -95,6 +137,11 @@ func (h *AdminRoleHandler) ListUserRoles(c echo.Context) error {
 
 // POST /admin/roles/:roleId/permissions
 func (h *AdminRoleHandler) AddPermission(c echo.Context) error {
+	user, ok := c.Get(UserContextKey).(*model.User)
+	if !ok || user == nil {
+		return unauthorized(c, "User not found")
+	}
+
 	roleID, err := uuid.Parse(c.Param("roleId"))
 	if err != nil {
 		return badRequest(c, "Invalid role ID")
@@ -105,7 +152,7 @@ func (h *AdminRoleHandler) AddPermission(c echo.Context) error {
 		return badRequest(c, "Invalid request body")
 	}
 
-	perm, err := h.roleService.AddPermission(c.Request().Context(), service.AddPermissionInput{
+	perm, err := h.roleService.AddPermission(c.Request().Context(), user.ID, service.AddPermissionInput{
 		RoleID:     roleID,
 		Permission: req.Permission,
 	})
@@ -118,6 +165,11 @@ func (h *AdminRoleHandler) AddPermission(c echo.Context) error {
 
 // DELETE /admin/roles/:roleId/permissions/:permission
 func (h *AdminRoleHandler) RemovePermission(c echo.Context) error {
+	user, ok := c.Get(UserContextKey).(*model.User)
+	if !ok || user == nil {
+		return unauthorized(c, "User not found")
+	}
+
 	roleID, err := uuid.Parse(c.Param("roleId"))
 	if err != nil {
 		return badRequest(c, "Invalid role ID")
@@ -125,7 +177,7 @@ func (h *AdminRoleHandler) RemovePermission(c echo.Context) error {
 
 	permission := c.Param("permission")
 
-	if err := h.roleService.RemovePermission(c.Request().Context(), roleID, permission); err != nil {
+	if err := h.roleService.RemovePermission(c.Request().Context(), user.ID, roleID, permission); err != nil {
 		return serviceError(c, err)
 	}
 
@@ -134,12 +186,17 @@ func (h *AdminRoleHandler) RemovePermission(c echo.Context) error {
 
 // GET /admin/roles/:roleId/permissions
 func (h *AdminRoleHandler) ListPermissions(c echo.Context) error {
+	user, ok := c.Get(UserContextKey).(*model.User)
+	if !ok || user == nil {
+		return unauthorized(c, "User not found")
+	}
+
 	roleID, err := uuid.Parse(c.Param("roleId"))
 	if err != nil {
 		return badRequest(c, "Invalid role ID")
 	}
 
-	perms, err := h.roleService.ListPermissions(c.Request().Context(), roleID)
+	perms, err := h.roleService.ListPermissions(c.Request().Context(), user.ID, roleID)
 	if err != nil {
 		return serviceError(c, err)
 	}

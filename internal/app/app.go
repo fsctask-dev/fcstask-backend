@@ -39,11 +39,22 @@ func New(cfg *config.Config) (*App, error) {
 	userRepo := repo.NewUserRepository(dbClient)
 	sessionRepo := repo.NewSessionRepository(dbClient)
 	courseRepo := repo.NewCourseRepository(dbClient)
+	roleRepo := repo.NewRoleRepository(dbClient.DB())
+	homeworkRepo := repo.NewHomeworkRepository(dbClient.DB())
+	taskRepo := repo.NewTaskRepository(dbClient.DB())
+	deadlineRepo := repo.NewDeadlineRepository(dbClient.DB())
 
 	userService := service.NewUserService(userRepo)
 	authService := service.NewAuthService(userRepo, sessionRepo)
 	sessionService := service.NewSessionService(sessionRepo)
 	courseService := service.NewCourseService(courseRepo)
+	adminHomeworkService := service.NewAdminHomeworkService(homeworkRepo, deadlineRepo, roleRepo)
+	adminTaskService := service.NewAdminTaskService(taskRepo, homeworkRepo, roleRepo)
+	adminRoleService := service.NewAdminRoleService(roleRepo, userRepo)
+
+	adminHomeworkHandler := handler.NewAdminHomeworkHandler(adminHomeworkService)
+	adminTaskHandler := handler.NewAdminTaskHandler(adminTaskService)
+	adminRoleHandler := handler.NewAdminRoleHandler(adminRoleService)
 
 	apiController := controller.NewAPIController(
 		handler.NewAuthHandler(authService),
@@ -63,10 +74,23 @@ func New(cfg *config.Config) (*App, error) {
 		"/api/signout",
 		"/v1/sessions",
 		"/v1/users/sessions",
+		"/admin/courses/:courseId/homework",
+		"/admin/courses/:courseId/homework/:hwId",
+		"/admin/courses/:courseId/homework/:hwId/publish",
+		"/admin/courses/:courseId/homework/:hwId/deadline",
+		"/admin/deadlines/:deadlineId",
+		"/admin/courses/:courseId/homework/:hwId/tasks",
+		"/admin/courses/:courseId/homework/:hwId/tasks/:taskId",
+		"/admin/courses/:courseId/homework/:hwId/tasks/:taskId/score",
+		"/admin/courses/:courseId/roles",
+		"/admin/super-admins",
+		"/admin/roles/:roleId/permissions",
+		"/admin/roles/:roleId/permissions/:permission",
 	}))
 
 	api.RegisterHandlers(e, apiController)
 	apiController.RegisterCourseRoutes(e)
+	apiController.RegisterAdminRoutes(e, adminHomeworkHandler, adminTaskHandler, adminRoleHandler)
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 	metrics.EchoPrometheus(e)

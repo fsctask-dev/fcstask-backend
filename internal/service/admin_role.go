@@ -38,7 +38,14 @@ type AddPermissionInput struct {
 	Permission string
 }
 
-func (s *AdminRoleService) AssignRole(ctx context.Context, input AssignRoleInput) (*model.UserRole, error) {
+type CreateSuperAdminInput struct {
+	UserID uuid.UUID
+}
+
+func (s *AdminRoleService) AssignRole(ctx context.Context, userID uuid.UUID, input AssignRoleInput) (*model.UserRole, error) {
+	if err := RequireScopedPermission(ctx, s.roleRepo, userID, uuid.Nil, PermissionAdminRoleAssign); err != nil {
+		return nil, err
+	}
 	if input.UserID == uuid.Nil {
 		return nil, BadRequest("user_id is required")
 	}
@@ -66,7 +73,25 @@ func (s *AdminRoleService) AssignRole(ctx context.Context, input AssignRoleInput
 	return userRole, nil
 }
 
-func (s *AdminRoleService) RevokeRole(ctx context.Context, input RevokeRoleInput) error {
+func (s *AdminRoleService) CreateSuperAdmin(ctx context.Context, userID uuid.UUID, input CreateSuperAdminInput) (*model.UserRole, error) {
+	if err := RequireScopedPermission(ctx, s.roleRepo, userID, uuid.Nil, PermissionAdminSuperCreate); err != nil {
+		return nil, err
+	}
+	if input.UserID == uuid.Nil {
+		return nil, BadRequest("user_id is required")
+	}
+
+	if _, err := s.userRepo.GetUserByID(ctx, input.UserID); err != nil {
+		return nil, NotFound("User not found")
+	}
+
+	return EnsureRolePermissions(ctx, s.roleRepo, input.UserID, uuid.Nil, AdminPermissions())
+}
+
+func (s *AdminRoleService) RevokeRole(ctx context.Context, userID uuid.UUID, input RevokeRoleInput) error {
+	if err := RequireScopedPermission(ctx, s.roleRepo, userID, uuid.Nil, PermissionAdminRoleRevoke); err != nil {
+		return err
+	}
 	if input.UserID == uuid.Nil {
 		return BadRequest("user_id is required")
 	}
@@ -84,7 +109,10 @@ func (s *AdminRoleService) RevokeRole(ctx context.Context, input RevokeRoleInput
 	return nil
 }
 
-func (s *AdminRoleService) ListUserRoles(ctx context.Context, courseID uuid.UUID) ([]model.UserRole, error) {
+func (s *AdminRoleService) ListUserRoles(ctx context.Context, userID, courseID uuid.UUID) ([]model.UserRole, error) {
+	if err := RequireScopedPermission(ctx, s.roleRepo, userID, uuid.Nil, PermissionAdminRoleList); err != nil {
+		return nil, err
+	}
 	if courseID == uuid.Nil {
 		return nil, BadRequest("course_id is required")
 	}
@@ -97,7 +125,10 @@ func (s *AdminRoleService) ListUserRoles(ctx context.Context, courseID uuid.UUID
 	return roles, nil
 }
 
-func (s *AdminRoleService) AddPermission(ctx context.Context, input AddPermissionInput) (*model.CourseAdminPermission, error) {
+func (s *AdminRoleService) AddPermission(ctx context.Context, userID uuid.UUID, input AddPermissionInput) (*model.CourseAdminPermission, error) {
+	if err := RequireScopedPermission(ctx, s.roleRepo, userID, uuid.Nil, PermissionAdminPermAdd); err != nil {
+		return nil, err
+	}
 	if input.RoleID == uuid.Nil {
 		return nil, BadRequest("role_id is required")
 	}
@@ -117,7 +148,10 @@ func (s *AdminRoleService) AddPermission(ctx context.Context, input AddPermissio
 	return perm, nil
 }
 
-func (s *AdminRoleService) RemovePermission(ctx context.Context, roleID uuid.UUID, permission string) error {
+func (s *AdminRoleService) RemovePermission(ctx context.Context, userID, roleID uuid.UUID, permission string) error {
+	if err := RequireScopedPermission(ctx, s.roleRepo, userID, uuid.Nil, PermissionAdminPermRemove); err != nil {
+		return err
+	}
 	if roleID == uuid.Nil {
 		return BadRequest("role_id is required")
 	}
@@ -132,7 +166,10 @@ func (s *AdminRoleService) RemovePermission(ctx context.Context, roleID uuid.UUI
 	return nil
 }
 
-func (s *AdminRoleService) ListPermissions(ctx context.Context, roleID uuid.UUID) ([]model.CourseAdminPermission, error) {
+func (s *AdminRoleService) ListPermissions(ctx context.Context, userID, roleID uuid.UUID) ([]model.CourseAdminPermission, error) {
+	if err := RequireScopedPermission(ctx, s.roleRepo, userID, uuid.Nil, PermissionAdminPermList); err != nil {
+		return nil, err
+	}
 	if roleID == uuid.Nil {
 		return nil, BadRequest("role_id is required")
 	}

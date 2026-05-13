@@ -18,42 +18,50 @@ type MockAdminRoleService struct {
 	mock.Mock
 }
 
-func (m *MockAdminRoleService) AssignRole(ctx context.Context, input service.AssignRoleInput) (*model.UserRole, error) {
-	args := m.Called(ctx, input)
+func (m *MockAdminRoleService) CreateSuperAdmin(ctx context.Context, userID uuid.UUID, input service.CreateSuperAdminInput) (*model.UserRole, error) {
+	args := m.Called(ctx, userID, input)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(*model.UserRole), args.Error(1)
 }
 
-func (m *MockAdminRoleService) RevokeRole(ctx context.Context, input service.RevokeRoleInput) error {
-	args := m.Called(ctx, input)
+func (m *MockAdminRoleService) AssignRole(ctx context.Context, userID uuid.UUID, input service.AssignRoleInput) (*model.UserRole, error) {
+	args := m.Called(ctx, userID, input)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*model.UserRole), args.Error(1)
+}
+
+func (m *MockAdminRoleService) RevokeRole(ctx context.Context, userID uuid.UUID, input service.RevokeRoleInput) error {
+	args := m.Called(ctx, userID, input)
 	return args.Error(0)
 }
 
-func (m *MockAdminRoleService) ListUserRoles(ctx context.Context, courseID uuid.UUID) ([]model.UserRole, error) {
-	args := m.Called(ctx, courseID)
+func (m *MockAdminRoleService) ListUserRoles(ctx context.Context, userID, courseID uuid.UUID) ([]model.UserRole, error) {
+	args := m.Called(ctx, userID, courseID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).([]model.UserRole), args.Error(1)
 }
 
-func (m *MockAdminRoleService) AddPermission(ctx context.Context, input service.AddPermissionInput) (*model.CourseAdminPermission, error) {
-	args := m.Called(ctx, input)
+func (m *MockAdminRoleService) AddPermission(ctx context.Context, userID uuid.UUID, input service.AddPermissionInput) (*model.CourseAdminPermission, error) {
+	args := m.Called(ctx, userID, input)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(*model.CourseAdminPermission), args.Error(1)
 }
 
-func (m *MockAdminRoleService) RemovePermission(ctx context.Context, roleID uuid.UUID, permission string) error {
-	args := m.Called(ctx, roleID, permission)
+func (m *MockAdminRoleService) RemovePermission(ctx context.Context, userID, roleID uuid.UUID, permission string) error {
+	args := m.Called(ctx, userID, roleID, permission)
 	return args.Error(0)
 }
 
-func (m *MockAdminRoleService) ListPermissions(ctx context.Context, roleID uuid.UUID) ([]model.CourseAdminPermission, error) {
-	args := m.Called(ctx, roleID)
+func (m *MockAdminRoleService) ListPermissions(ctx context.Context, userID, roleID uuid.UUID) ([]model.CourseAdminPermission, error) {
+	args := m.Called(ctx, userID, roleID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -75,13 +83,35 @@ func TestHandlerAssignRole_Success(t *testing.T) {
 	expected := &model.UserRole{UserID: userID, CourseID: courseID, RoleID: roleID}
 
 	c, rec := newEchoContext(http.MethodPost, "/", body, map[string]string{"courseId": courseID.String()})
-	svc.On("AssignRole", mock.Anything, service.AssignRoleInput{
+	svc.On("AssignRole", mock.Anything, mock.Anything, service.AssignRoleInput{
 		UserID:   userID,
 		CourseID: courseID,
 		RoleID:   roleID,
 	}).Return(expected, nil)
 
 	err := h.AssignRole(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusCreated, rec.Code)
+	svc.AssertExpectations(t)
+}
+
+func TestHandlerCreateSuperAdmin_Success(t *testing.T) {
+	svc := new(MockAdminRoleService)
+	h := handler.NewAdminRoleHandler(svc)
+
+	targetUserID := uuid.New()
+	expected := &model.UserRole{UserID: targetUserID, CourseID: uuid.Nil, RoleID: uuid.New()}
+
+	body := map[string]interface{}{
+		"user_id": targetUserID.String(),
+	}
+
+	c, rec := newEchoContext(http.MethodPost, "/", body, nil)
+	svc.On("CreateSuperAdmin", mock.Anything, mock.Anything, service.CreateSuperAdminInput{
+		UserID: targetUserID,
+	}).Return(expected, nil)
+
+	err := h.CreateSuperAdmin(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusCreated, rec.Code)
 	svc.AssertExpectations(t)
@@ -112,7 +142,7 @@ func TestHandlerAssignRole_ServiceError_UserNotFound(t *testing.T) {
 	}
 
 	c, rec := newEchoContext(http.MethodPost, "/", body, map[string]string{"courseId": courseID.String()})
-	svc.On("AssignRole", mock.Anything, mock.Anything).Return(nil, service.NotFound("User not found"))
+	svc.On("AssignRole", mock.Anything, mock.Anything, mock.Anything).Return(nil, service.NotFound("User not found"))
 
 	err := h.AssignRole(c)
 	assert.NoError(t, err)
@@ -131,7 +161,7 @@ func TestHandlerAssignRole_ServiceError_BadRequest(t *testing.T) {
 	}
 
 	c, rec := newEchoContext(http.MethodPost, "/", body, map[string]string{"courseId": courseID.String()})
-	svc.On("AssignRole", mock.Anything, mock.Anything).Return(nil, service.BadRequest("user_id is required"))
+	svc.On("AssignRole", mock.Anything, mock.Anything, mock.Anything).Return(nil, service.BadRequest("user_id is required"))
 
 	err := h.AssignRole(c)
 	assert.NoError(t, err)
@@ -153,7 +183,7 @@ func TestHandlerRevokeRole_Success(t *testing.T) {
 	}
 
 	c, rec := newEchoContext(http.MethodDelete, "/", body, map[string]string{"courseId": courseID.String()})
-	svc.On("RevokeRole", mock.Anything, service.RevokeRoleInput{
+	svc.On("RevokeRole", mock.Anything, mock.Anything, service.RevokeRoleInput{
 		UserID:   userID,
 		CourseID: courseID,
 		RoleID:   roleID,
@@ -187,7 +217,7 @@ func TestHandlerRevokeRole_ServiceError(t *testing.T) {
 	}
 
 	c, rec := newEchoContext(http.MethodDelete, "/", body, map[string]string{"courseId": courseID.String()})
-	svc.On("RevokeRole", mock.Anything, mock.Anything).Return(service.Internal("Failed to revoke role", nil))
+	svc.On("RevokeRole", mock.Anything, mock.Anything, mock.Anything).Return(service.Internal("Failed to revoke role", nil))
 
 	err := h.RevokeRole(c)
 	assert.NoError(t, err)
@@ -205,7 +235,7 @@ func TestHandlerListUserRoles_Success(t *testing.T) {
 	}
 
 	c, rec := newEchoContext(http.MethodGet, "/", nil, map[string]string{"courseId": courseID.String()})
-	svc.On("ListUserRoles", mock.Anything, courseID).Return(expected, nil)
+	svc.On("ListUserRoles", mock.Anything, mock.Anything, courseID).Return(expected, nil)
 
 	err := h.ListUserRoles(c)
 	assert.NoError(t, err)
@@ -230,7 +260,7 @@ func TestHandlerListUserRoles_ServiceError(t *testing.T) {
 
 	courseID := uuid.New()
 	c, rec := newEchoContext(http.MethodGet, "/", nil, map[string]string{"courseId": courseID.String()})
-	svc.On("ListUserRoles", mock.Anything, courseID).Return(nil, service.Internal("Failed to fetch roles", nil))
+	svc.On("ListUserRoles", mock.Anything, mock.Anything, courseID).Return(nil, service.Internal("Failed to fetch roles", nil))
 
 	err := h.ListUserRoles(c)
 	assert.NoError(t, err)
@@ -248,7 +278,7 @@ func TestHandlerAddPermission_Success(t *testing.T) {
 	expected := &model.CourseAdminPermission{RoleID: roleID, Permission: permission}
 
 	c, rec := newEchoContext(http.MethodPost, "/", body, map[string]string{"roleId": roleID.String()})
-	svc.On("AddPermission", mock.Anything, service.AddPermissionInput{
+	svc.On("AddPermission", mock.Anything, mock.Anything, service.AddPermissionInput{
 		RoleID:     roleID,
 		Permission: permission,
 	}).Return(expected, nil)
@@ -278,7 +308,7 @@ func TestHandlerAddPermission_ServiceError(t *testing.T) {
 	body := map[string]interface{}{"permission": ""}
 
 	c, rec := newEchoContext(http.MethodPost, "/", body, map[string]string{"roleId": roleID.String()})
-	svc.On("AddPermission", mock.Anything, mock.Anything).Return(nil, service.BadRequest("permission is required"))
+	svc.On("AddPermission", mock.Anything, mock.Anything, mock.Anything).Return(nil, service.BadRequest("permission is required"))
 
 	err := h.AddPermission(c)
 	assert.NoError(t, err)
@@ -297,7 +327,7 @@ func TestHandlerRemovePermission_Success(t *testing.T) {
 		[]string{"roleId", "permission"},
 		[]string{roleID.String(), permission},
 	)
-	svc.On("RemovePermission", mock.Anything, roleID, permission).Return(nil)
+	svc.On("RemovePermission", mock.Anything, mock.Anything, roleID, permission).Return(nil)
 
 	err := h.RemovePermission(c)
 	assert.NoError(t, err)
@@ -330,7 +360,7 @@ func TestHandlerRemovePermission_ServiceError(t *testing.T) {
 		[]string{"roleId", "permission"},
 		[]string{roleID.String(), permission},
 	)
-	svc.On("RemovePermission", mock.Anything, roleID, permission).Return(service.Internal("Failed to remove permission", nil))
+	svc.On("RemovePermission", mock.Anything, mock.Anything, roleID, permission).Return(service.Internal("Failed to remove permission", nil))
 
 	err := h.RemovePermission(c)
 	assert.NoError(t, err)
@@ -349,7 +379,7 @@ func TestHandlerListPermissions_Success(t *testing.T) {
 	}
 
 	c, rec := newEchoContext(http.MethodGet, "/", nil, map[string]string{"roleId": roleID.String()})
-	svc.On("ListPermissions", mock.Anything, roleID).Return(expected, nil)
+	svc.On("ListPermissions", mock.Anything, mock.Anything, roleID).Return(expected, nil)
 
 	err := h.ListPermissions(c)
 	assert.NoError(t, err)
@@ -374,7 +404,7 @@ func TestHandlerListPermissions_ServiceError(t *testing.T) {
 
 	roleID := uuid.New()
 	c, rec := newEchoContext(http.MethodGet, "/", nil, map[string]string{"roleId": roleID.String()})
-	svc.On("ListPermissions", mock.Anything, roleID).Return(nil, service.Internal("Failed to fetch permissions", nil))
+	svc.On("ListPermissions", mock.Anything, mock.Anything, roleID).Return(nil, service.Internal("Failed to fetch permissions", nil))
 
 	err := h.ListPermissions(c)
 	assert.NoError(t, err)

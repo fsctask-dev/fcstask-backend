@@ -90,20 +90,25 @@ func (m *MockHomeworkRepoForTask) Delete(ctx context.Context, id uuid.UUID) erro
 func setupTaskService() (*service.AdminTaskService, *MockTaskRepo, *MockHomeworkRepoForTask) {
 	taskRepo := new(MockTaskRepo)
 	hwRepo := new(MockHomeworkRepoForTask)
-	svc := service.NewAdminTaskService(taskRepo, hwRepo)
+	roleRepo := new(MockRoleRepo)
+	roleID := uuid.New()
+	roleRepo.On("GetRoleIDByUserAndCourse", mock.Anything, mock.Anything, mock.Anything).Return(roleID, nil)
+	roleRepo.On("HasPermission", mock.Anything, roleID, mock.Anything).Return(true, nil)
+	svc := service.NewAdminTaskService(taskRepo, hwRepo, roleRepo)
 	return svc, taskRepo, hwRepo
 }
 
 func TestCreateTask_Success(t *testing.T) {
 	svc, taskRepo, hwRepo := setupTaskService()
 	ctx := context.Background()
+	userID := uuid.New()
 
 	hwID := uuid.New()
 	repoURL := "https://github.com/test/repo"
 	taskURL := "https://test.com/task"
 	Score := 100
 
-	hwRepo.On("GetByID", ctx, hwID).Return(&model.Homework{HwID: hwID}, nil)
+	hwRepo.On("GetByID", ctx, hwID).Return(&model.Homework{HwID: hwID, CourseID: uuid.New()}, nil)
 	taskRepo.On("Create", ctx, mock.MatchedBy(func(task *model.Task) bool {
 		return task.HwID == hwID &&
 			*task.RepoURL == repoURL &&
@@ -111,7 +116,7 @@ func TestCreateTask_Success(t *testing.T) {
 			*task.Score == Score
 	})).Return(nil)
 
-	result, err := svc.CreateTask(ctx, service.CreateTaskInput{
+	result, err := svc.CreateTask(ctx, userID, service.CreateTaskInput{
 		HwID:    hwID,
 		RepoURL: repoURL,
 		TaskURL: taskURL,
@@ -132,7 +137,7 @@ func TestCreateTask_EmptyHwID(t *testing.T) {
 	svc, _, _ := setupTaskService()
 	ctx := context.Background()
 
-	result, err := svc.CreateTask(ctx, service.CreateTaskInput{
+	result, err := svc.CreateTask(ctx, uuid.New(), service.CreateTaskInput{
 		HwID:    uuid.Nil,
 		RepoURL: "https://github.com/test/repo",
 		TaskURL: "https://test.com/task",
@@ -151,7 +156,7 @@ func TestCreateTask_HomeworkNotFound(t *testing.T) {
 	hwID := uuid.New()
 	hwRepo.On("GetByID", ctx, hwID).Return(nil, assert.AnError)
 
-	result, err := svc.CreateTask(ctx, service.CreateTaskInput{
+	result, err := svc.CreateTask(ctx, uuid.New(), service.CreateTaskInput{
 		HwID:    hwID,
 		RepoURL: "https://github.com/test/repo",
 		TaskURL: "https://test.com/task",
@@ -169,10 +174,10 @@ func TestCreateTask_RepoError(t *testing.T) {
 	ctx := context.Background()
 
 	hwID := uuid.New()
-	hwRepo.On("GetByID", ctx, hwID).Return(&model.Homework{HwID: hwID}, nil)
+	hwRepo.On("GetByID", ctx, hwID).Return(&model.Homework{HwID: hwID, CourseID: uuid.New()}, nil)
 	taskRepo.On("Create", ctx, mock.AnythingOfType("*model.Task")).Return(assert.AnError)
 
-	result, err := svc.CreateTask(ctx, service.CreateTaskInput{
+	result, err := svc.CreateTask(ctx, uuid.New(), service.CreateTaskInput{
 		HwID:    hwID,
 		RepoURL: "https://github.com/test/repo",
 		Score:   100,
@@ -190,12 +195,12 @@ func TestCreateTask_NilURLs(t *testing.T) {
 	ctx := context.Background()
 
 	hwID := uuid.New()
-	hwRepo.On("GetByID", ctx, hwID).Return(&model.Homework{HwID: hwID}, nil)
+	hwRepo.On("GetByID", ctx, hwID).Return(&model.Homework{HwID: hwID, CourseID: uuid.New()}, nil)
 	taskRepo.On("Create", ctx, mock.MatchedBy(func(task *model.Task) bool {
 		return task.HwID == hwID && task.RepoURL == nil && task.TaskURL == nil
 	})).Return(nil)
 
-	result, err := svc.CreateTask(ctx, service.CreateTaskInput{
+	result, err := svc.CreateTask(ctx, uuid.New(), service.CreateTaskInput{
 		HwID:  hwID,
 		Score: 100,
 	})
@@ -209,14 +214,17 @@ func TestCreateTask_NilURLs(t *testing.T) {
 }
 
 func TestGetTask_Success(t *testing.T) {
-	svc, taskRepo, _ := setupTaskService()
+	svc, taskRepo, hwRepo := setupTaskService()
 	ctx := context.Background()
+	userID := uuid.New()
 
 	taskID := uuid.New()
-	expected := &model.Task{TaskID: taskID, HwID: uuid.New()}
+	hwID := uuid.New()
+	expected := &model.Task{TaskID: taskID, HwID: hwID}
 	taskRepo.On("GetByID", ctx, taskID).Return(expected, nil)
+	hwRepo.On("GetByID", ctx, hwID).Return(&model.Homework{HwID: hwID, CourseID: uuid.New()}, nil)
 
-	result, err := svc.GetTask(ctx, taskID)
+	result, err := svc.GetTask(ctx, userID, taskID)
 
 	assert.NoError(t, err)
 	assert.Equal(t, expected, result)
@@ -227,7 +235,7 @@ func TestGetTask_EmptyID(t *testing.T) {
 	svc, _, _ := setupTaskService()
 	ctx := context.Background()
 
-	result, err := svc.GetTask(ctx, uuid.Nil)
+	result, err := svc.GetTask(ctx, uuid.New(), uuid.Nil)
 
 	assert.Error(t, err)
 	assert.Nil(t, result)
@@ -241,7 +249,7 @@ func TestGetTask_NotFound(t *testing.T) {
 	taskID := uuid.New()
 	taskRepo.On("GetByID", ctx, taskID).Return(nil, assert.AnError)
 
-	result, err := svc.GetTask(ctx, taskID)
+	result, err := svc.GetTask(ctx, uuid.New(), taskID)
 
 	assert.Error(t, err)
 	assert.Nil(t, result)
@@ -259,10 +267,10 @@ func TestListTasks_Success(t *testing.T) {
 		{TaskID: uuid.New(), HwID: hwID},
 	}
 
-	hwRepo.On("GetByID", ctx, hwID).Return(&model.Homework{HwID: hwID}, nil)
+	hwRepo.On("GetByID", ctx, hwID).Return(&model.Homework{HwID: hwID, CourseID: uuid.New()}, nil)
 	taskRepo.On("GetByHwID", ctx, hwID).Return(expectedTasks, nil)
 
-	result, err := svc.ListTasks(ctx, hwID)
+	result, err := svc.ListTasks(ctx, uuid.New(), hwID)
 
 	assert.NoError(t, err)
 	assert.Len(t, result, 2)
@@ -275,7 +283,7 @@ func TestListTasks_EmptyHwID(t *testing.T) {
 	svc, _, _ := setupTaskService()
 	ctx := context.Background()
 
-	result, err := svc.ListTasks(ctx, uuid.Nil)
+	result, err := svc.ListTasks(ctx, uuid.New(), uuid.Nil)
 
 	assert.Error(t, err)
 	assert.Nil(t, result)
@@ -289,7 +297,7 @@ func TestListTasks_HomeworkNotFound(t *testing.T) {
 	hwID := uuid.New()
 	hwRepo.On("GetByID", ctx, hwID).Return(nil, assert.AnError)
 
-	result, err := svc.ListTasks(ctx, hwID)
+	result, err := svc.ListTasks(ctx, uuid.New(), hwID)
 
 	assert.Error(t, err)
 	assert.Nil(t, result)
@@ -302,10 +310,10 @@ func TestListTasks_RepoError(t *testing.T) {
 	ctx := context.Background()
 
 	hwID := uuid.New()
-	hwRepo.On("GetByID", ctx, hwID).Return(&model.Homework{HwID: hwID}, nil)
+	hwRepo.On("GetByID", ctx, hwID).Return(&model.Homework{HwID: hwID, CourseID: uuid.New()}, nil)
 	taskRepo.On("GetByHwID", ctx, hwID).Return(nil, assert.AnError)
 
-	result, err := svc.ListTasks(ctx, hwID)
+	result, err := svc.ListTasks(ctx, uuid.New(), hwID)
 
 	assert.Error(t, err)
 	assert.Nil(t, result)
@@ -315,10 +323,12 @@ func TestListTasks_RepoError(t *testing.T) {
 }
 
 func TestUpdateTask_Success(t *testing.T) {
-	svc, taskRepo, _ := setupTaskService()
+	svc, taskRepo, hwRepo := setupTaskService()
 	ctx := context.Background()
+	userID := uuid.New()
 
 	taskID := uuid.New()
+	hwID := uuid.New()
 	oldRepoURL := "https://github.com/test/old-repo"
 	oldTaskURL := "https://test.com/old-task"
 	newRepoURL := "https://github.com/test/updated-repo"
@@ -328,18 +338,19 @@ func TestUpdateTask_Success(t *testing.T) {
 
 	existingTask := &model.Task{
 		TaskID:  taskID,
-		HwID:    uuid.New(),
+		HwID:    hwID,
 		RepoURL: &oldRepoURL,
 		TaskURL: &oldTaskURL,
 		Score:   &oldTaskScore,
 	}
 
 	taskRepo.On("GetByID", ctx, taskID).Return(existingTask, nil)
+	hwRepo.On("GetByID", ctx, hwID).Return(&model.Homework{HwID: hwID, CourseID: uuid.New()}, nil)
 	taskRepo.On("Update", ctx, mock.MatchedBy(func(task *model.Task) bool {
 		return *task.RepoURL == newRepoURL && *task.TaskURL == newTaskURL && *task.Score == newTaskScore
 	})).Return(nil)
 
-	result, err := svc.UpdateTask(ctx, taskID, service.UpdateTaskInput{
+	result, err := svc.UpdateTask(ctx, userID, taskID, service.UpdateTaskInput{
 		RepoURL: newRepoURL,
 		TaskURL: newTaskURL,
 		Score:   newTaskScore,
@@ -354,27 +365,30 @@ func TestUpdateTask_Success(t *testing.T) {
 }
 
 func TestUpdateTask_PartialUpdate(t *testing.T) {
-	svc, taskRepo, _ := setupTaskService()
+	svc, taskRepo, hwRepo := setupTaskService()
 	ctx := context.Background()
+	userID := uuid.New()
 
 	taskID := uuid.New()
+	hwID := uuid.New()
 	oldRepoURL := "https://github.com/test/old-repo"
 	oldTaskURL := "https://test.com/old-task"
 	newRepoURL := "https://github.com/test/updated-repo"
 
 	existingTask := &model.Task{
 		TaskID:  taskID,
-		HwID:    uuid.New(),
+		HwID:    hwID,
 		RepoURL: &oldRepoURL,
 		TaskURL: &oldTaskURL,
 	}
 
 	taskRepo.On("GetByID", ctx, taskID).Return(existingTask, nil)
+	hwRepo.On("GetByID", ctx, hwID).Return(&model.Homework{HwID: hwID, CourseID: uuid.New()}, nil)
 	taskRepo.On("Update", ctx, mock.MatchedBy(func(task *model.Task) bool {
 		return *task.RepoURL == newRepoURL && *task.TaskURL == oldTaskURL
 	})).Return(nil)
 
-	result, err := svc.UpdateTask(ctx, taskID, service.UpdateTaskInput{
+	result, err := svc.UpdateTask(ctx, userID, taskID, service.UpdateTaskInput{
 		RepoURL: newRepoURL,
 	})
 
@@ -391,7 +405,7 @@ func TestUpdateTask_NotFound(t *testing.T) {
 	taskID := uuid.New()
 	taskRepo.On("GetByID", ctx, taskID).Return(nil, assert.AnError)
 
-	result, err := svc.UpdateTask(ctx, taskID, service.UpdateTaskInput{
+	result, err := svc.UpdateTask(ctx, uuid.New(), taskID, service.UpdateTaskInput{
 		RepoURL: "https://github.com/test/repo",
 	})
 
@@ -402,16 +416,19 @@ func TestUpdateTask_NotFound(t *testing.T) {
 }
 
 func TestUpdateTask_UpdateError(t *testing.T) {
-	svc, taskRepo, _ := setupTaskService()
+	svc, taskRepo, hwRepo := setupTaskService()
 	ctx := context.Background()
+	userID := uuid.New()
 
 	taskID := uuid.New()
-	existingTask := &model.Task{TaskID: taskID, HwID: uuid.New()}
+	hwID := uuid.New()
+	existingTask := &model.Task{TaskID: taskID, HwID: hwID}
 
 	taskRepo.On("GetByID", ctx, taskID).Return(existingTask, nil)
+	hwRepo.On("GetByID", ctx, hwID).Return(&model.Homework{HwID: hwID, CourseID: uuid.New()}, nil)
 	taskRepo.On("Update", ctx, mock.AnythingOfType("*model.Task")).Return(assert.AnError)
 
-	result, err := svc.UpdateTask(ctx, taskID, service.UpdateTaskInput{
+	result, err := svc.UpdateTask(ctx, userID, taskID, service.UpdateTaskInput{
 		RepoURL: "https://github.com/test/repo",
 	})
 
@@ -422,14 +439,16 @@ func TestUpdateTask_UpdateError(t *testing.T) {
 }
 
 func TestDeleteTask_Success(t *testing.T) {
-	svc, taskRepo, _ := setupTaskService()
+	svc, taskRepo, hwRepo := setupTaskService()
 	ctx := context.Background()
 
 	taskID := uuid.New()
-	taskRepo.On("GetByID", ctx, taskID).Return(&model.Task{TaskID: taskID}, nil)
+	hwID := uuid.New()
+	taskRepo.On("GetByID", ctx, taskID).Return(&model.Task{TaskID: taskID, HwID: hwID}, nil)
+	hwRepo.On("GetByID", ctx, hwID).Return(&model.Homework{HwID: hwID, CourseID: uuid.New()}, nil)
 	taskRepo.On("Delete", ctx, taskID).Return(nil)
 
-	err := svc.DeleteTask(ctx, taskID)
+	err := svc.DeleteTask(ctx, uuid.New(), taskID)
 
 	assert.NoError(t, err)
 	taskRepo.AssertExpectations(t)
@@ -439,7 +458,7 @@ func TestDeleteTask_EmptyID(t *testing.T) {
 	svc, _, _ := setupTaskService()
 	ctx := context.Background()
 
-	err := svc.DeleteTask(ctx, uuid.Nil)
+	err := svc.DeleteTask(ctx, uuid.New(), uuid.Nil)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "task_id is required")
@@ -452,7 +471,7 @@ func TestDeleteTask_NotFound(t *testing.T) {
 	taskID := uuid.New()
 	taskRepo.On("GetByID", ctx, taskID).Return(nil, assert.AnError)
 
-	err := svc.DeleteTask(ctx, taskID)
+	err := svc.DeleteTask(ctx, uuid.New(), taskID)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "Task not found")
@@ -460,14 +479,16 @@ func TestDeleteTask_NotFound(t *testing.T) {
 }
 
 func TestDeleteTask_DeleteError(t *testing.T) {
-	svc, taskRepo, _ := setupTaskService()
+	svc, taskRepo, hwRepo := setupTaskService()
 	ctx := context.Background()
 
 	taskID := uuid.New()
-	taskRepo.On("GetByID", ctx, taskID).Return(&model.Task{TaskID: taskID}, nil)
+	hwID := uuid.New()
+	taskRepo.On("GetByID", ctx, taskID).Return(&model.Task{TaskID: taskID, HwID: hwID}, nil)
+	hwRepo.On("GetByID", ctx, hwID).Return(&model.Homework{HwID: hwID, CourseID: uuid.New()}, nil)
 	taskRepo.On("Delete", ctx, taskID).Return(assert.AnError)
 
-	err := svc.DeleteTask(ctx, taskID)
+	err := svc.DeleteTask(ctx, uuid.New(), taskID)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "Failed to delete task")
@@ -475,17 +496,18 @@ func TestDeleteTask_DeleteError(t *testing.T) {
 }
 
 func TestSetScore_Success(t *testing.T) {
-	svc, taskRepo, _ := setupTaskService()
+	svc, taskRepo, hwRepo := setupTaskService()
 	ctx := context.Background()
 
 	taskID := uuid.New()
+	hwID := uuid.New()
 	score := 250
 
-	taskRepo.On("GetByID", ctx, taskID).Return(&model.Task{TaskID: taskID}, nil).Once()
+	taskRepo.On("GetByID", ctx, taskID).Return(&model.Task{TaskID: taskID, HwID: hwID}, nil).Twice()
+	hwRepo.On("GetByID", ctx, hwID).Return(&model.Homework{HwID: hwID, CourseID: uuid.New()}, nil)
 	taskRepo.On("SetScore", ctx, taskID, score).Return(nil)
-	taskRepo.On("GetByID", ctx, taskID).Return(&model.Task{TaskID: taskID}, nil).Once()
 
-	result, err := svc.SetScore(ctx, service.SetTaskScoreInput{
+	result, err := svc.SetScore(ctx, uuid.New(), service.SetTaskScoreInput{
 		TaskID: taskID,
 		Score:  score,
 	})
@@ -500,7 +522,7 @@ func TestSetScore_EmptyTaskID(t *testing.T) {
 	svc, _, _ := setupTaskService()
 	ctx := context.Background()
 
-	result, err := svc.SetScore(ctx, service.SetTaskScoreInput{
+	result, err := svc.SetScore(ctx, uuid.New(), service.SetTaskScoreInput{
 		TaskID: uuid.Nil,
 		Score:  100,
 	})
@@ -514,7 +536,7 @@ func TestSetScore_NegativeScore(t *testing.T) {
 	svc, _, _ := setupTaskService()
 	ctx := context.Background()
 
-	result, err := svc.SetScore(ctx, service.SetTaskScoreInput{
+	result, err := svc.SetScore(ctx, uuid.New(), service.SetTaskScoreInput{
 		TaskID: uuid.New(),
 		Score:  -10,
 	})
@@ -531,7 +553,7 @@ func TestSetScore_TaskNotFound(t *testing.T) {
 	taskID := uuid.New()
 	taskRepo.On("GetByID", ctx, taskID).Return(nil, assert.AnError)
 
-	result, err := svc.SetScore(ctx, service.SetTaskScoreInput{
+	result, err := svc.SetScore(ctx, uuid.New(), service.SetTaskScoreInput{
 		TaskID: taskID,
 		Score:  100,
 	})
@@ -543,14 +565,16 @@ func TestSetScore_TaskNotFound(t *testing.T) {
 }
 
 func TestSetScore_SetScoreError(t *testing.T) {
-	svc, taskRepo, _ := setupTaskService()
+	svc, taskRepo, hwRepo := setupTaskService()
 	ctx := context.Background()
 
 	taskID := uuid.New()
-	taskRepo.On("GetByID", ctx, taskID).Return(&model.Task{TaskID: taskID}, nil)
+	hwID := uuid.New()
+	taskRepo.On("GetByID", ctx, taskID).Return(&model.Task{TaskID: taskID, HwID: hwID}, nil)
+	hwRepo.On("GetByID", ctx, hwID).Return(&model.Homework{HwID: hwID, CourseID: uuid.New()}, nil)
 	taskRepo.On("SetScore", ctx, taskID, 100).Return(assert.AnError)
 
-	result, err := svc.SetScore(ctx, service.SetTaskScoreInput{
+	result, err := svc.SetScore(ctx, uuid.New(), service.SetTaskScoreInput{
 		TaskID: taskID,
 		Score:  100,
 	})

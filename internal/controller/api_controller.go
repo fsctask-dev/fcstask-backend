@@ -80,3 +80,35 @@ func (c *APIController) RegisterCourseRoutes(e *echo.Echo) {
 	e.PUT("/api/courses/:courseId", c.courseHandler.UpdateCourse)
 	e.GET("/api/courses/:courseId/board", c.courseHandler.GetCourseBoard)
 }
+
+func (c *APIController) RegisterAdminRoutes(
+	e *echo.Echo,
+	adminHomeworkHandler *handler.AdminHomeworkHandler,
+	adminTaskHandler *handler.AdminTaskHandler,
+	adminRoleHandler *handler.AdminRoleHandler,
+) {
+	e.POST("/admin/courses/:courseId/homework", adminHomeworkHandler.CreateHomework)
+	e.GET("/admin/courses/:courseId/homework/:hwId", adminHomeworkHandler.GetHomework)
+	e.GET("/admin/courses/:courseId/homework", adminHomeworkHandler.ListHomework)
+	e.PATCH("/admin/courses/:courseId/homework/:hwId", adminHomeworkHandler.UpdateHomework)
+	e.DELETE("/admin/courses/:courseId/homework/:hwId", adminHomeworkHandler.DeleteHomework)
+	e.PATCH("/admin/courses/:courseId/homework/:hwId/publish", adminHomeworkHandler.PublishHomework)
+	e.PUT("/admin/courses/:courseId/homework/:hwId/deadline", adminHomeworkHandler.SetDeadline)
+	e.PATCH("/admin/deadlines/:deadlineId", adminHomeworkHandler.UpdateDeadline)
+	e.DELETE("/admin/deadlines/:deadlineId", adminHomeworkHandler.DeleteDeadline)
+
+	e.POST("/admin/courses/:courseId/homework/:hwId/tasks", adminTaskHandler.CreateTask)
+	e.GET("/admin/courses/:courseId/homework/:hwId/tasks", adminTaskHandler.ListTasks)
+	e.GET("/admin/courses/:courseId/homework/:hwId/tasks/:taskId", adminTaskHandler.GetTask)
+	e.PATCH("/admin/courses/:courseId/homework/:hwId/tasks/:taskId", adminTaskHandler.UpdateTask)
+	e.DELETE("/admin/courses/:courseId/homework/:hwId/tasks/:taskId", adminTaskHandler.DeleteTask)
+	e.PATCH("/admin/courses/:courseId/homework/:hwId/tasks/:taskId/score", adminTaskHandler.SetScore)
+
+	e.POST("/admin/courses/:courseId/roles", adminRoleHandler.AssignRole)
+	e.DELETE("/admin/courses/:courseId/roles", adminRoleHandler.RevokeRole)
+	e.GET("/admin/courses/:courseId/roles", adminRoleHandler.ListUserRoles)
+	e.POST("/admin/super-admins", adminRoleHandler.CreateSuperAdmin)
+	e.POST("/admin/roles/:roleId/permissions", adminRoleHandler.AddPermission)
+	e.DELETE("/admin/roles/:roleId/permissions/:permission", adminRoleHandler.RemovePermission)
+	e.GET("/admin/roles/:roleId/permissions", adminRoleHandler.ListPermissions)
+}

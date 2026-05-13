@@ -22,69 +22,69 @@ type MockAdminHomeworkService struct {
 	mock.Mock
 }
 
-func (m *MockAdminHomeworkService) CreateHomework(ctx context.Context, input service.CreateHomeworkInput) (*model.Homework, error) {
-	args := m.Called(ctx, input)
+func (m *MockAdminHomeworkService) CreateHomework(ctx context.Context, userID uuid.UUID, input service.CreateHomeworkInput) (*model.Homework, error) {
+	args := m.Called(ctx, userID, input)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(*model.Homework), args.Error(1)
 }
 
-func (m *MockAdminHomeworkService) GetHomework(ctx context.Context, hwID uuid.UUID) (*model.Homework, error) {
-	args := m.Called(ctx, hwID)
+func (m *MockAdminHomeworkService) GetHomework(ctx context.Context, userID, hwID uuid.UUID) (*model.Homework, error) {
+	args := m.Called(ctx, userID, hwID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(*model.Homework), args.Error(1)
 }
 
-func (m *MockAdminHomeworkService) ListHomework(ctx context.Context, courseID uuid.UUID) ([]model.Homework, error) {
-	args := m.Called(ctx, courseID)
+func (m *MockAdminHomeworkService) ListHomework(ctx context.Context, userID, courseID uuid.UUID) ([]model.Homework, error) {
+	args := m.Called(ctx, userID, courseID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).([]model.Homework), args.Error(1)
 }
 
-func (m *MockAdminHomeworkService) UpdateHomework(ctx context.Context, hwID uuid.UUID, input service.UpdateHomeworkInput) (*model.Homework, error) {
-	args := m.Called(ctx, hwID, input)
+func (m *MockAdminHomeworkService) UpdateHomework(ctx context.Context, userID, hwID uuid.UUID, input service.UpdateHomeworkInput) (*model.Homework, error) {
+	args := m.Called(ctx, userID, hwID, input)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(*model.Homework), args.Error(1)
 }
 
-func (m *MockAdminHomeworkService) DeleteHomework(ctx context.Context, hwID uuid.UUID) error {
-	args := m.Called(ctx, hwID)
+func (m *MockAdminHomeworkService) DeleteHomework(ctx context.Context, userID, hwID uuid.UUID) error {
+	args := m.Called(ctx, userID, hwID)
 	return args.Error(0)
 }
 
-func (m *MockAdminHomeworkService) PublishHomework(ctx context.Context, hwID uuid.UUID, isPublic bool) (*model.Homework, error) {
-	args := m.Called(ctx, hwID, isPublic)
+func (m *MockAdminHomeworkService) PublishHomework(ctx context.Context, userID, hwID uuid.UUID, isPublic bool) (*model.Homework, error) {
+	args := m.Called(ctx, userID, hwID, isPublic)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(*model.Homework), args.Error(1)
 }
 
-func (m *MockAdminHomeworkService) SetDeadline(ctx context.Context, input service.SetDeadlineInput) (*model.Deadline, error) {
-	args := m.Called(ctx, input)
+func (m *MockAdminHomeworkService) SetDeadline(ctx context.Context, userID uuid.UUID, input service.SetDeadlineInput) (*model.Deadline, error) {
+	args := m.Called(ctx, userID, input)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(*model.Deadline), args.Error(1)
 }
 
-func (m *MockAdminHomeworkService) UpdateDeadline(ctx context.Context, deadlineID uuid.UUID, input service.UpdateDeadlineInput) (*model.Deadline, error) {
-	args := m.Called(ctx, deadlineID, input)
+func (m *MockAdminHomeworkService) UpdateDeadline(ctx context.Context, userID, deadlineID uuid.UUID, input service.UpdateDeadlineInput) (*model.Deadline, error) {
+	args := m.Called(ctx, userID, deadlineID, input)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(*model.Deadline), args.Error(1)
 }
 
-func (m *MockAdminHomeworkService) DeleteDeadline(ctx context.Context, deadlineID uuid.UUID) error {
-	args := m.Called(ctx, deadlineID)
+func (m *MockAdminHomeworkService) DeleteDeadline(ctx context.Context, userID, deadlineID uuid.UUID) error {
+	args := m.Called(ctx, userID, deadlineID)
 	return args.Error(0)
 }
 
@@ -104,6 +104,7 @@ func newEchoContext(method, path string, body interface{}, params map[string]str
 		c.SetParamNames(k)
 		c.SetParamValues(v)
 	}
+	c.Set(handler.UserContextKey, &model.User{ID: uuid.New()})
 	return c, rec
 }
 
@@ -121,6 +122,7 @@ func newEchoContextMultiParam(method, path string, body interface{}, paramNames 
 	c := e.NewContext(req, rec)
 	c.SetParamNames(paramNames...)
 	c.SetParamValues(paramValues...)
+	c.Set(handler.UserContextKey, &model.User{ID: uuid.New()})
 	return c, rec
 }
 
@@ -141,7 +143,7 @@ func TestHandlerCreateHomework_Success(t *testing.T) {
 	expected := &model.Homework{HwID: hwID, CourseID: courseID}
 
 	c, rec := newEchoContext(http.MethodPost, "/", body, map[string]string{"courseId": courseID.String()})
-	svc.On("CreateHomework", mock.Anything, service.CreateHomeworkInput{
+	svc.On("CreateHomework", mock.Anything, mock.Anything, service.CreateHomeworkInput{
 		CourseID:  courseID,
 		StartDate: startDate,
 		EndDate:   endDate,
@@ -175,7 +177,7 @@ func TestHandlerCreateHomework_ServiceError(t *testing.T) {
 	}
 
 	c, rec := newEchoContext(http.MethodPost, "/", body, map[string]string{"courseId": courseID.String()})
-	svc.On("CreateHomework", mock.Anything, mock.Anything).Return(nil, service.BadRequest("end date must be after start_date"))
+	svc.On("CreateHomework", mock.Anything, mock.Anything, mock.Anything).Return(nil, service.BadRequest("end date must be after start_date"))
 
 	err := h.CreateHomework(c)
 	assert.NoError(t, err)
@@ -194,7 +196,7 @@ func TestHandlerGetHomework_Success(t *testing.T) {
 		[]string{"courseId", "hwId"},
 		[]string{uuid.New().String(), hwID.String()},
 	)
-	svc.On("GetHomework", mock.Anything, hwID).Return(expected, nil)
+	svc.On("GetHomework", mock.Anything, mock.Anything, hwID).Return(expected, nil)
 
 	err := h.GetHomework(c)
 	assert.NoError(t, err)
@@ -219,7 +221,7 @@ func TestHandlerGetHomework_NotFound(t *testing.T) {
 
 	hwID := uuid.New()
 	c, rec := newEchoContext(http.MethodGet, "/", nil, map[string]string{"hwId": hwID.String()})
-	svc.On("GetHomework", mock.Anything, hwID).Return(nil, service.NotFound("Homework not found"))
+	svc.On("GetHomework", mock.Anything, mock.Anything, hwID).Return(nil, service.NotFound("Homework not found"))
 
 	err := h.GetHomework(c)
 	assert.NoError(t, err)
@@ -235,7 +237,7 @@ func TestHandlerListHomework_Success(t *testing.T) {
 	expected := []model.Homework{{HwID: uuid.New(), CourseID: courseID}}
 
 	c, rec := newEchoContext(http.MethodGet, "/", nil, map[string]string{"courseId": courseID.String()})
-	svc.On("ListHomework", mock.Anything, courseID).Return(expected, nil)
+	svc.On("ListHomework", mock.Anything, mock.Anything, courseID).Return(expected, nil)
 
 	err := h.ListHomework(c)
 	assert.NoError(t, err)
@@ -267,7 +269,7 @@ func TestHandlerUpdateHomework_Success(t *testing.T) {
 		[]string{"courseId", "hwId"},
 		[]string{uuid.New().String(), hwID.String()},
 	)
-	svc.On("UpdateHomework", mock.Anything, hwID, service.UpdateHomeworkInput{EndDate: newEnd}).Return(expected, nil)
+	svc.On("UpdateHomework", mock.Anything, mock.Anything, hwID, service.UpdateHomeworkInput{EndDate: newEnd}).Return(expected, nil)
 
 	err := h.UpdateHomework(c)
 	assert.NoError(t, err)
@@ -294,7 +296,7 @@ func TestHandlerUpdateHomework_ServiceError(t *testing.T) {
 	body := map[string]interface{}{"end_date": "2025-01-01"}
 
 	c, rec := newEchoContext(http.MethodPatch, "/", body, map[string]string{"hwId": hwID.String()})
-	svc.On("UpdateHomework", mock.Anything, hwID, mock.Anything).Return(nil, service.NotFound("Homework not found"))
+	svc.On("UpdateHomework", mock.Anything, mock.Anything, hwID, mock.Anything).Return(nil, service.NotFound("Homework not found"))
 
 	err := h.UpdateHomework(c)
 	assert.NoError(t, err)
@@ -308,7 +310,7 @@ func TestHandlerDeleteHomework_Success(t *testing.T) {
 
 	hwID := uuid.New()
 	c, rec := newEchoContext(http.MethodDelete, "/", nil, map[string]string{"hwId": hwID.String()})
-	svc.On("DeleteHomework", mock.Anything, hwID).Return(nil)
+	svc.On("DeleteHomework", mock.Anything, mock.Anything, hwID).Return(nil)
 
 	err := h.DeleteHomework(c)
 	assert.NoError(t, err)
@@ -333,7 +335,7 @@ func TestHandlerDeleteHomework_NotFound(t *testing.T) {
 
 	hwID := uuid.New()
 	c, rec := newEchoContext(http.MethodDelete, "/", nil, map[string]string{"hwId": hwID.String()})
-	svc.On("DeleteHomework", mock.Anything, hwID).Return(service.NotFound("Homework not found"))
+	svc.On("DeleteHomework", mock.Anything, mock.Anything, hwID).Return(service.NotFound("Homework not found"))
 
 	err := h.DeleteHomework(c)
 	assert.NoError(t, err)
@@ -351,7 +353,7 @@ func TestHandlerPublishHomework_Success(t *testing.T) {
 	expected := &model.Homework{HwID: hwID, IsPublic: &isPublic}
 
 	c, rec := newEchoContext(http.MethodPatch, "/", body, map[string]string{"hwId": hwID.String()})
-	svc.On("PublishHomework", mock.Anything, hwID, isPublic).Return(expected, nil)
+	svc.On("PublishHomework", mock.Anything, mock.Anything, hwID, isPublic).Return(expected, nil)
 
 	err := h.PublishHomework(c)
 	assert.NoError(t, err)
@@ -386,7 +388,7 @@ func TestHandlerSetDeadline_Success(t *testing.T) {
 		[]string{"courseId", "hwId"},
 		[]string{courseID.String(), hwID.String()},
 	)
-	svc.On("SetDeadline", mock.Anything, mock.MatchedBy(func(inp service.SetDeadlineInput) bool {
+	svc.On("SetDeadline", mock.Anything, mock.Anything, mock.MatchedBy(func(inp service.SetDeadlineInput) bool {
 		return inp.CourseID == courseID && inp.HomeworkID == hwID && inp.Title == "Deadline 1"
 	})).Return(expected, nil)
 
@@ -436,7 +438,7 @@ func TestHandlerSetDeadline_ServiceError(t *testing.T) {
 		[]string{"courseId", "hwId"},
 		[]string{courseID.String(), hwID.String()},
 	)
-	svc.On("SetDeadline", mock.Anything, mock.Anything).Return(nil, service.BadRequest("title is required"))
+	svc.On("SetDeadline", mock.Anything, mock.Anything, mock.Anything).Return(nil, service.BadRequest("title is required"))
 
 	err := h.SetDeadline(c)
 	assert.NoError(t, err)
@@ -454,7 +456,7 @@ func TestHandlerUpdateDeadline_Success(t *testing.T) {
 	expected := &model.Deadline{ID: dlID, Title: newTitle}
 
 	c, rec := newEchoContext(http.MethodPatch, "/", body, map[string]string{"deadlineId": dlID.String()})
-	svc.On("UpdateDeadline", mock.Anything, dlID, service.UpdateDeadlineInput{Title: newTitle}).Return(expected, nil)
+	svc.On("UpdateDeadline", mock.Anything, mock.Anything, dlID, service.UpdateDeadlineInput{Title: newTitle}).Return(expected, nil)
 
 	err := h.UpdateDeadline(c)
 	assert.NoError(t, err)
@@ -481,7 +483,7 @@ func TestHandlerUpdateDeadline_NotFound(t *testing.T) {
 	body := map[string]interface{}{"title": "New"}
 
 	c, rec := newEchoContext(http.MethodPatch, "/", body, map[string]string{"deadlineId": dlID.String()})
-	svc.On("UpdateDeadline", mock.Anything, dlID, mock.Anything).Return(nil, service.NotFound("Deadline not found"))
+	svc.On("UpdateDeadline", mock.Anything, mock.Anything, dlID, mock.Anything).Return(nil, service.NotFound("Deadline not found"))
 
 	err := h.UpdateDeadline(c)
 	assert.NoError(t, err)
@@ -495,7 +497,7 @@ func TestHandlerDeleteDeadline_Success(t *testing.T) {
 
 	dlID := uuid.New()
 	c, rec := newEchoContext(http.MethodDelete, "/", nil, map[string]string{"deadlineId": dlID.String()})
-	svc.On("DeleteDeadline", mock.Anything, dlID).Return(nil)
+	svc.On("DeleteDeadline", mock.Anything, mock.Anything, dlID).Return(nil)
 
 	err := h.DeleteDeadline(c)
 	assert.NoError(t, err)
@@ -520,7 +522,7 @@ func TestHandlerDeleteDeadline_NotFound(t *testing.T) {
 
 	dlID := uuid.New()
 	c, rec := newEchoContext(http.MethodDelete, "/", nil, map[string]string{"deadlineId": dlID.String()})
-	svc.On("DeleteDeadline", mock.Anything, dlID).Return(service.NotFound("Deadline not found"))
+	svc.On("DeleteDeadline", mock.Anything, mock.Anything, dlID).Return(service.NotFound("Deadline not found"))
 
 	err := h.DeleteDeadline(c)
 	assert.NoError(t, err)
