@@ -2,6 +2,7 @@ package repo
 
 import (
 	"context"
+	"errors"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -14,6 +15,8 @@ type IRoleRepo interface {
 	AssignRole(ctx context.Context, userRole *model.UserRole) error
 	RevokeRole(ctx context.Context, userID, courseID, roleID uuid.UUID) error
 	GetByCourseID(ctx context.Context, courseID uuid.UUID) ([]model.UserRole, error)
+	GetRoleIDByUserAndCourse(ctx context.Context, userID, courseID uuid.UUID) (uuid.UUID, error)
+	HasPermission(ctx context.Context, roleID uuid.UUID, permission string) (bool, error)
 
 	AddPermission(ctx context.Context, perm *model.CourseAdminPermission) error
 	RemovePermission(ctx context.Context, roleID uuid.UUID, permission string) error
@@ -32,7 +35,10 @@ func NewRoleRepository(db *gorm.DB) IRoleRepo {
 
 func (r *RoleRepository) AssignRole(ctx context.Context, userRole *model.UserRole) error {
 	return r.db.WithContext(ctx).
-		Clauses(clause.OnConflict{DoNothing: true}).
+		Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "user_id"}, {Name: "course_id"}},
+			DoUpdates: clause.AssignmentColumns([]string{"role_id"}),
+		}).
 		Create(userRole).Error
 }
 
@@ -51,6 +57,36 @@ func (r *RoleRepository) GetByCourseID(ctx context.Context, courseID uuid.UUID) 
 		return nil, err
 	}
 	return roles, nil
+}
+
+func (r *RoleRepository) GetRoleIDByUserAndCourse(ctx context.Context, userID, courseID uuid.UUID) (uuid.UUID, error) {
+	var role model.UserRole
+	err := r.db.WithContext(ctx).
+		Where("user_id = ? AND course_id = ?", userID, courseID).
+		First(&role).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return uuid.Nil, gorm.ErrRecordNotFound
+		}
+		return uuid.Nil, err
+	}
+	return role.RoleID, nil
+}
+
+func (r *RoleRepository) HasPermission(ctx context.Context, roleID uuid.UUID, permission string) (bool, error) {
+	var exists bool
+	err := r.db.WithContext(ctx).Raw(`
+		SELECT EXISTS (
+			SELECT 1
+			FROM course_admin_permissions cap
+			WHERE cap.role_id = ?
+			  AND cap.permission = ?
+		)
+	`, roleID, permission).Scan(&exists).Error
+	if err != nil {
+		return false, err
+	}
+	return exists, nil
 }
 
 func (r *RoleRepository) AddPermission(ctx context.Context, perm *model.CourseAdminPermission) error {

@@ -34,6 +34,19 @@ func (m *MockRoleRepo) GetByCourseID(ctx context.Context, courseID uuid.UUID) ([
 	return args.Get(0).([]model.UserRole), args.Error(1)
 }
 
+func (m *MockRoleRepo) GetRoleIDByUserAndCourse(ctx context.Context, userID, courseID uuid.UUID) (uuid.UUID, error) {
+	args := m.Called(ctx, userID, courseID)
+	if args.Get(0) == nil {
+		return uuid.Nil, args.Error(1)
+	}
+	return args.Get(0).(uuid.UUID), args.Error(1)
+}
+
+func (m *MockRoleRepo) HasPermission(ctx context.Context, roleID uuid.UUID, permission string) (bool, error) {
+	args := m.Called(ctx, roleID, permission)
+	return args.Bool(0), args.Error(1)
+}
+
 func (m *MockRoleRepo) AddPermission(ctx context.Context, perm *model.CourseAdminPermission) error {
 	args := m.Called(ctx, perm)
 	return args.Error(0)
@@ -142,6 +155,9 @@ func (m *MockUserRepo) CountUsers(ctx context.Context) (int64, error) {
 func setupRoleService() (*service.AdminRoleService, *MockRoleRepo, *MockUserRepo) {
 	roleRepo := new(MockRoleRepo)
 	userRepo := new(MockUserRepo)
+	roleID := uuid.New()
+	roleRepo.On("GetRoleIDByUserAndCourse", mock.Anything, mock.Anything, uuid.Nil).Return(roleID, nil)
+	roleRepo.On("HasPermission", mock.Anything, roleID, mock.Anything).Return(true, nil)
 	svc := service.NewAdminRoleService(roleRepo, userRepo)
 	return svc, roleRepo, userRepo
 }
@@ -160,7 +176,7 @@ func TestAssignRole_Success(t *testing.T) {
 		return ur.UserID == userID && ur.CourseID == courseID && ur.RoleID == roleID
 	})).Return(nil)
 
-	result, err := svc.AssignRole(ctx, service.AssignRoleInput{
+	result, err := svc.AssignRole(ctx, uuid.New(), service.AssignRoleInput{
 		UserID:   userID,
 		CourseID: courseID,
 		RoleID:   roleID,
@@ -179,7 +195,7 @@ func TestAssignRole_MissingUserID(t *testing.T) {
 	svc, _, _ := setupRoleService()
 	ctx := context.Background()
 
-	result, err := svc.AssignRole(ctx, service.AssignRoleInput{
+	result, err := svc.AssignRole(ctx, uuid.New(), service.AssignRoleInput{
 		UserID:   uuid.Nil,
 		CourseID: uuid.New(),
 		RoleID:   uuid.New(),
@@ -194,7 +210,7 @@ func TestAssignRole_MissingCourseID(t *testing.T) {
 	svc, _, _ := setupRoleService()
 	ctx := context.Background()
 
-	result, err := svc.AssignRole(ctx, service.AssignRoleInput{
+	result, err := svc.AssignRole(ctx, uuid.New(), service.AssignRoleInput{
 		UserID:   uuid.New(),
 		CourseID: uuid.Nil,
 		RoleID:   uuid.New(),
@@ -209,7 +225,7 @@ func TestAssignRole_MissingRoleID(t *testing.T) {
 	svc, _, _ := setupRoleService()
 	ctx := context.Background()
 
-	result, err := svc.AssignRole(ctx, service.AssignRoleInput{
+	result, err := svc.AssignRole(ctx, uuid.New(), service.AssignRoleInput{
 		UserID:   uuid.New(),
 		CourseID: uuid.New(),
 		RoleID:   uuid.Nil,
@@ -227,7 +243,7 @@ func TestAssignRole_UserNotFound(t *testing.T) {
 	userID := uuid.New()
 	userRepo.On("GetUserByID", ctx, userID).Return(nil, assert.AnError)
 
-	result, err := svc.AssignRole(ctx, service.AssignRoleInput{
+	result, err := svc.AssignRole(ctx, uuid.New(), service.AssignRoleInput{
 		UserID:   userID,
 		CourseID: uuid.New(),
 		RoleID:   uuid.New(),
@@ -251,7 +267,7 @@ func TestAssignRole_RepoError(t *testing.T) {
 	userRepo.On("GetUserByID", ctx, userID).Return(user, nil)
 	roleRepo.On("AssignRole", ctx, mock.AnythingOfType("*model.UserRole")).Return(assert.AnError)
 
-	result, err := svc.AssignRole(ctx, service.AssignRoleInput{
+	result, err := svc.AssignRole(ctx, uuid.New(), service.AssignRoleInput{
 		UserID:   userID,
 		CourseID: courseID,
 		RoleID:   roleID,
@@ -274,7 +290,7 @@ func TestRevokeRole_Success(t *testing.T) {
 
 	roleRepo.On("RevokeRole", ctx, userID, courseID, roleID).Return(nil)
 
-	err := svc.RevokeRole(ctx, service.RevokeRoleInput{
+	err := svc.RevokeRole(ctx, uuid.New(), service.RevokeRoleInput{
 		UserID:   userID,
 		CourseID: courseID,
 		RoleID:   roleID,
@@ -288,7 +304,7 @@ func TestRevokeRole_MissingUserID(t *testing.T) {
 	svc, _, _ := setupRoleService()
 	ctx := context.Background()
 
-	err := svc.RevokeRole(ctx, service.RevokeRoleInput{
+	err := svc.RevokeRole(ctx, uuid.New(), service.RevokeRoleInput{
 		UserID:   uuid.Nil,
 		CourseID: uuid.New(),
 		RoleID:   uuid.New(),
@@ -302,7 +318,7 @@ func TestRevokeRole_MissingCourseID(t *testing.T) {
 	svc, _, _ := setupRoleService()
 	ctx := context.Background()
 
-	err := svc.RevokeRole(ctx, service.RevokeRoleInput{
+	err := svc.RevokeRole(ctx, uuid.New(), service.RevokeRoleInput{
 		UserID:   uuid.New(),
 		CourseID: uuid.Nil,
 		RoleID:   uuid.New(),
@@ -316,7 +332,7 @@ func TestRevokeRole_MissingRoleID(t *testing.T) {
 	svc, _, _ := setupRoleService()
 	ctx := context.Background()
 
-	err := svc.RevokeRole(ctx, service.RevokeRoleInput{
+	err := svc.RevokeRole(ctx, uuid.New(), service.RevokeRoleInput{
 		UserID:   uuid.New(),
 		CourseID: uuid.New(),
 		RoleID:   uuid.Nil,
@@ -336,7 +352,7 @@ func TestRevokeRole_RepoError(t *testing.T) {
 
 	roleRepo.On("RevokeRole", ctx, userID, courseID, roleID).Return(assert.AnError)
 
-	err := svc.RevokeRole(ctx, service.RevokeRoleInput{
+	err := svc.RevokeRole(ctx, uuid.New(), service.RevokeRoleInput{
 		UserID:   userID,
 		CourseID: courseID,
 		RoleID:   roleID,
@@ -358,7 +374,7 @@ func TestListUserRoles_Success(t *testing.T) {
 	}
 	roleRepo.On("GetByCourseID", ctx, courseID).Return(expectedRoles, nil)
 
-	result, err := svc.ListUserRoles(ctx, courseID)
+	result, err := svc.ListUserRoles(ctx, uuid.New(), courseID)
 
 	assert.NoError(t, err)
 	assert.Len(t, result, 2)
@@ -370,7 +386,7 @@ func TestListUserRoles_EmptyCourseID(t *testing.T) {
 	svc, _, _ := setupRoleService()
 	ctx := context.Background()
 
-	result, err := svc.ListUserRoles(ctx, uuid.Nil)
+	result, err := svc.ListUserRoles(ctx, uuid.New(), uuid.Nil)
 
 	assert.Error(t, err)
 	assert.Nil(t, result)
@@ -384,7 +400,7 @@ func TestListUserRoles_RepoError(t *testing.T) {
 	courseID := uuid.New()
 	roleRepo.On("GetByCourseID", ctx, courseID).Return(nil, assert.AnError)
 
-	result, err := svc.ListUserRoles(ctx, courseID)
+	result, err := svc.ListUserRoles(ctx, uuid.New(), courseID)
 
 	assert.Error(t, err)
 	assert.Nil(t, result)
@@ -403,7 +419,7 @@ func TestAddPermission_Success(t *testing.T) {
 		return p.RoleID == roleID && p.Permission == permission
 	})).Return(nil)
 
-	result, err := svc.AddPermission(ctx, service.AddPermissionInput{
+	result, err := svc.AddPermission(ctx, uuid.New(), service.AddPermissionInput{
 		RoleID:     roleID,
 		Permission: permission,
 	})
@@ -419,7 +435,7 @@ func TestAddPermission_MissingRoleID(t *testing.T) {
 	svc, _, _ := setupRoleService()
 	ctx := context.Background()
 
-	result, err := svc.AddPermission(ctx, service.AddPermissionInput{
+	result, err := svc.AddPermission(ctx, uuid.New(), service.AddPermissionInput{
 		RoleID:     uuid.Nil,
 		Permission: "edit_course",
 	})
@@ -433,7 +449,7 @@ func TestAddPermission_EmptyPermission(t *testing.T) {
 	svc, _, _ := setupRoleService()
 	ctx := context.Background()
 
-	result, err := svc.AddPermission(ctx, service.AddPermissionInput{
+	result, err := svc.AddPermission(ctx, uuid.New(), service.AddPermissionInput{
 		RoleID:     uuid.New(),
 		Permission: "",
 	})
@@ -450,7 +466,7 @@ func TestAddPermission_RepoError(t *testing.T) {
 	roleID := uuid.New()
 	roleRepo.On("AddPermission", ctx, mock.AnythingOfType("*model.CourseAdminPermission")).Return(assert.AnError)
 
-	result, err := svc.AddPermission(ctx, service.AddPermissionInput{
+	result, err := svc.AddPermission(ctx, uuid.New(), service.AddPermissionInput{
 		RoleID:     roleID,
 		Permission: "edit_course",
 	})
@@ -470,7 +486,7 @@ func TestRemovePermission_Success(t *testing.T) {
 
 	roleRepo.On("RemovePermission", ctx, roleID, permission).Return(nil)
 
-	err := svc.RemovePermission(ctx, roleID, permission)
+	err := svc.RemovePermission(ctx, uuid.New(), roleID, permission)
 
 	assert.NoError(t, err)
 	roleRepo.AssertExpectations(t)
@@ -480,7 +496,7 @@ func TestRemovePermission_EmptyRoleID(t *testing.T) {
 	svc, _, _ := setupRoleService()
 	ctx := context.Background()
 
-	err := svc.RemovePermission(ctx, uuid.Nil, "edit_course")
+	err := svc.RemovePermission(ctx, uuid.New(), uuid.Nil, "edit_course")
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "role_id is required")
@@ -490,7 +506,7 @@ func TestRemovePermission_EmptyPermission(t *testing.T) {
 	svc, _, _ := setupRoleService()
 	ctx := context.Background()
 
-	err := svc.RemovePermission(ctx, uuid.New(), "")
+	err := svc.RemovePermission(ctx, uuid.New(), uuid.New(), "")
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "permission is required")
@@ -504,7 +520,7 @@ func TestRemovePermission_RepoError(t *testing.T) {
 	permission := "edit_course"
 	roleRepo.On("RemovePermission", ctx, roleID, permission).Return(assert.AnError)
 
-	err := svc.RemovePermission(ctx, roleID, permission)
+	err := svc.RemovePermission(ctx, uuid.New(), roleID, permission)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "Failed to remove permission")
@@ -522,7 +538,7 @@ func TestListPermissions_Success(t *testing.T) {
 	}
 	roleRepo.On("GetPermissions", ctx, roleID).Return(expectedPerms, nil)
 
-	result, err := svc.ListPermissions(ctx, roleID)
+	result, err := svc.ListPermissions(ctx, uuid.New(), roleID)
 
 	assert.NoError(t, err)
 	assert.Len(t, result, 2)
@@ -534,7 +550,7 @@ func TestListPermissions_EmptyRoleID(t *testing.T) {
 	svc, _, _ := setupRoleService()
 	ctx := context.Background()
 
-	result, err := svc.ListPermissions(ctx, uuid.Nil)
+	result, err := svc.ListPermissions(ctx, uuid.New(), uuid.Nil)
 
 	assert.Error(t, err)
 	assert.Nil(t, result)
@@ -548,7 +564,7 @@ func TestListPermissions_RepoError(t *testing.T) {
 	roleID := uuid.New()
 	roleRepo.On("GetPermissions", ctx, roleID).Return(nil, assert.AnError)
 
-	result, err := svc.ListPermissions(ctx, roleID)
+	result, err := svc.ListPermissions(ctx, uuid.New(), roleID)
 
 	assert.Error(t, err)
 	assert.Nil(t, result)

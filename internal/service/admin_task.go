@@ -12,12 +12,14 @@ import (
 type AdminTaskService struct {
 	taskRepo     repo.ITaskRepo
 	homeworkRepo repo.IHomeworkRepo
+	roleRepo     repo.IRoleRepo
 }
 
-func NewAdminTaskService(taskRepo repo.ITaskRepo, homeworkRepo repo.IHomeworkRepo) *AdminTaskService {
+func NewAdminTaskService(taskRepo repo.ITaskRepo, homeworkRepo repo.IHomeworkRepo, roleRepo repo.IRoleRepo) *AdminTaskService {
 	return &AdminTaskService{
 		taskRepo:     taskRepo,
 		homeworkRepo: homeworkRepo,
+		roleRepo:     roleRepo,
 	}
 }
 
@@ -39,13 +41,17 @@ type SetTaskScoreInput struct {
 	Score  int
 }
 
-func (s *AdminTaskService) CreateTask(ctx context.Context, input CreateTaskInput) (*model.Task, error) {
+func (s *AdminTaskService) CreateTask(ctx context.Context, userID uuid.UUID, input CreateTaskInput) (*model.Task, error) {
 	if input.HwID == uuid.Nil {
 		return nil, BadRequest("homework_id is required")
 	}
 
-	if _, err := s.homeworkRepo.GetByID(ctx, input.HwID); err != nil {
+	hw, err := s.homeworkRepo.GetByID(ctx, input.HwID)
+	if err != nil {
 		return nil, NotFound("Homework not found")
+	}
+	if err := RequireScopedPermission(ctx, s.roleRepo, userID, hw.CourseID, PermissionTaskCreate); err != nil {
+		return nil, err
 	}
 
 	if input.Score <= 0 {
@@ -69,7 +75,7 @@ func (s *AdminTaskService) CreateTask(ctx context.Context, input CreateTaskInput
 	return task, nil
 }
 
-func (s *AdminTaskService) GetTask(ctx context.Context, taskID uuid.UUID) (*model.Task, error) {
+func (s *AdminTaskService) GetTask(ctx context.Context, userID, taskID uuid.UUID) (*model.Task, error) {
 	if taskID == uuid.Nil {
 		return nil, BadRequest("task_id is required")
 	}
@@ -78,17 +84,28 @@ func (s *AdminTaskService) GetTask(ctx context.Context, taskID uuid.UUID) (*mode
 	if err != nil {
 		return nil, NotFound("Task not found")
 	}
+	hw, err := s.homeworkRepo.GetByID(ctx, task.HwID)
+	if err != nil {
+		return nil, NotFound("Homework not found")
+	}
+	if err := RequireScopedPermission(ctx, s.roleRepo, userID, hw.CourseID, PermissionTaskRead); err != nil {
+		return nil, err
+	}
 
 	return task, nil
 }
 
-func (s *AdminTaskService) ListTasks(ctx context.Context, hwID uuid.UUID) ([]model.Task, error) {
+func (s *AdminTaskService) ListTasks(ctx context.Context, userID, hwID uuid.UUID) ([]model.Task, error) {
 	if hwID == uuid.Nil {
 		return nil, BadRequest("homework_id is required")
 	}
 
-	if _, err := s.homeworkRepo.GetByID(ctx, hwID); err != nil {
+	hw, err := s.homeworkRepo.GetByID(ctx, hwID)
+	if err != nil {
 		return nil, NotFound("Homework not found")
+	}
+	if err := RequireScopedPermission(ctx, s.roleRepo, userID, hw.CourseID, PermissionTaskRead); err != nil {
+		return nil, err
 	}
 
 	tasks, err := s.taskRepo.GetByHwID(ctx, hwID)
@@ -99,9 +116,16 @@ func (s *AdminTaskService) ListTasks(ctx context.Context, hwID uuid.UUID) ([]mod
 	return tasks, nil
 }
 
-func (s *AdminTaskService) UpdateTask(ctx context.Context, taskID uuid.UUID, input UpdateTaskInput) (*model.Task, error) {
-	task, err := s.GetTask(ctx, taskID)
+func (s *AdminTaskService) UpdateTask(ctx context.Context, userID, taskID uuid.UUID, input UpdateTaskInput) (*model.Task, error) {
+	task, err := s.GetTask(ctx, userID, taskID)
 	if err != nil {
+		return nil, err
+	}
+	hw, err := s.homeworkRepo.GetByID(ctx, task.HwID)
+	if err != nil {
+		return nil, NotFound("Homework not found")
+	}
+	if err := RequireScopedPermission(ctx, s.roleRepo, userID, hw.CourseID, PermissionTaskUpdate); err != nil {
 		return nil, err
 	}
 
@@ -122,12 +146,20 @@ func (s *AdminTaskService) UpdateTask(ctx context.Context, taskID uuid.UUID, inp
 	return task, nil
 }
 
-func (s *AdminTaskService) DeleteTask(ctx context.Context, taskID uuid.UUID) error {
+func (s *AdminTaskService) DeleteTask(ctx context.Context, userID, taskID uuid.UUID) error {
 	if taskID == uuid.Nil {
 		return BadRequest("task_id is required")
 	}
 
-	if _, err := s.GetTask(ctx, taskID); err != nil {
+	task, err := s.GetTask(ctx, userID, taskID)
+	if err != nil {
+		return err
+	}
+	hw, err := s.homeworkRepo.GetByID(ctx, task.HwID)
+	if err != nil {
+		return NotFound("Homework not found")
+	}
+	if err := RequireScopedPermission(ctx, s.roleRepo, userID, hw.CourseID, PermissionTaskDelete); err != nil {
 		return err
 	}
 
@@ -138,7 +170,7 @@ func (s *AdminTaskService) DeleteTask(ctx context.Context, taskID uuid.UUID) err
 	return nil
 }
 
-func (s *AdminTaskService) SetScore(ctx context.Context, input SetTaskScoreInput) (*model.Task, error) {
+func (s *AdminTaskService) SetScore(ctx context.Context, userID uuid.UUID, input SetTaskScoreInput) (*model.Task, error) {
 	if input.TaskID == uuid.Nil {
 		return nil, BadRequest("task_id is required")
 	}
@@ -146,7 +178,15 @@ func (s *AdminTaskService) SetScore(ctx context.Context, input SetTaskScoreInput
 		return nil, BadRequest("score must be positive")
 	}
 
-	if _, err := s.GetTask(ctx, input.TaskID); err != nil {
+	task, err := s.GetTask(ctx, userID, input.TaskID)
+	if err != nil {
+		return nil, err
+	}
+	hw, err := s.homeworkRepo.GetByID(ctx, task.HwID)
+	if err != nil {
+		return nil, NotFound("Homework not found")
+	}
+	if err := RequireScopedPermission(ctx, s.roleRepo, userID, hw.CourseID, PermissionTaskScoreUpdate); err != nil {
 		return nil, err
 	}
 
@@ -154,7 +194,7 @@ func (s *AdminTaskService) SetScore(ctx context.Context, input SetTaskScoreInput
 		return nil, Internal("Failed to set score", err)
 	}
 
-	task, err := s.GetTask(ctx, input.TaskID)
+	task, err = s.GetTask(ctx, userID, input.TaskID)
 	if err != nil {
 		return nil, err
 	}
