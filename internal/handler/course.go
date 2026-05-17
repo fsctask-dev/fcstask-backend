@@ -1,28 +1,29 @@
 package handler
 
 import (
+	"fcstask-backend/internal/db/model"
 	"net/http"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 
-	models "fcstask-backend/internal/db/model"
 	"fcstask-backend/internal/service"
 )
-
-type Course = models.Course
-type BoardDeadline = models.BoardDeadline
-type BoardTask = models.BoardTask
-type BoardGroup = models.BoardGroup
-type TaskBoardSummary = models.TaskBoardSummary
 
 type PostCourseRequest struct {
 	Name         string `json:"name"`
 	Slug         string `json:"slug"`
 	Status       string `json:"status"`
+	Type         string `json:"type"`
+	InviteCode   string `json:"inviteCode,omitempty"`
 	StartDate    string `json:"startDate"`
 	EndDate      string `json:"endDate"`
 	RepoTemplate string `json:"repoTemplate"`
 	Description  string `json:"description"`
+}
+
+type JoinCourseRequest struct {
+	Code string `json:"code"`
 }
 
 type CourseHandler struct {
@@ -34,53 +35,123 @@ func NewCourseHandler(courseService *service.CourseService) *CourseHandler {
 }
 
 func (h *CourseHandler) GetCourses(ctx echo.Context) error {
-	courses, err := h.courseService.GetCourses(ctx.Request().Context(), ctx.QueryParam("status"))
+	user := ctx.Get(UserContextKey).(*model.User)
+	if user == nil {
+		return unauthorized(ctx, "User not found in context")
+	}
+	courses, err := h.courseService.GetCourses(ctx.Request().Context(), user.ID, ctx.QueryParam("status"))
 	if err != nil {
 		return serviceError(ctx, err)
 	}
+
 	return ctx.JSON(http.StatusOK, courses)
 }
 
 func (h *CourseHandler) GetCourse(ctx echo.Context) error {
-	course, err := h.courseService.GetCourse(ctx.Request().Context(), ctx.Param("courseId"))
+	user := ctx.Get(UserContextKey).(*model.User)
+	courseID := ctx.Param("courseId")
+	course, err := h.courseService.GetCourse(ctx.Request().Context(), courseID)
 	if err != nil {
 		return serviceError(ctx, err)
 	}
+	if course.Type == model.CourseTypePublic {
+		return ctx.JSON(http.StatusOK, course)
+	}
+
+	courseUUID, _ := uuid.Parse(courseID)
+	allowed, err := service.HasScopedPermission(ctx.Request().Context(), h.courseService.RoleRepo, user.ID, courseUUID, service.PermissionHomeworkRead)
+	if err != nil {
+		return serviceError(ctx, err)
+	}
+	if !allowed {
+		return forbidden(ctx, "You are not a participant of this course")
+	}
+
 	return ctx.JSON(http.StatusOK, course)
 }
 
 func (h *CourseHandler) CreateCourse(ctx echo.Context) error {
+	user := ctx.Get(UserContextKey).(*model.User)
+	if user == nil {
+		return unauthorized(ctx, "User not found in context")
+	}
+
 	var req PostCourseRequest
 	if err := ctx.Bind(&req); err != nil {
 		return badRequest(ctx, "invalid JSON payload")
 	}
-
-	course, err := h.courseService.CreateCourse(ctx.Request().Context(), courseInput(req))
+	course, err := h.courseService.CreateCourse(ctx.Request().Context(), user.ID, courseInput(req))
 	if err != nil {
 		return serviceError(ctx, err)
 	}
+
 	return ctx.JSON(http.StatusCreated, course)
 }
 
 func (h *CourseHandler) UpdateCourse(ctx echo.Context) error {
+	user := ctx.Get(UserContextKey).(*model.User)
+	if user == nil {
+		return unauthorized(ctx, "User not found in context")
+	}
 	var req PostCourseRequest
 	if err := ctx.Bind(&req); err != nil {
 		return badRequest(ctx, "invalid JSON payload")
 	}
-
-	course, err := h.courseService.UpdateCourse(ctx.Request().Context(), ctx.Param("courseId"), courseInput(req))
+	course, err := h.courseService.UpdateCourse(ctx.Request().Context(), user.ID, ctx.Param("courseId"), courseInput(req))
 	if err != nil {
 		return serviceError(ctx, err)
 	}
+
 	return ctx.JSON(http.StatusOK, course)
 }
 
 func (h *CourseHandler) GetCourseBoard(ctx echo.Context) error {
-	board, err := h.courseService.GetCourseBoard(ctx.Request().Context(), ctx.Param("courseId"))
+	user := ctx.Get(UserContextKey).(*model.User)
+	if user == nil {
+		return unauthorized(ctx, "User not found in context")
+	}
+
+	courseID := ctx.Param("courseId")
+
+	course, err := h.courseService.GetCourse(ctx.Request().Context(), courseID)
+	if err != nil {
+		return serviceError(ctx, err)
+	}
+
+	if course.Type == model.CourseTypePrivate {
+		allowed, err := service.HasScopedPermission(ctx.Request().Context(), h.courseService.RoleRepo, user.ID, course.ID, service.PermissionHomeworkRead)
+		if err != nil {
+			return serviceError(ctx, err)
+		}
+		if !allowed {
+			return forbidden(ctx, "You are not a participant of this course")
+		}
+	}
+
+	board, err := h.courseService.GetCourseBoard(ctx.Request().Context(), courseID)
 	if err != nil {
 		return serviceError(ctx, err)
 	}
 	return ctx.JSON(http.StatusOK, board)
+}
+
+func (h *CourseHandler) JoinCourse(ctx echo.Context) error {
+	user := ctx.Get(UserContextKey).(*model.User)
+	if user == nil {
+		return unauthorized(ctx, "User not found in context")
+	}
+
+	var req JoinCourseRequest
+	if err := ctx.Bind(&req); err != nil {
+		return badRequest(ctx, "invalid JSON payload")
+	}
+
+	courseID := ctx.Param("courseId")
+	if err := h.courseService.JoinCourse(ctx.Request().Context(), user.ID, courseID, req.Code); err != nil {
+		return serviceError(ctx, err)
+	}
+
+	return ctx.JSON(http.StatusOK, map[string]string{"message": "successfully joined"})
 }
 
 func courseInput(req PostCourseRequest) service.CourseInput {

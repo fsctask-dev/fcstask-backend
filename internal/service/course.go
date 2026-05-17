@@ -2,18 +2,23 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"time"
+
+	"github.com/google/uuid"
 
 	models "fcstask-backend/internal/db/model"
 	"fcstask-backend/internal/db/repo"
 )
 
 type CourseService struct {
-	courseRepo repo.CourseRepositoryInterface
+	CourseRepo repo.CourseRepositoryInterface
+	RoleRepo   repo.IRoleRepo
 }
 
-func NewCourseService(courseRepo repo.CourseRepositoryInterface) *CourseService {
-	return &CourseService{courseRepo: courseRepo}
+func NewCourseService(courseRepo repo.CourseRepositoryInterface, roleRepo repo.IRoleRepo) *CourseService {
+	return &CourseService{CourseRepo: courseRepo, RoleRepo: roleRepo}
 }
 
 type CourseInput struct {
@@ -21,29 +26,23 @@ type CourseInput struct {
 	Slug         string
 	Status       string
 	Type         models.CourseType
+	InviteCode   string
 	StartDate    string
 	EndDate      string
 	RepoTemplate string
 	Description  string
 }
 
-func (s *CourseService) GetCourses(ctx context.Context, status string) ([]models.Course, error) {
-	courses, err := s.courseRepo.GetCourses(ctx)
+func (s *CourseService) GetCourses(ctx context.Context, userID uuid.UUID, status string) ([]models.Course, error) {
+	courses, err := s.CourseRepo.GetCoursesByUserID(ctx, userID, status)
 	if err != nil {
 		return nil, Internal("Failed to get courses", err)
 	}
-
-	filtered := make([]models.Course, 0, len(courses))
-	for _, course := range courses {
-		if status == "" || course.Status == status {
-			filtered = append(filtered, course)
-		}
-	}
-	return filtered, nil
+	return courses, nil
 }
 
 func (s *CourseService) GetCourse(ctx context.Context, courseID string) (*models.Course, error) {
-	course, err := s.courseRepo.GetCourseByID(ctx, courseID)
+	course, err := s.CourseRepo.GetCourseByID(ctx, courseID)
 	if err != nil {
 		return nil, Internal("Failed to get course", err)
 	}
@@ -53,12 +52,12 @@ func (s *CourseService) GetCourse(ctx context.Context, courseID string) (*models
 	return course, nil
 }
 
-func (s *CourseService) CreateCourse(ctx context.Context, input CourseInput) (*models.Course, error) {
+func (s *CourseService) CreateCourse(ctx context.Context, userID uuid.UUID, input CourseInput) (*models.Course, error) {
 	if err := validateCreateCourse(input); err != nil {
 		return nil, err
 	}
 
-	existing, err := s.courseRepo.GetCourseByID(ctx, input.Slug)
+	existing, err := s.CourseRepo.GetCourseByID(ctx, input.Slug)
 	if err != nil {
 		return nil, Internal("Failed to check course uniqueness", err)
 	}
@@ -66,11 +65,13 @@ func (s *CourseService) CreateCourse(ctx context.Context, input CourseInput) (*m
 		return nil, Conflict("course with this slug already exists")
 	}
 
+	courseType := courseTypeOrDefault(input.Type)
+
 	course := models.Course{
 		Name:         input.Name,
 		Slug:         input.Slug,
 		Status:       input.Status,
-		Type:         courseTypeOrDefault(input.Type),
+		Type:         courseType,
 		StartDate:    parseCourseDate(input.StartDate),
 		EndDate:      parseCourseDate(input.EndDate),
 		RepoTemplate: stringPtr(input.RepoTemplate),
@@ -78,12 +79,34 @@ func (s *CourseService) CreateCourse(ctx context.Context, input CourseInput) (*m
 		URL:          "/course/" + input.Slug,
 	}
 
-	return s.courseRepo.CreateCourse(ctx, course)
+	if courseType == models.CourseTypePrivate {
+		if input.InviteCode != "" {
+			course.InviteCode = &input.InviteCode
+		} else {
+			code := generateInviteCode()
+			course.InviteCode = &code
+		}
+	}
+
+	created, err := s.CourseRepo.CreateCourse(ctx, course)
+	if err != nil {
+		return nil, Internal("Failed to create course", err)
+	}
+
+	if _, err := EnsureRolePermissions(ctx, s.RoleRepo, userID, created.ID, AdminPermissions()); err != nil {
+		return nil, Internal("Failed to assign admin permissions", err)
+	}
+
+	return created, nil
 }
 
-func (s *CourseService) UpdateCourse(ctx context.Context, courseID string, input CourseInput) (*models.Course, error) {
+func (s *CourseService) UpdateCourse(ctx context.Context, userID uuid.UUID, courseID string, input CourseInput) (*models.Course, error) {
 	course, err := s.GetCourse(ctx, courseID)
 	if err != nil {
+		return nil, err
+	}
+
+	if err := RequireScopedPermission(ctx, s.RoleRepo, userID, course.ID, PermissionHomeworkUpdate); err != nil {
 		return nil, err
 	}
 
@@ -109,6 +132,13 @@ func (s *CourseService) UpdateCourse(ctx context.Context, courseID string, input
 	}
 	if input.Type != "" {
 		updated.Type = input.Type
+		if input.Type == models.CourseTypePrivate && input.InviteCode == "" {
+			code := generateInviteCode()
+			updated.InviteCode = &code
+		}
+		if input.Type == models.CourseTypePublic {
+			updated.InviteCode = nil
+		}
 	}
 	if input.StartDate != "" {
 		updated.StartDate = parseCourseDate(input.StartDate)
@@ -127,7 +157,7 @@ func (s *CourseService) UpdateCourse(ctx context.Context, courseID string, input
 		return nil, BadRequest("endDate must be after startDate")
 	}
 
-	return s.courseRepo.UpdateCourse(ctx, courseID, updated)
+	return s.CourseRepo.UpdateCourse(ctx, courseID, updated)
 }
 
 func (s *CourseService) GetCourseBoard(ctx context.Context, courseID string) (*models.TaskBoardSummary, error) {
@@ -140,7 +170,7 @@ func (s *CourseService) GetCourseBoard(ctx context.Context, courseID string) (*m
 		return nil, err
 	}
 
-	board, ok, err := s.courseRepo.GetCourseBoard(ctx, courseID)
+	board, ok, err := s.CourseRepo.GetCourseBoard(ctx, courseID)
 	if err != nil {
 		return nil, Internal("Failed to get course board", err)
 	}
@@ -153,6 +183,51 @@ func (s *CourseService) GetCourseBoard(ctx context.Context, courseID string) (*m
 		CourseStatus: course.Status,
 		Groups:       []models.BoardGroup{},
 	}, nil
+}
+
+func (s *CourseService) JoinCourse(ctx context.Context, userID uuid.UUID, courseID string, code string) error {
+	course, err := s.CourseRepo.GetCourseByID(ctx, courseID)
+	if err != nil {
+		return Internal("Failed to get course by ID", err)
+	}
+	if course == nil {
+		return NotFound("course not found")
+	}
+
+	already, err := HasScopedPermission(ctx, s.RoleRepo, userID, course.ID, PermissionHomeworkRead)
+	if err != nil {
+		return Internal("Failed to check participation", err)
+	}
+	if already {
+		return Conflict("already a participant")
+	}
+
+	if course.Type == models.CourseTypePublic {
+		_, err := EnsureRolePermissions(ctx, s.RoleRepo, userID, course.ID, CoursePermissions())
+		if err != nil {
+			return Internal("Failed to join course", err)
+		}
+		return nil
+	}
+	if course.InviteCode == nil {
+		return BadRequest("course has no invite code")
+	}
+	if *course.InviteCode != code {
+		return Forbidden("invalid invite code")
+	}
+
+	_, err = EnsureRolePermissions(ctx, s.RoleRepo, userID, course.ID, CoursePermissions())
+	if err != nil {
+		return Internal("Failed to join course", err)
+	}
+
+	return nil
+}
+
+func generateInviteCode() string {
+	code := make([]byte, 6)
+	_, _ = rand.Read(code)
+	return hex.EncodeToString(code)
 }
 
 func validateCreateCourse(input CourseInput) error {
