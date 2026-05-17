@@ -11,4 +11,4 @@ route:
 receivers:
   - name: "fcstask-monitor-bot"
     webhook_configs:
-      - url: "https://fcstask-monitor-bot.ru.tuna.am/webhook/alerts"
+      - url: "${TG_SERVER_URL}"

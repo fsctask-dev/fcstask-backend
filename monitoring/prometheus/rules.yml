@@ -2,8 +2,7 @@ groups:
   - name: fcstask-alerts
     rules:
       - alert: HighHTTP500Errors
-        expr: sum(rate(echo_requests_total{code="500"}[1m])) > 0 # дебаг/тест
-        #expr: sum(rate(echo_requests_total{code="500"}[5m])) / sum(rate(echo_requests_total[5m])) > 0.1 #прод
+        expr: { { .DEBUG_RULE } }
         for: 10s
         labels:
           severity: critical
