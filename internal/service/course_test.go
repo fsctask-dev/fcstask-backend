@@ -8,145 +8,383 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 
 	models "fcstask-backend/internal/db/model"
 )
 
-type courseServiceRepo struct {
-	courses map[string]models.Course
-	boards  map[string]models.TaskBoardSummary
+// Моки
+type mockCourseRepo struct {
+	mock.Mock
 }
 
-func (r *courseServiceRepo) GetCourses(ctx context.Context) ([]models.Course, error) {
-	courses := make([]models.Course, 0, len(r.courses))
-	for _, course := range r.courses {
-		courses = append(courses, course)
+func (m *mockCourseRepo) GetCoursesByUserID(ctx context.Context, userID uuid.UUID, status string) ([]models.Course, error) {
+	args := m.Called(ctx, userID, status)
+	return args.Get(0).([]models.Course), args.Error(1)
+}
+
+func (m *mockCourseRepo) GetCourseByID(ctx context.Context, courseID string) (*models.Course, error) {
+	args := m.Called(ctx, courseID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
 	}
-	return courses, nil
+	return args.Get(0).(*models.Course), args.Error(1)
 }
 
-func (r *courseServiceRepo) GetCourseByID(ctx context.Context, courseID string) (*models.Course, error) {
-	course, ok := r.courses[courseID]
-	if !ok {
-		return nil, nil
+func (m *mockCourseRepo) CreateCourse(ctx context.Context, course models.Course) (*models.Course, error) {
+	args := m.Called(ctx, course)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
 	}
-	return &course, nil
+	return args.Get(0).(*models.Course), args.Error(1)
 }
 
-func (r *courseServiceRepo) CreateCourse(ctx context.Context, course models.Course) (*models.Course, error) {
-	if course.ID == uuid.Nil {
-		course.ID = uuid.New()
+func (m *mockCourseRepo) UpdateCourse(ctx context.Context, courseID string, course models.Course) (*models.Course, error) {
+	args := m.Called(ctx, courseID, course)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
 	}
-	r.courses[course.Slug] = course
-	return &course, nil
+	return args.Get(0).(*models.Course), args.Error(1)
 }
 
-func (r *courseServiceRepo) UpdateCourse(ctx context.Context, courseID string, course models.Course) (*models.Course, error) {
-	r.courses[courseID] = course
-	return &course, nil
+func (m *mockCourseRepo) DeleteCourse(ctx context.Context, courseID string) error { return nil }
+func (m *mockCourseRepo) GetCourses(ctx context.Context) ([]models.Course, error) { return nil, nil }
+func (m *mockCourseRepo) GetCourseBoard(ctx context.Context, courseID string) (*models.TaskBoardSummary, bool, error) {
+	args := m.Called(ctx, courseID)
+	if args.Get(0) == nil {
+		return nil, args.Bool(1), args.Error(2)
+	}
+	return args.Get(0).(*models.TaskBoardSummary), args.Bool(1), args.Error(2)
 }
 
-func (r *courseServiceRepo) DeleteCourse(ctx context.Context, courseID string) error {
-	delete(r.courses, courseID)
+type mockRoleRepo struct {
+	mock.Mock
+}
+
+func (m *mockRoleRepo) AssignRole(ctx context.Context, role *models.UserRole) error {
+	args := m.Called(ctx, role)
+	return args.Error(0)
+}
+func (m *mockRoleRepo) RevokeRole(ctx context.Context, userID, courseID, roleID uuid.UUID) error {
 	return nil
 }
-
-func (r *courseServiceRepo) GetCourseBoard(ctx context.Context, courseID string) (*models.TaskBoardSummary, bool, error) {
-	board, ok := r.boards[courseID]
-	if !ok {
-		return nil, false, nil
-	}
-	return &board, true, nil
+func (m *mockRoleRepo) GetByCourseID(ctx context.Context, courseID uuid.UUID) ([]models.UserRole, error) {
+	return nil, nil
+}
+func (m *mockRoleRepo) GetRoleIDByUserAndCourse(ctx context.Context, userID, courseID uuid.UUID) (uuid.UUID, error) {
+	args := m.Called(ctx, userID, courseID)
+	return args.Get(0).(uuid.UUID), args.Error(1)
+}
+func (m *mockRoleRepo) HasPermission(ctx context.Context, roleID uuid.UUID, permission string) (bool, error) {
+	args := m.Called(ctx, roleID, permission)
+	return args.Bool(0), args.Error(1)
+}
+func (m *mockRoleRepo) AddPermission(ctx context.Context, perm *models.CourseAdminPermission) error {
+	args := m.Called(ctx, perm)
+	return args.Error(0)
+}
+func (m *mockRoleRepo) RemovePermission(ctx context.Context, roleID uuid.UUID, permission string) error {
+	return nil
+}
+func (m *mockRoleRepo) GetPermissions(ctx context.Context, roleID uuid.UUID) ([]models.CourseAdminPermission, error) {
+	return nil, nil
 }
 
-func newCourseServiceRepo() *courseServiceRepo {
-	return &courseServiceRepo{
-		courses: map[string]models.Course{
-			"go": {
-				ID:           uuid.New(),
-				Name:         "Go",
-				Slug:         "go",
-				Status:       "created",
-				Type:         models.CourseTypePrivate,
-				StartDate:    testCourseServiceDate("2026-01-01"),
-				EndDate:      testCourseServiceDate("2026-02-01"),
-				RepoTemplate: testCourseServiceString("git@test/go.git"),
-				Description:  testCourseServiceString("Go course"),
-				URL:          "/course/go",
-			},
-		},
-		boards: map[string]models.TaskBoardSummary{},
+func setupService() (*CourseService, *mockCourseRepo, *mockRoleRepo) {
+	cRepo := new(mockCourseRepo)
+	rRepo := new(mockRoleRepo)
+	svc := NewCourseService(cRepo, rRepo)
+	return svc, cRepo, rRepo
+}
+
+func validInput() CourseInput {
+	return CourseInput{
+		Name: "Test", Slug: "test", Status: "created",
+		StartDate: "2026-01-01", EndDate: "2026-02-01",
+		RepoTemplate: "git@t", Description: "desc",
 	}
 }
 
-func TestCourseService_CreateCourseSuccess(t *testing.T) {
-	repo := newCourseServiceRepo()
-	svc := NewCourseService(repo)
+// ==================== CreateCourse ====================
 
-	course, err := svc.CreateCourse(context.Background(), CourseInput{
-		Name:         "Rust",
-		Slug:         "rust",
-		Status:       "created",
-		StartDate:    "2026-03-01",
-		EndDate:      "2026-04-01",
-		RepoTemplate: "git@test/rust.git",
-		Description:  "Rust course",
-	})
+func TestCreateCourse_Success(t *testing.T) {
+	svc, cRepo, rRepo := setupService()
+	userID := uuid.New()
+	input := validInput()
+
+	cRepo.On("GetCourseByID", mock.Anything, "test").Return(nil, errors.New("not found"))
+	cRepo.On("CreateCourse", mock.Anything, mock.Anything).Return(&models.Course{
+		ID: uuid.New(), Name: "Test", Slug: "test", Type: models.CourseTypePrivate,
+	}, nil)
+	rRepo.On("GetRoleIDByUserAndCourse", mock.Anything, userID, uuid.Nil).Return(uuid.Nil, errors.New("not found"))
+	rRepo.On("AssignRole", mock.Anything, mock.Anything).Return(nil)
+	rRepo.On("AddPermission", mock.Anything, mock.Anything).Return(nil)
+
+	course, err := svc.CreateCourse(context.Background(), userID, input)
 
 	assert.NoError(t, err)
-	assert.NotEqual(t, uuid.Nil, course.ID)
-	assert.Equal(t, "rust", course.Slug)
-	assert.Equal(t, "/course/rust", course.URL)
-	assert.Contains(t, repo.courses, "rust")
+	assert.Equal(t, "Test", course.Name)
+	assert.NotNil(t, course.InviteCode) // приватный — код сгенерирован
 }
 
-func TestCourseService_CreateCourseConflict(t *testing.T) {
-	svc := NewCourseService(newCourseServiceRepo())
+func TestCreateCourse_Public_NoInviteCode(t *testing.T) {
+	svc, cRepo, rRepo := setupService()
+	userID := uuid.New()
+	input := validInput()
+	input.Type = models.CourseTypePublic
 
-	course, err := svc.CreateCourse(context.Background(), CourseInput{
-		Name:         "Go",
-		Slug:         "go",
-		Status:       "created",
-		StartDate:    "2026-01-01",
-		EndDate:      "2026-02-01",
-		RepoTemplate: "git@test/go.git",
-		Description:  "Go course",
-	})
+	cRepo.On("GetCourseByID", mock.Anything, "test").Return(nil, errors.New("not found"))
+	cRepo.On("CreateCourse", mock.Anything, mock.Anything).Return(&models.Course{
+		ID: uuid.New(), Name: "Test", Slug: "test", Type: models.CourseTypePublic,
+	}, nil)
+	rRepo.On("GetRoleIDByUserAndCourse", mock.Anything, userID, uuid.Nil).Return(uuid.Nil, errors.New("not found"))
+	rRepo.On("AssignRole", mock.Anything, mock.Anything).Return(nil)
+	rRepo.On("AddPermission", mock.Anything, mock.Anything).Return(nil)
 
-	assert.Nil(t, course)
-	var serviceErr *Error
-	assert.True(t, errors.As(err, &serviceErr))
-	assert.Equal(t, "conflict", serviceErr.Code)
-}
-
-func TestCourseService_UpdateCoursePartial(t *testing.T) {
-	repo := newCourseServiceRepo()
-	svc := NewCourseService(repo)
-
-	course, err := svc.UpdateCourse(context.Background(), "go", CourseInput{Name: "Go Advanced"})
+	course, err := svc.CreateCourse(context.Background(), userID, input)
 
 	assert.NoError(t, err)
-	assert.Equal(t, "Go Advanced", course.Name)
-	assert.Equal(t, "created", course.Status)
-	assert.Equal(t, "2026-01-01", course.StartDate.Format("2006-01-02"))
+	assert.Nil(t, course.InviteCode) // публичный — без кода
 }
 
-func TestCourseService_GetCourseBoardEmpty(t *testing.T) {
-	svc := NewCourseService(newCourseServiceRepo())
+func TestCreateCourse_WithProvidedInviteCode(t *testing.T) {
+	svc, cRepo, rRepo := setupService()
+	userID := uuid.New()
+	input := validInput()
+	input.InviteCode = "my-secret"
 
-	board, err := svc.GetCourseBoard(context.Background(), "go")
+	cRepo.On("GetCourseByID", mock.Anything, "test").Return(nil, errors.New("not found"))
+	cRepo.On("CreateCourse", mock.Anything, mock.MatchedBy(func(c models.Course) bool {
+		return c.InviteCode != nil && *c.InviteCode == "my-secret"
+	})).Return(&models.Course{ID: uuid.New(), Name: "Test"}, nil)
+	rRepo.On("GetRoleIDByUserAndCourse", mock.Anything, userID, uuid.Nil).Return(uuid.Nil, errors.New("not found"))
+	rRepo.On("AssignRole", mock.Anything, mock.Anything).Return(nil)
+	rRepo.On("AddPermission", mock.Anything, mock.Anything).Return(nil)
+
+	course, err := svc.CreateCourse(context.Background(), userID, input)
+
+	assert.NoError(t, err)
+	assert.Equal(t, "my-secret", *course.InviteCode)
+}
+
+func TestCreateCourse_Conflict(t *testing.T) {
+	svc, cRepo, _ := setupService()
+	userID := uuid.New()
+
+	cRepo.On("GetCourseByID", mock.Anything, "test").Return(&models.Course{ID: uuid.New()}, nil)
+
+	_, err := svc.CreateCourse(context.Background(), userID, validInput())
+
+	assert.Error(t, err)
+	svcErr := err.(*Error)
+	assert.Equal(t, "conflict", svcErr.Code)
+}
+
+func TestCreateCourse_ValidationErrors(t *testing.T) {
+	svc, _, _ := setupService()
+	userID := uuid.New()
+
+	tests := []struct {
+		name  string
+		input CourseInput
+	}{
+		{"no name", func() CourseInput { i := validInput(); i.Name = ""; return i }()},
+		{"no slug", func() CourseInput { i := validInput(); i.Slug = ""; return i }()},
+		{"no status", func() CourseInput { i := validInput(); i.Status = ""; return i }()},
+		{"invalid status", func() CourseInput { i := validInput(); i.Status = "bad"; return i }()},
+		{"no startDate", func() CourseInput { i := validInput(); i.StartDate = ""; return i }()},
+		{"invalid startDate", func() CourseInput { i := validInput(); i.StartDate = "01-01-2026"; return i }()},
+		{"no endDate", func() CourseInput { i := validInput(); i.EndDate = ""; return i }()},
+		{"end before start", func() CourseInput { i := validInput(); i.EndDate = "2025-01-01"; return i }()},
+		{"no repoTemplate", func() CourseInput { i := validInput(); i.RepoTemplate = ""; return i }()},
+		{"no description", func() CourseInput { i := validInput(); i.Description = ""; return i }()},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := svc.CreateCourse(context.Background(), userID, tt.input)
+			assert.Error(t, err)
+			svcErr := err.(*Error)
+			assert.Equal(t, "bad_request", svcErr.Code)
+		})
+	}
+}
+
+// ==================== UpdateCourse ====================
+
+func TestUpdateCourse_Success(t *testing.T) {
+	svc, cRepo, rRepo := setupService()
+	userID := uuid.New()
+	courseID := uuid.New().String()
+	existing := &models.Course{
+		ID: uuid.MustParse(courseID), Name: "Old", Slug: "old",
+		Status: "created", Type: models.CourseTypePrivate,
+		StartDate: parseDate("2026-01-01"), EndDate: parseDate("2026-02-01"),
+	}
+
+	cRepo.On("GetCourseByID", mock.Anything, courseID).Return(existing, nil)
+	rRepo.On("GetRoleIDByUserAndCourse", mock.Anything, userID, existing.ID).Return(uuid.New(), nil)
+	rRepo.On("HasPermission", mock.Anything, mock.Anything, PermissionHomeworkUpdate).Return(true, nil)
+	cRepo.On("UpdateCourse", mock.Anything, courseID, mock.Anything).Return(existing, nil)
+
+	course, err := svc.UpdateCourse(context.Background(), userID, courseID, CourseInput{Name: "Updated"})
+
+	assert.NoError(t, err)
+	assert.Equal(t, "Updated", course.Name)
+}
+
+func TestUpdateCourse_Forbidden(t *testing.T) {
+	svc, cRepo, rRepo := setupService()
+	userID := uuid.New()
+	courseID := uuid.New().String()
+	existing := &models.Course{ID: uuid.MustParse(courseID), Type: models.CourseTypePrivate}
+
+	cRepo.On("GetCourseByID", mock.Anything, courseID).Return(existing, nil)
+	rRepo.On("GetRoleIDByUserAndCourse", mock.Anything, userID, existing.ID).Return(uuid.Nil, errors.New("not found"))
+	rRepo.On("HasPermission", mock.Anything, uuid.Nil, PermissionHomeworkUpdate).Return(false, nil)
+
+	_, err := svc.UpdateCourse(context.Background(), userID, courseID, CourseInput{Name: "X"})
+
+	assert.Error(t, err)
+	svcErr := err.(*Error)
+	assert.Equal(t, "forbidden", svcErr.Code)
+}
+
+func TestUpdateCourse_TypeChange_PrivateToPublic(t *testing.T) {
+	svc, cRepo, rRepo := setupService()
+	userID := uuid.New()
+	inviteCode := "old-code"
+	courseID := uuid.New().String()
+	existing := &models.Course{
+		ID: uuid.MustParse(courseID), Name: "Old", Type: models.CourseTypePrivate,
+		InviteCode: &inviteCode,
+		StartDate:  parseDate("2026-01-01"), EndDate: parseDate("2026-02-01"),
+	}
+
+	cRepo.On("GetCourseByID", mock.Anything, courseID).Return(existing, nil)
+	rRepo.On("GetRoleIDByUserAndCourse", mock.Anything, userID, existing.ID).Return(uuid.New(), nil)
+	rRepo.On("HasPermission", mock.Anything, mock.Anything, PermissionHomeworkUpdate).Return(true, nil)
+	cRepo.On("UpdateCourse", mock.Anything, courseID, mock.MatchedBy(func(c models.Course) bool {
+		return c.InviteCode == nil && c.Type == models.CourseTypePublic
+	})).Return(existing, nil)
+
+	course, err := svc.UpdateCourse(context.Background(), userID, courseID, CourseInput{Type: models.CourseTypePublic})
+
+	assert.NoError(t, err)
+	assert.Nil(t, course.InviteCode)
+}
+
+func TestUpdateCourse_NotFound(t *testing.T) {
+	svc, cRepo, _ := setupService()
+
+	cRepo.On("GetCourseByID", mock.Anything, "unknown").Return(nil, errors.New("not found"))
+
+	_, err := svc.UpdateCourse(context.Background(), uuid.New(), "unknown", CourseInput{Name: "X"})
+
+	svcErr := err.(*Error)
+	assert.Equal(t, "not_found", svcErr.Code)
+}
+
+func TestJoinCourse_Public_Success(t *testing.T) {
+	svc, cRepo, rRepo := setupService()
+	userID := uuid.New()
+	courseID := uuid.New()
+	course := &models.Course{ID: courseID, Type: models.CourseTypePublic}
+
+	cRepo.On("GetCourseByID", mock.Anything, courseID.String()).Return(course, nil)
+	rRepo.On("GetRoleIDByUserAndCourse", mock.Anything, userID, courseID).Return(uuid.Nil, errors.New("not found"))
+	rRepo.On("HasPermission", mock.Anything, uuid.Nil, PermissionHomeworkRead).Return(false, nil)
+	rRepo.On("AssignRole", mock.Anything, mock.Anything).Return(nil)
+	rRepo.On("AddPermission", mock.Anything, mock.Anything).Return(nil)
+
+	err := svc.JoinCourse(context.Background(), userID, courseID.String(), "")
+
+	assert.NoError(t, err)
+}
+
+func TestJoinCourse_Private_WrongCode(t *testing.T) {
+	svc, cRepo, rRepo := setupService()
+	userID := uuid.New()
+	courseID := uuid.New()
+	secret := "secret"
+	course := &models.Course{ID: courseID, Type: models.CourseTypePrivate, InviteCode: &secret}
+
+	cRepo.On("GetCourseByID", mock.Anything, courseID.String()).Return(course, nil)
+	rRepo.On("GetRoleIDByUserAndCourse", mock.Anything, userID, courseID).Return(uuid.Nil, errors.New("not found"))
+	rRepo.On("HasPermission", mock.Anything, uuid.Nil, PermissionHomeworkRead).Return(false, nil)
+
+	err := svc.JoinCourse(context.Background(), userID, courseID.String(), "wrong")
+
+	svcErr := err.(*Error)
+	assert.Equal(t, "forbidden", svcErr.Code)
+}
+
+func TestJoinCourse_AlreadyParticipant(t *testing.T) {
+	svc, cRepo, rRepo := setupService()
+	userID := uuid.New()
+	courseID := uuid.New()
+	course := &models.Course{ID: courseID, Type: models.CourseTypePublic}
+
+	cRepo.On("GetCourseByID", mock.Anything, courseID.String()).Return(course, nil)
+	rRepo.On("GetRoleIDByUserAndCourse", mock.Anything, userID, courseID).Return(uuid.New(), nil)
+	rRepo.On("HasPermission", mock.Anything, mock.Anything, PermissionHomeworkRead).Return(true, nil)
+
+	err := svc.JoinCourse(context.Background(), userID, courseID.String(), "")
+
+	svcErr := err.(*Error)
+	assert.Equal(t, "conflict", svcErr.Code)
+}
+
+func TestGetCourseBoard_Success(t *testing.T) {
+	svc, cRepo, _ := setupService()
+	courseID := uuid.New().String()
+	course := &models.Course{ID: uuid.MustParse(courseID), Name: "Go", Status: "created"}
+
+	cRepo.On("GetCourseByID", mock.Anything, courseID).Return(course, nil)
+	cRepo.On("GetCourseBoard", mock.Anything, courseID).Return(nil, false, nil)
+
+	board, err := svc.GetCourseBoard(context.Background(), courseID)
 
 	assert.NoError(t, err)
 	assert.Equal(t, "Go", board.CourseName)
-	assert.Equal(t, "created", board.CourseStatus)
 	assert.Empty(t, board.Groups)
 }
 
-func testCourseServiceDate(value string) *time.Time {
-	parsed, _ := time.Parse("2006-01-02", value)
-	return &parsed
+func TestGetCourseBoard_NotFound(t *testing.T) {
+	svc, cRepo, _ := setupService()
+
+	cRepo.On("GetCourseByID", mock.Anything, "unknown").Return(nil, errors.New("not found"))
+
+	_, err := svc.GetCourseBoard(context.Background(), "unknown")
+
+	svcErr := err.(*Error)
+	assert.Equal(t, "not_found", svcErr.Code)
 }
 
-func testCourseServiceString(value string) *string {
-	return &value
+func TestIsValidCourseStatus(t *testing.T) {
+	assert.True(t, IsValidCourseStatus("created"))
+	assert.True(t, IsValidCourseStatus("finished"))
+	assert.False(t, IsValidCourseStatus("invalid"))
+}
+
+func TestIsValidCourseType(t *testing.T) {
+	assert.True(t, IsValidCourseType(models.CourseTypePublic))
+	assert.True(t, IsValidCourseType(models.CourseTypePrivate))
+	assert.False(t, IsValidCourseType("invalid"))
+}
+
+func TestIsValidDate(t *testing.T) {
+	assert.True(t, IsValidDate("2026-01-01"))
+	assert.False(t, IsValidDate("01-01-2026"))
+}
+
+func TestIsValidDateRange(t *testing.T) {
+	assert.True(t, IsValidDateRange("2026-01-01", "2026-02-01"))
+	assert.False(t, IsValidDateRange("2026-02-01", "2026-01-01"))
+	assert.False(t, IsValidDateRange("2026-01-01", "2026-01-01"))
+}
+
+func parseDate(s string) *time.Time {
+	t, _ := time.Parse("2006-01-02", s)
+	return &t
 }
