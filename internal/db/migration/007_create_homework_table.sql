@@ -17,8 +17,8 @@ CREATE INDEX IF NOT EXISTS idx_homework_start_date
     ON homework(start_date);
 CREATE INDEX IF NOT EXISTS idx_homework_end_date
     ON homework(end_date);
-CREATE INDEX IF NOT EXISTS idx_homework_course_active
-    ON homework(course_id, end_date) WHERE end_date > NOW();
+CREATE INDEX IF NOT EXISTS idx_homework_course_end_date
+    ON homework(course_id, end_date);
 CREATE INDEX IF NOT EXISTS idx_homework_public
     ON homework(course_id) WHERE is_public = true;
 

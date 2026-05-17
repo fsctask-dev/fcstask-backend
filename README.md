@@ -10,6 +10,7 @@ make down  # остановить API и контейнеры БД
 ```
 
 API: [http://localhost:8080](http://localhost:8080). Конфиг: `config/config.yaml`
+
 | Команда             | Описание |
 |---------------------|----------|
 | `make up`           | Поднять локальный стек с нуля (см. Quick start). |
