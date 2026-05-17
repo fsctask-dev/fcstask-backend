@@ -9,11 +9,12 @@ import (
 )
 
 type APIController struct {
-	authHandler            *handler.AuthHandler
-	userHandler            *handler.UserHandler
-	sessionHandler         *handler.SessionHandler
-	courseHandler          *handler.CourseHandler
-	adminHomeworkHandler   *handler.AdminHomeworkHandler
+	authHandler          *handler.AuthHandler
+	userHandler          *handler.UserHandler
+	sessionHandler       *handler.SessionHandler
+	courseHandler        *handler.CourseHandler
+	adminHomeworkHandler *handler.AdminHomeworkHandler
+	namespaceHandler     *handler.NamespaceHandler
 }
 
 func NewAPIController(
@@ -22,13 +23,15 @@ func NewAPIController(
 	sessionHandler *handler.SessionHandler,
 	courseHandler *handler.CourseHandler,
 	adminHomeworkHandler *handler.AdminHomeworkHandler,
+	namespaceHandler *handler.NamespaceHandler,
 ) *APIController {
 	return &APIController{
-		authHandler:            authHandler,
-		userHandler:            userHandler,
-		sessionHandler:         sessionHandler,
-		courseHandler:          courseHandler,
-		adminHomeworkHandler:   adminHomeworkHandler,
+		authHandler:          authHandler,
+		userHandler:          userHandler,
+		sessionHandler:       sessionHandler,
+		courseHandler:        courseHandler,
+		adminHomeworkHandler: adminHomeworkHandler,
+		namespaceHandler:     namespaceHandler,
 	}
 }
 
@@ -86,4 +89,11 @@ func (c *APIController) RegisterCourseRoutes(e *echo.Echo) {
 
 func (c *APIController) RegisterHomeworkRoutes(e *echo.Echo) {
 	e.GET("/api/homework/:hwId/deadline", c.adminHomeworkHandler.GetDeadlineByHomeworkID)
+}
+
+func (c *APIController) RegisterNamespaceRoutes(e *echo.Echo) {
+	e.GET("/api/namespaces", c.namespaceHandler.GetNamespaces)
+	e.GET("/api/namespaces/:namespaceId", c.namespaceHandler.GetNamespace)
+	e.GET("/api/instance/summary", c.namespaceHandler.GetInstanceSummary)
+	e.GET("/api/courses/:courseId/scores", c.namespaceHandler.GetCourseScores)
 }

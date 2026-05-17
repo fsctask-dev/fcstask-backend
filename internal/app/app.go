@@ -13,10 +13,11 @@ import (
 	"fcstask-backend/internal/server"
 	"fcstask-backend/internal/service"
 	"fmt"
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
 	"log"
 	"time"
+
+	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 )
 
 type App struct {
@@ -41,14 +42,17 @@ func New(cfg *config.Config) (*App, error) {
 	courseRepo := repo.NewCourseRepository(dbClient)
 	homeworkRepo := repo.NewHomeworkRepository(dbClient.DB())
 	deadlineRepo := repo.NewDeadlineRepository(dbClient.DB())
+	namespaceRepo := repo.NewNamespaceRepository(dbClient)
 
 	userService := service.NewUserService(userRepo)
 	authService := service.NewAuthService(userRepo, sessionRepo)
 	sessionService := service.NewSessionService(sessionRepo)
 	courseService := service.NewCourseService(courseRepo)
 	adminHomeworkService := service.NewAdminHomeworkService(homeworkRepo, deadlineRepo)
+	namespaceService := service.NewNamespaceService(namespaceRepo, userRepo, courseRepo)
 
 	adminHomeworkHandler := handler.NewAdminHomeworkHandler(adminHomeworkService)
+	namespaceHandler := handler.NewNamespaceHandler(namespaceService)
 
 	apiController := controller.NewAPIController(
 		handler.NewAuthHandler(authService),
@@ -56,6 +60,7 @@ func New(cfg *config.Config) (*App, error) {
 		handler.NewSessionHandler(sessionService, userService),
 		handler.NewCourseHandler(courseService),
 		adminHomeworkHandler,
+		namespaceHandler,
 	)
 
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
@@ -74,6 +79,7 @@ func New(cfg *config.Config) (*App, error) {
 	api.RegisterHandlers(e, apiController)
 	apiController.RegisterCourseRoutes(e)
 	apiController.RegisterHomeworkRoutes(e)
+	apiController.RegisterNamespaceRoutes(e)
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 	metrics.EchoPrometheus(e)
