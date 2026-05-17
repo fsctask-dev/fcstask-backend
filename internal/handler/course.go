@@ -34,6 +34,7 @@ func NewCourseHandler(courseService *service.CourseService) *CourseHandler {
 	return &CourseHandler{courseService: courseService}
 }
 
+// GET /courses
 func (h *CourseHandler) GetCourses(ctx echo.Context) error {
 	user := ctx.Get(UserContextKey).(*model.User)
 	if user == nil {
@@ -47,6 +48,7 @@ func (h *CourseHandler) GetCourses(ctx echo.Context) error {
 	return ctx.JSON(http.StatusOK, courses)
 }
 
+// GET /course/:courseId
 func (h *CourseHandler) GetCourse(ctx echo.Context) error {
 	user := ctx.Get(UserContextKey).(*model.User)
 	courseID := ctx.Param("courseId")
@@ -70,6 +72,7 @@ func (h *CourseHandler) GetCourse(ctx echo.Context) error {
 	return ctx.JSON(http.StatusOK, course)
 }
 
+// POST /admin/course/create
 func (h *CourseHandler) CreateCourse(ctx echo.Context) error {
 	user := ctx.Get(UserContextKey).(*model.User)
 	if user == nil {
@@ -88,6 +91,7 @@ func (h *CourseHandler) CreateCourse(ctx echo.Context) error {
 	return ctx.JSON(http.StatusCreated, course)
 }
 
+// PATCH /admin/course/update
 func (h *CourseHandler) UpdateCourse(ctx echo.Context) error {
 	user := ctx.Get(UserContextKey).(*model.User)
 	if user == nil {
@@ -105,6 +109,7 @@ func (h *CourseHandler) UpdateCourse(ctx echo.Context) error {
 	return ctx.JSON(http.StatusOK, course)
 }
 
+// GET /course/board
 func (h *CourseHandler) GetCourseBoard(ctx echo.Context) error {
 	user := ctx.Get(UserContextKey).(*model.User)
 	if user == nil {
@@ -135,6 +140,7 @@ func (h *CourseHandler) GetCourseBoard(ctx echo.Context) error {
 	return ctx.JSON(http.StatusOK, board)
 }
 
+// POST /courses/:courseId/join
 func (h *CourseHandler) JoinCourse(ctx echo.Context) error {
 	user := ctx.Get(UserContextKey).(*model.User)
 	if user == nil {

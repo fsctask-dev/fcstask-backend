@@ -47,7 +47,7 @@ func New(cfg *config.Config) (*App, error) {
 	userService := service.NewUserService(userRepo)
 	authService := service.NewAuthService(userRepo, sessionRepo)
 	sessionService := service.NewSessionService(sessionRepo)
-	courseService := service.NewCourseService(courseRepo)
+	courseService := service.NewCourseService(courseRepo, roleRepo)
 	adminHomeworkService := service.NewAdminHomeworkService(homeworkRepo, deadlineRepo, roleRepo)
 	adminTaskService := service.NewAdminTaskService(taskRepo, homeworkRepo, roleRepo)
 	adminRoleService := service.NewAdminRoleService(roleRepo, userRepo)
