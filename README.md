@@ -1,7 +1,19 @@
 # fcstask
 
+## Quick start
+
+Нужны **Go**, **Docker** и **Make**.
+
+```bash
+make up    # зависимости, Postgres (master :6432, replica :6433), миграции, API
+make down  # остановить API и контейнеры БД
+```
+
+API: [http://localhost:8080](http://localhost:8080). Конфиг: `config/config.yaml`
 | Команда             | Описание |
 |---------------------|----------|
+| `make up`           | Поднять локальный стек с нуля (см. Quick start). |
+| `make down`         | Остановить API и Postgres. |
 | `make init`         | Инициализирует Go-модуль (`go.mod`), если он ещё не создан. |
 | `make tidy`         | Обновляет зависимости (`go mod tidy`). |
 | `make install-tools`| Устанавливает необходимые инструменты: `oapi-codegen` и `mockgen`. |
