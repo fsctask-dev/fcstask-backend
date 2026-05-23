@@ -149,6 +149,10 @@ func (r *controllerCourseRepo) GetCourses(ctx context.Context) ([]models.Course,
 	return courses, nil
 }
 
+func (r *controllerCourseRepo) GetCoursesByUserID(ctx context.Context, userID uuid.UUID, status string) ([]models.Course, error) {
+	return r.GetCourses(ctx)
+}
+
 func (r *controllerCourseRepo) GetCourseByID(ctx context.Context, courseID string) (*models.Course, error) {
 	course, ok := r.courses[courseID]
 	if !ok {
@@ -183,7 +187,7 @@ func newTestController(userRepo *controllerUserRepo, sessionRepo *controllerSess
 	userService := service.NewUserService(userRepo)
 	authService := service.NewAuthService(userRepo, sessionRepo)
 	sessionService := service.NewSessionService(sessionRepo)
-	courseService := service.NewCourseService(courseRepo)
+	courseService := service.NewCourseService(courseRepo, nil)
 
 	return NewAPIController(
 		handler.NewAuthHandler(authService),
@@ -249,7 +253,7 @@ func TestAPIController_RegisterCourseRoutes(t *testing.T) {
 				Name:         "Go",
 				Slug:         "go",
 				Status:       "created",
-				Type:         models.CourseTypePrivate,
+				Type:         models.CourseTypePublic,
 				StartDate:    controllerCourseDate("2026-01-01"),
 				EndDate:      controllerCourseDate("2026-02-01"),
 				RepoTemplate: controllerStringPtr("git@test/go.git"),

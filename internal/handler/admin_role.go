@@ -18,14 +18,12 @@ func NewAdminRoleHandler(roleService IAdminRoleService) *AdminRoleHandler {
 	return &AdminRoleHandler{roleService: roleService}
 }
 
-type AssignRoleRequest struct {
+type AssignCourseAdminRequest struct {
 	UserID uuid.UUID `json:"user_id"`
-	RoleID uuid.UUID `json:"role_id"`
 }
 
-type RevokeRoleRequest struct {
+type RevokeCourseAdminRequest struct {
 	UserID uuid.UUID `json:"user_id"`
-	RoleID uuid.UUID `json:"role_id"`
 }
 
 type AddPermissionRequest struct {
@@ -59,7 +57,7 @@ func (h *AdminRoleHandler) CreateSuperAdmin(c echo.Context) error {
 }
 
 // POST /admin/courses/:courseId/roles
-func (h *AdminRoleHandler) AssignRole(c echo.Context) error {
+func (h *AdminRoleHandler) AssignCourseAdmin(c echo.Context) error {
 	user, ok := c.Get(UserContextKey).(*model.User)
 	if !ok || user == nil {
 		return unauthorized(c, "User not found")
@@ -70,15 +68,14 @@ func (h *AdminRoleHandler) AssignRole(c echo.Context) error {
 		return badRequest(c, "Invalid course ID")
 	}
 
-	var req AssignRoleRequest
+	var req AssignCourseAdminRequest
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "Invalid request body")
 	}
 
-	userRole, err := h.roleService.AssignRole(c.Request().Context(), user.ID, service.AssignRoleInput{
+	userRole, err := h.roleService.AssignCourseAdmin(c.Request().Context(), user.ID, service.AssignCourseAdminInput{
 		UserID:   req.UserID,
 		CourseID: courseID,
-		RoleID:   req.RoleID,
 	})
 	if err != nil {
 		return serviceError(c, err)
@@ -88,7 +85,7 @@ func (h *AdminRoleHandler) AssignRole(c echo.Context) error {
 }
 
 // DELETE /admin/courses/:courseId/roles
-func (h *AdminRoleHandler) RevokeRole(c echo.Context) error {
+func (h *AdminRoleHandler) RevokeCourseAdmin(c echo.Context) error {
 	user, ok := c.Get(UserContextKey).(*model.User)
 	if !ok || user == nil {
 		return unauthorized(c, "User not found")
@@ -99,15 +96,41 @@ func (h *AdminRoleHandler) RevokeRole(c echo.Context) error {
 		return badRequest(c, "Invalid course ID")
 	}
 
-	var req RevokeRoleRequest
+	var req RevokeCourseAdminRequest
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "Invalid request body")
 	}
 
-	if err := h.roleService.RevokeRole(c.Request().Context(), user.ID, service.RevokeRoleInput{
+	if err := h.roleService.RevokeCourseAdmin(c.Request().Context(), user.ID, service.RevokeCourseAdminInput{
 		UserID:   req.UserID,
 		CourseID: courseID,
-		RoleID:   req.RoleID,
+	}); err != nil {
+		return serviceError(c, err)
+	}
+
+	return c.NoContent(http.StatusNoContent)
+}
+
+// DELETE /admin/courses/:courseId/participants
+func (h *AdminRoleHandler) RemoveCourseParticipant(c echo.Context) error {
+	user, ok := c.Get(UserContextKey).(*model.User)
+	if !ok || user == nil {
+		return unauthorized(c, "User not found")
+	}
+
+	courseID, err := uuid.Parse(c.Param("courseId"))
+	if err != nil {
+		return badRequest(c, "Invalid course ID")
+	}
+
+	var req RevokeCourseAdminRequest
+	if err := c.Bind(&req); err != nil {
+		return badRequest(c, "Invalid request body")
+	}
+
+	if err := h.roleService.RemoveCourseParticipant(c.Request().Context(), user.ID, service.RemoveCourseParticipantInput{
+		UserID:   req.UserID,
+		CourseID: courseID,
 	}); err != nil {
 		return serviceError(c, err)
 	}
@@ -135,11 +158,16 @@ func (h *AdminRoleHandler) ListUserRoles(c echo.Context) error {
 	return c.JSON(http.StatusOK, roles)
 }
 
-// POST /admin/roles/:roleId/permissions
+// POST /admin/courses/:courseId/roles/:roleId/permissions
 func (h *AdminRoleHandler) AddPermission(c echo.Context) error {
 	user, ok := c.Get(UserContextKey).(*model.User)
 	if !ok || user == nil {
 		return unauthorized(c, "User not found")
+	}
+
+	courseID, err := uuid.Parse(c.Param("courseId"))
+	if err != nil {
+		return badRequest(c, "Invalid course ID")
 	}
 
 	roleID, err := uuid.Parse(c.Param("roleId"))
@@ -153,6 +181,7 @@ func (h *AdminRoleHandler) AddPermission(c echo.Context) error {
 	}
 
 	perm, err := h.roleService.AddPermission(c.Request().Context(), user.ID, service.AddPermissionInput{
+		CourseID:   courseID,
 		RoleID:     roleID,
 		Permission: req.Permission,
 	})
@@ -163,11 +192,16 @@ func (h *AdminRoleHandler) AddPermission(c echo.Context) error {
 	return c.JSON(http.StatusCreated, perm)
 }
 
-// DELETE /admin/roles/:roleId/permissions/:permission
+// DELETE /admin/courses/:courseId/roles/:roleId/permissions/:permission
 func (h *AdminRoleHandler) RemovePermission(c echo.Context) error {
 	user, ok := c.Get(UserContextKey).(*model.User)
 	if !ok || user == nil {
 		return unauthorized(c, "User not found")
+	}
+
+	courseID, err := uuid.Parse(c.Param("courseId"))
+	if err != nil {
+		return badRequest(c, "Invalid course ID")
 	}
 
 	roleID, err := uuid.Parse(c.Param("roleId"))
@@ -177,18 +211,23 @@ func (h *AdminRoleHandler) RemovePermission(c echo.Context) error {
 
 	permission := c.Param("permission")
 
-	if err := h.roleService.RemovePermission(c.Request().Context(), user.ID, roleID, permission); err != nil {
+	if err := h.roleService.RemovePermission(c.Request().Context(), user.ID, courseID, roleID, permission); err != nil {
 		return serviceError(c, err)
 	}
 
 	return c.NoContent(http.StatusNoContent)
 }
 
-// GET /admin/roles/:roleId/permissions
+// GET /admin/courses/:courseId/roles/:roleId/permissions
 func (h *AdminRoleHandler) ListPermissions(c echo.Context) error {
 	user, ok := c.Get(UserContextKey).(*model.User)
 	if !ok || user == nil {
 		return unauthorized(c, "User not found")
+	}
+
+	courseID, err := uuid.Parse(c.Param("courseId"))
+	if err != nil {
+		return badRequest(c, "Invalid course ID")
 	}
 
 	roleID, err := uuid.Parse(c.Param("roleId"))
@@ -196,7 +235,7 @@ func (h *AdminRoleHandler) ListPermissions(c echo.Context) error {
 		return badRequest(c, "Invalid role ID")
 	}
 
-	perms, err := h.roleService.ListPermissions(c.Request().Context(), user.ID, roleID)
+	perms, err := h.roleService.ListPermissions(c.Request().Context(), user.ID, courseID, roleID)
 	if err != nil {
 		return serviceError(c, err)
 	}

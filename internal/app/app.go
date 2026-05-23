@@ -47,7 +47,7 @@ func New(cfg *config.Config) (*App, error) {
 	userService := service.NewUserService(userRepo)
 	authService := service.NewAuthService(userRepo, sessionRepo)
 	sessionService := service.NewSessionService(sessionRepo)
-	courseService := service.NewCourseService(courseRepo)
+	courseService := service.NewCourseService(courseRepo, roleRepo)
 	adminHomeworkService := service.NewAdminHomeworkService(homeworkRepo, deadlineRepo, roleRepo)
 	adminTaskService := service.NewAdminTaskService(taskRepo, homeworkRepo, roleRepo)
 	adminRoleService := service.NewAdminRoleService(roleRepo, userRepo)
@@ -83,9 +83,10 @@ func New(cfg *config.Config) (*App, error) {
 		"/admin/courses/:courseId/homework/:hwId/tasks/:taskId",
 		"/admin/courses/:courseId/homework/:hwId/tasks/:taskId/score",
 		"/admin/courses/:courseId/roles",
+		"/admin/courses/:courseId/participants",
+		"/admin/courses/:courseId/roles/:roleId/permissions",
+		"/admin/courses/:courseId/roles/:roleId/permissions/:permission",
 		"/admin/super-admins",
-		"/admin/roles/:roleId/permissions",
-		"/admin/roles/:roleId/permissions/:permission",
 	}))
 
 	api.RegisterHandlers(e, apiController)
