@@ -221,8 +221,12 @@ func (s *AdminHomeworkService) SetDeadline(ctx context.Context, userID uuid.UUID
 		return nil, BadRequest("due date must be in RFC3339 format")
 	}
 
-	if _, err := s.GetHomework(ctx, userID, input.HomeworkID); err != nil {
-		return nil, err
+	hw, err := s.homeworkRepo.GetByID(ctx, input.HomeworkID)
+	if err != nil {
+		return nil, NotFound("Homework not found")
+	}
+	if hw.CourseID != input.CourseID {
+		return nil, BadRequest("homework does not belong to this course")
 	}
 
 	deadline := &model.Deadline{
@@ -231,10 +235,28 @@ func (s *AdminHomeworkService) SetDeadline(ctx context.Context, userID uuid.UUID
 		CourseID:    input.CourseID,
 		DueDate:     dueDate,
 		AssignedBy:  input.AssignedBy,
+		HomeworkID:  &input.HomeworkID,
 	}
 
 	if err := s.deadlineRepo.Create(ctx, deadline); err != nil {
 		return nil, Internal("Failed to set deadline", err)
+	}
+
+	return deadline, nil
+}
+
+func (s *AdminHomeworkService) GetDeadlineByHomeworkID(ctx context.Context, hwID uuid.UUID) (*model.Deadline, error) {
+	if hwID == uuid.Nil {
+		return nil, BadRequest("homework ID is required")
+	}
+
+	if _, err := s.homeworkRepo.GetByID(ctx, hwID); err != nil {
+		return nil, NotFound("Homework not found")
+	}
+
+	deadline, err := s.deadlineRepo.GetByHomeworkID(ctx, hwID)
+	if err != nil {
+		return nil, NotFound("Deadline not found")
 	}
 
 	return deadline, nil

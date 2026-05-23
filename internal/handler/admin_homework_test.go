@@ -88,6 +88,14 @@ func (m *MockAdminHomeworkService) DeleteDeadline(ctx context.Context, userID, d
 	return args.Error(0)
 }
 
+func (m *MockAdminHomeworkService) GetDeadlineByHomeworkID(ctx context.Context, hwID uuid.UUID) (*model.Deadline, error) {
+	args := m.Called(ctx, hwID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*model.Deadline), args.Error(1)
+}
+
 func newEchoContext(method, path string, body interface{}, params map[string]string) (echo.Context, *httptest.ResponseRecorder) {
 	e := echo.New()
 	var req *http.Request

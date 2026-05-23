@@ -83,6 +83,14 @@ func (m *MockDeadlineRepo) Delete(ctx context.Context, id uuid.UUID) error {
 	return args.Error(0)
 }
 
+func (m *MockDeadlineRepo) GetByHomeworkID(ctx context.Context, homeworkID uuid.UUID) (*model.Deadline, error) {
+	args := m.Called(ctx, homeworkID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*model.Deadline), args.Error(1)
+}
+
 func setupService() (*service.AdminHomeworkService, *MockHomeworkRepo, *MockDeadlineRepo) {
 	hwRepo := new(MockHomeworkRepo)
 	dlRepo := new(MockDeadlineRepo)
