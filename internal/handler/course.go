@@ -164,6 +164,20 @@ func (h *CourseHandler) JoinCourse(ctx echo.Context) error {
 	return ctx.JSON(http.StatusOK, map[string]string{"message": "successfully joined"})
 }
 
+// GET /api/courses/:courseId/scores
+func (h *CourseHandler) GetScores(ctx echo.Context) error {
+    user, ok := ctx.Get(UserContextKey).(*model.User)
+    if !ok || user == nil {
+        return unauthorized(ctx, "User not found in context")
+    }
+    courseID := ctx.Param("courseId")
+    entries, err := h.courseService.GetLeaderboard(ctx.Request().Context(), user.ID, courseID)
+    if err != nil {
+        return serviceError(ctx, err)
+    }
+    return ctx.JSON(http.StatusOK, entries)
+}
+
 func courseInput(req PostCourseRequest) service.CourseInput {
 	return service.CourseInput{
 		Name:         req.Name,

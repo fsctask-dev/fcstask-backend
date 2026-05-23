@@ -43,11 +43,12 @@ func New(cfg *config.Config) (*App, error) {
 	homeworkRepo := repo.NewHomeworkRepository(dbClient.DB())
 	taskRepo := repo.NewTaskRepository(dbClient.DB())
 	deadlineRepo := repo.NewDeadlineRepository(dbClient.DB())
+	studentScoreRepo := repo.NewStudentTaskScoreRepository(dbClient.DB())
 
 	userService := service.NewUserService(userRepo)
 	authService := service.NewAuthService(userRepo, sessionRepo)
 	sessionService := service.NewSessionService(sessionRepo)
-	courseService := service.NewCourseService(courseRepo, roleRepo)
+	courseService := service.NewCourseService(courseRepo, roleRepo, studentScoreRepo)
 	adminHomeworkService := service.NewAdminHomeworkService(homeworkRepo, deadlineRepo, roleRepo)
 	adminTaskService := service.NewAdminTaskService(taskRepo, homeworkRepo, roleRepo)
 	adminRoleService := service.NewAdminRoleService(roleRepo, userRepo)
@@ -71,9 +72,11 @@ func New(cfg *config.Config) (*App, error) {
 
 	e.Use(authmw.Auth(userRepo, sessionRepo, []string{
 		"/v1/api/me",
-		"/api/signout",
 		"/v1/sessions",
 		"/v1/users/sessions",
+		"/api/signout",
+		"/api/courses/:courseId/scores",
+		"/api/courses/:courseId/join",
 		"/admin/courses/:courseId/homework",
 		"/admin/courses/:courseId/homework/:hwId",
 		"/admin/courses/:courseId/homework/:hwId/publish",
