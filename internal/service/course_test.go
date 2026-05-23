@@ -2,13 +2,13 @@ package service
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"gorm.io/gorm"
 
 	models "fcstask-backend/internal/db/model"
 )
@@ -61,11 +61,11 @@ type mockRoleRepo struct {
 	mock.Mock
 }
 
-func (m *mockRoleRepo) AssignRole(ctx context.Context, role *models.UserRole) error {
-	args := m.Called(ctx, role)
+func (m *mockRoleRepo) AssignRoleWithPermissions(ctx context.Context, role *models.UserRole, permissions []string) error {
+	args := m.Called(ctx, role, permissions)
 	return args.Error(0)
 }
-func (m *mockRoleRepo) RevokeRole(ctx context.Context, userID, courseID, roleID uuid.UUID) error {
+func (m *mockRoleRepo) RevokeRoleWithPermissions(ctx context.Context, userID, courseID, roleID uuid.UUID) error {
 	return nil
 }
 func (m *mockRoleRepo) GetByCourseID(ctx context.Context, courseID uuid.UUID) ([]models.UserRole, error) {
@@ -75,6 +75,9 @@ func (m *mockRoleRepo) GetRoleIDByUserAndCourse(ctx context.Context, userID, cou
 	args := m.Called(ctx, userID, courseID)
 	return args.Get(0).(uuid.UUID), args.Error(1)
 }
+func (m *mockRoleRepo) RoleBelongsToCourse(ctx context.Context, roleID, courseID uuid.UUID) (bool, error) {
+	return false, nil
+}
 func (m *mockRoleRepo) HasPermission(ctx context.Context, roleID uuid.UUID, permission string) (bool, error) {
 	args := m.Called(ctx, roleID, permission)
 	return args.Bool(0), args.Error(1)
@@ -83,8 +86,16 @@ func (m *mockRoleRepo) AddPermission(ctx context.Context, perm *models.CourseAdm
 	args := m.Called(ctx, perm)
 	return args.Error(0)
 }
+func (m *mockRoleRepo) AddPermissions(ctx context.Context, roleID uuid.UUID, permissions []string) error {
+	args := m.Called(ctx, roleID, permissions)
+	return args.Error(0)
+}
 func (m *mockRoleRepo) RemovePermission(ctx context.Context, roleID uuid.UUID, permission string) error {
 	return nil
+}
+func (m *mockRoleRepo) RemovePermissions(ctx context.Context, roleID uuid.UUID, permissions []string) error {
+	args := m.Called(ctx, roleID, permissions)
+	return args.Error(0)
 }
 func (m *mockRoleRepo) GetPermissions(ctx context.Context, roleID uuid.UUID) ([]models.CourseAdminPermission, error) {
 	return nil, nil
@@ -110,15 +121,17 @@ func validInput() CourseInput {
 func TestCreateCourse_Success(t *testing.T) {
 	svc, cRepo, rRepo := setupService()
 	userID := uuid.New()
+	superRoleID := uuid.New()
 	input := validInput()
 
-	cRepo.On("GetCourseByID", mock.Anything, "test").Return(nil, errors.New("not found"))
+	rRepo.On("GetRoleIDByUserAndCourse", mock.Anything, userID, uuid.Nil).Return(superRoleID, nil).Once()
+	rRepo.On("HasPermission", mock.Anything, superRoleID, PermissionCourseCreate).Return(true, nil).Once()
+	cRepo.On("GetCourseByID", mock.Anything, "test").Return(nil, nil)
 	cRepo.On("CreateCourse", mock.Anything, mock.Anything).Return(&models.Course{
-		ID: uuid.New(), Name: "Test", Slug: "test", Type: models.CourseTypePrivate,
+		ID: uuid.New(), Name: "Test", Slug: "test", Type: models.CourseTypePrivate, InviteCode: stringPtr("generated"),
 	}, nil)
-	rRepo.On("GetRoleIDByUserAndCourse", mock.Anything, userID, uuid.Nil).Return(uuid.Nil, errors.New("not found"))
-	rRepo.On("AssignRole", mock.Anything, mock.Anything).Return(nil)
-	rRepo.On("AddPermission", mock.Anything, mock.Anything).Return(nil)
+	rRepo.On("GetRoleIDByUserAndCourse", mock.Anything, userID, mock.Anything).Return(uuid.Nil, gorm.ErrRecordNotFound)
+	rRepo.On("AssignRoleWithPermissions", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
 	course, err := svc.CreateCourse(context.Background(), userID, input)
 
@@ -130,16 +143,18 @@ func TestCreateCourse_Success(t *testing.T) {
 func TestCreateCourse_Public_NoInviteCode(t *testing.T) {
 	svc, cRepo, rRepo := setupService()
 	userID := uuid.New()
+	superRoleID := uuid.New()
 	input := validInput()
 	input.Type = models.CourseTypePublic
 
-	cRepo.On("GetCourseByID", mock.Anything, "test").Return(nil, errors.New("not found"))
+	rRepo.On("GetRoleIDByUserAndCourse", mock.Anything, userID, uuid.Nil).Return(superRoleID, nil).Once()
+	rRepo.On("HasPermission", mock.Anything, superRoleID, PermissionCourseCreate).Return(true, nil).Once()
+	cRepo.On("GetCourseByID", mock.Anything, "test").Return(nil, nil)
 	cRepo.On("CreateCourse", mock.Anything, mock.Anything).Return(&models.Course{
 		ID: uuid.New(), Name: "Test", Slug: "test", Type: models.CourseTypePublic,
 	}, nil)
-	rRepo.On("GetRoleIDByUserAndCourse", mock.Anything, userID, uuid.Nil).Return(uuid.Nil, errors.New("not found"))
-	rRepo.On("AssignRole", mock.Anything, mock.Anything).Return(nil)
-	rRepo.On("AddPermission", mock.Anything, mock.Anything).Return(nil)
+	rRepo.On("GetRoleIDByUserAndCourse", mock.Anything, userID, mock.Anything).Return(uuid.Nil, gorm.ErrRecordNotFound)
+	rRepo.On("AssignRoleWithPermissions", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
 	course, err := svc.CreateCourse(context.Background(), userID, input)
 
@@ -150,16 +165,18 @@ func TestCreateCourse_Public_NoInviteCode(t *testing.T) {
 func TestCreateCourse_WithProvidedInviteCode(t *testing.T) {
 	svc, cRepo, rRepo := setupService()
 	userID := uuid.New()
+	superRoleID := uuid.New()
 	input := validInput()
 	input.InviteCode = "my-secret"
 
-	cRepo.On("GetCourseByID", mock.Anything, "test").Return(nil, errors.New("not found"))
+	rRepo.On("GetRoleIDByUserAndCourse", mock.Anything, userID, uuid.Nil).Return(superRoleID, nil).Once()
+	rRepo.On("HasPermission", mock.Anything, superRoleID, PermissionCourseCreate).Return(true, nil).Once()
+	cRepo.On("GetCourseByID", mock.Anything, "test").Return(nil, nil)
 	cRepo.On("CreateCourse", mock.Anything, mock.MatchedBy(func(c models.Course) bool {
 		return c.InviteCode != nil && *c.InviteCode == "my-secret"
-	})).Return(&models.Course{ID: uuid.New(), Name: "Test"}, nil)
-	rRepo.On("GetRoleIDByUserAndCourse", mock.Anything, userID, uuid.Nil).Return(uuid.Nil, errors.New("not found"))
-	rRepo.On("AssignRole", mock.Anything, mock.Anything).Return(nil)
-	rRepo.On("AddPermission", mock.Anything, mock.Anything).Return(nil)
+	})).Return(&models.Course{ID: uuid.New(), Name: "Test", InviteCode: stringPtr("my-secret")}, nil)
+	rRepo.On("GetRoleIDByUserAndCourse", mock.Anything, userID, mock.Anything).Return(uuid.Nil, gorm.ErrRecordNotFound)
+	rRepo.On("AssignRoleWithPermissions", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
 	course, err := svc.CreateCourse(context.Background(), userID, input)
 
@@ -168,9 +185,12 @@ func TestCreateCourse_WithProvidedInviteCode(t *testing.T) {
 }
 
 func TestCreateCourse_Conflict(t *testing.T) {
-	svc, cRepo, _ := setupService()
+	svc, cRepo, rRepo := setupService()
 	userID := uuid.New()
+	superRoleID := uuid.New()
 
+	rRepo.On("GetRoleIDByUserAndCourse", mock.Anything, userID, uuid.Nil).Return(superRoleID, nil).Once()
+	rRepo.On("HasPermission", mock.Anything, superRoleID, PermissionCourseCreate).Return(true, nil).Once()
 	cRepo.On("GetCourseByID", mock.Anything, "test").Return(&models.Course{ID: uuid.New()}, nil)
 
 	_, err := svc.CreateCourse(context.Background(), userID, validInput())
@@ -181,8 +201,11 @@ func TestCreateCourse_Conflict(t *testing.T) {
 }
 
 func TestCreateCourse_ValidationErrors(t *testing.T) {
-	svc, _, _ := setupService()
+	svc, _, rRepo := setupService()
 	userID := uuid.New()
+	superRoleID := uuid.New()
+	rRepo.On("GetRoleIDByUserAndCourse", mock.Anything, userID, uuid.Nil).Return(superRoleID, nil)
+	rRepo.On("HasPermission", mock.Anything, superRoleID, PermissionCourseCreate).Return(true, nil)
 
 	tests := []struct {
 		name  string
@@ -225,7 +248,9 @@ func TestUpdateCourse_Success(t *testing.T) {
 	cRepo.On("GetCourseByID", mock.Anything, courseID).Return(existing, nil)
 	rRepo.On("GetRoleIDByUserAndCourse", mock.Anything, userID, existing.ID).Return(uuid.New(), nil)
 	rRepo.On("HasPermission", mock.Anything, mock.Anything, PermissionHomeworkUpdate).Return(true, nil)
-	cRepo.On("UpdateCourse", mock.Anything, courseID, mock.Anything).Return(existing, nil)
+	cRepo.On("UpdateCourse", mock.Anything, courseID, mock.MatchedBy(func(c models.Course) bool {
+		return c.Name == "Updated"
+	})).Return(&models.Course{Name: "Updated"}, nil)
 
 	course, err := svc.UpdateCourse(context.Background(), userID, courseID, CourseInput{Name: "Updated"})
 
@@ -240,8 +265,8 @@ func TestUpdateCourse_Forbidden(t *testing.T) {
 	existing := &models.Course{ID: uuid.MustParse(courseID), Type: models.CourseTypePrivate}
 
 	cRepo.On("GetCourseByID", mock.Anything, courseID).Return(existing, nil)
-	rRepo.On("GetRoleIDByUserAndCourse", mock.Anything, userID, existing.ID).Return(uuid.Nil, errors.New("not found"))
-	rRepo.On("HasPermission", mock.Anything, uuid.Nil, PermissionHomeworkUpdate).Return(false, nil)
+	rRepo.On("GetRoleIDByUserAndCourse", mock.Anything, userID, existing.ID).Return(uuid.Nil, gorm.ErrRecordNotFound)
+	rRepo.On("GetRoleIDByUserAndCourse", mock.Anything, userID, uuid.Nil).Return(uuid.Nil, gorm.ErrRecordNotFound)
 
 	_, err := svc.UpdateCourse(context.Background(), userID, courseID, CourseInput{Name: "X"})
 
@@ -266,7 +291,7 @@ func TestUpdateCourse_TypeChange_PrivateToPublic(t *testing.T) {
 	rRepo.On("HasPermission", mock.Anything, mock.Anything, PermissionHomeworkUpdate).Return(true, nil)
 	cRepo.On("UpdateCourse", mock.Anything, courseID, mock.MatchedBy(func(c models.Course) bool {
 		return c.InviteCode == nil && c.Type == models.CourseTypePublic
-	})).Return(existing, nil)
+	})).Return(&models.Course{Type: models.CourseTypePublic}, nil)
 
 	course, err := svc.UpdateCourse(context.Background(), userID, courseID, CourseInput{Type: models.CourseTypePublic})
 
@@ -277,7 +302,7 @@ func TestUpdateCourse_TypeChange_PrivateToPublic(t *testing.T) {
 func TestUpdateCourse_NotFound(t *testing.T) {
 	svc, cRepo, _ := setupService()
 
-	cRepo.On("GetCourseByID", mock.Anything, "unknown").Return(nil, errors.New("not found"))
+	cRepo.On("GetCourseByID", mock.Anything, "unknown").Return(nil, nil)
 
 	_, err := svc.UpdateCourse(context.Background(), uuid.New(), "unknown", CourseInput{Name: "X"})
 
@@ -292,10 +317,9 @@ func TestJoinCourse_Public_Success(t *testing.T) {
 	course := &models.Course{ID: courseID, Type: models.CourseTypePublic}
 
 	cRepo.On("GetCourseByID", mock.Anything, courseID.String()).Return(course, nil)
-	rRepo.On("GetRoleIDByUserAndCourse", mock.Anything, userID, courseID).Return(uuid.Nil, errors.New("not found"))
-	rRepo.On("HasPermission", mock.Anything, uuid.Nil, PermissionHomeworkRead).Return(false, nil)
-	rRepo.On("AssignRole", mock.Anything, mock.Anything).Return(nil)
-	rRepo.On("AddPermission", mock.Anything, mock.Anything).Return(nil)
+	rRepo.On("GetRoleIDByUserAndCourse", mock.Anything, userID, courseID).Return(uuid.Nil, gorm.ErrRecordNotFound)
+	rRepo.On("GetRoleIDByUserAndCourse", mock.Anything, userID, uuid.Nil).Return(uuid.Nil, gorm.ErrRecordNotFound)
+	rRepo.On("AssignRoleWithPermissions", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
 	err := svc.JoinCourse(context.Background(), userID, courseID.String(), "")
 
@@ -310,8 +334,8 @@ func TestJoinCourse_Private_WrongCode(t *testing.T) {
 	course := &models.Course{ID: courseID, Type: models.CourseTypePrivate, InviteCode: &secret}
 
 	cRepo.On("GetCourseByID", mock.Anything, courseID.String()).Return(course, nil)
-	rRepo.On("GetRoleIDByUserAndCourse", mock.Anything, userID, courseID).Return(uuid.Nil, errors.New("not found"))
-	rRepo.On("HasPermission", mock.Anything, uuid.Nil, PermissionHomeworkRead).Return(false, nil)
+	rRepo.On("GetRoleIDByUserAndCourse", mock.Anything, userID, courseID).Return(uuid.Nil, gorm.ErrRecordNotFound)
+	rRepo.On("GetRoleIDByUserAndCourse", mock.Anything, userID, uuid.Nil).Return(uuid.Nil, gorm.ErrRecordNotFound)
 
 	err := svc.JoinCourse(context.Background(), userID, courseID.String(), "wrong")
 
@@ -353,7 +377,7 @@ func TestGetCourseBoard_Success(t *testing.T) {
 func TestGetCourseBoard_NotFound(t *testing.T) {
 	svc, cRepo, _ := setupService()
 
-	cRepo.On("GetCourseByID", mock.Anything, "unknown").Return(nil, errors.New("not found"))
+	cRepo.On("GetCourseByID", mock.Anything, "unknown").Return(nil, nil)
 
 	_, err := svc.GetCourseBoard(context.Background(), "unknown")
 

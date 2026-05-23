@@ -36,8 +36,8 @@ func NewCourseHandler(courseService *service.CourseService) *CourseHandler {
 
 // GET /courses
 func (h *CourseHandler) GetCourses(ctx echo.Context) error {
-	user := ctx.Get(UserContextKey).(*model.User)
-	if user == nil {
+	user, ok := ctx.Get(UserContextKey).(*model.User)
+	if !ok || user == nil {
 		return unauthorized(ctx, "User not found in context")
 	}
 	courses, err := h.courseService.GetCourses(ctx.Request().Context(), user.ID, ctx.QueryParam("status"))
@@ -50,7 +50,6 @@ func (h *CourseHandler) GetCourses(ctx echo.Context) error {
 
 // GET /course/:courseId
 func (h *CourseHandler) GetCourse(ctx echo.Context) error {
-	user := ctx.Get(UserContextKey).(*model.User)
 	courseID := ctx.Param("courseId")
 	course, err := h.courseService.GetCourse(ctx.Request().Context(), courseID)
 	if err != nil {
@@ -58,6 +57,11 @@ func (h *CourseHandler) GetCourse(ctx echo.Context) error {
 	}
 	if course.Type == model.CourseTypePublic {
 		return ctx.JSON(http.StatusOK, course)
+	}
+
+	user, ok := ctx.Get(UserContextKey).(*model.User)
+	if !ok || user == nil {
+		return unauthorized(ctx, "User not found in context")
 	}
 
 	courseUUID, _ := uuid.Parse(courseID)
@@ -142,8 +146,8 @@ func (h *CourseHandler) GetCourseBoard(ctx echo.Context) error {
 
 // POST /courses/:courseId/join
 func (h *CourseHandler) JoinCourse(ctx echo.Context) error {
-	user := ctx.Get(UserContextKey).(*model.User)
-	if user == nil {
+	user, ok := ctx.Get(UserContextKey).(*model.User)
+	if !ok || user == nil {
 		return unauthorized(ctx, "User not found in context")
 	}
 
@@ -165,6 +169,8 @@ func courseInput(req PostCourseRequest) service.CourseInput {
 		Name:         req.Name,
 		Slug:         req.Slug,
 		Status:       req.Status,
+		Type:         model.CourseType(req.Type),
+		InviteCode:   req.InviteCode,
 		StartDate:    req.StartDate,
 		EndDate:      req.EndDate,
 		RepoTemplate: req.RepoTemplate,

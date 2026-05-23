@@ -53,6 +53,10 @@ func (s *CourseService) GetCourse(ctx context.Context, courseID string) (*models
 }
 
 func (s *CourseService) CreateCourse(ctx context.Context, userID uuid.UUID, input CourseInput) (*models.Course, error) {
+	if err := RequireScopedPermission(ctx, s.RoleRepo, userID, uuid.Nil, PermissionCourseCreate); err != nil {
+		return nil, err
+	}
+
 	if err := validateCreateCourse(input); err != nil {
 		return nil, err
 	}
@@ -93,7 +97,7 @@ func (s *CourseService) CreateCourse(ctx context.Context, userID uuid.UUID, inpu
 		return nil, Internal("Failed to create course", err)
 	}
 
-	if _, err := EnsureRolePermissions(ctx, s.RoleRepo, userID, created.ID, AdminPermissions()); err != nil {
+	if _, err := EnsureUserRoleWithPermissions(ctx, s.RoleRepo, userID, created.ID, CourseAdminPermissions()); err != nil {
 		return nil, Internal("Failed to assign admin permissions", err)
 	}
 
@@ -203,7 +207,7 @@ func (s *CourseService) JoinCourse(ctx context.Context, userID uuid.UUID, course
 	}
 
 	if course.Type == models.CourseTypePublic {
-		_, err := EnsureRolePermissions(ctx, s.RoleRepo, userID, course.ID, CoursePermissions())
+		_, err := EnsureUserRoleWithPermissions(ctx, s.RoleRepo, userID, course.ID, CourseStudentPermissions())
 		if err != nil {
 			return Internal("Failed to join course", err)
 		}
@@ -216,7 +220,7 @@ func (s *CourseService) JoinCourse(ctx context.Context, userID uuid.UUID, course
 		return Forbidden("invalid invite code")
 	}
 
-	_, err = EnsureRolePermissions(ctx, s.RoleRepo, userID, course.ID, CoursePermissions())
+	_, err = EnsureUserRoleWithPermissions(ctx, s.RoleRepo, userID, course.ID, CourseStudentPermissions())
 	if err != nil {
 		return Internal("Failed to join course", err)
 	}

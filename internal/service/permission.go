@@ -27,14 +27,21 @@ const (
 	PermissionTaskUpdate      = "task.update"
 	PermissionTaskDelete      = "task.delete"
 	PermissionTaskScoreUpdate = "task.score.update"
+	PermissionTaskSubmit      = "task.submit"
 
-	PermissionAdminRoleAssign  = "admin.roles.assign"
-	PermissionAdminRoleRevoke  = "admin.roles.revoke"
-	PermissionAdminRoleList    = "admin.roles.list"
-	PermissionAdminPermAdd     = "admin.permissions.add"
-	PermissionAdminPermRemove  = "admin.permissions.remove"
-	PermissionAdminPermList    = "admin.permissions.list"
-	PermissionAdminSuperCreate = "admin.super_admins.create"
+	PermissionLeaderboardRead = "leaderboard.read"
+
+	PermissionCourseRoleAssign = "course.roles.assign"
+	PermissionCourseRoleRevoke = "course.roles.revoke"
+	PermissionCourseRoleList   = "course.roles.list"
+
+	PermissionCoursePermissionAdd    = "course.permissions.add"
+	PermissionCoursePermissionRemove = "course.permissions.remove"
+	PermissionCoursePermissionList   = "course.permissions.list"
+
+	PermissionCourseCreate     = "course.create"
+	PermissionSuperAdminCreate = "super_admin.create"
+	PermissionIsSuperAdmin     = "is_super_admin"
 )
 
 func HasPermission(ctx context.Context, roleRepo repo.IRoleRepo, roleID uuid.UUID, permission string) (bool, error) {
@@ -67,8 +74,8 @@ func HasScopedPermission(ctx context.Context, roleRepo repo.IRoleRepo, userID, c
 		return false, nil
 	}
 
-	// Super admin is identified by the existence of a global role scoped to uuid.Nil.
-	_, err = roleRepo.GetRoleIDByUserAndCourse(ctx, userID, uuid.Nil)
+	// Super admin is identified by a dedicated global permission.
+	globalRoleID, err := roleRepo.GetRoleIDByUserAndCourse(ctx, userID, uuid.Nil)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return false, nil
@@ -76,7 +83,7 @@ func HasScopedPermission(ctx context.Context, roleRepo repo.IRoleRepo, userID, c
 		return false, err
 	}
 
-	return true, nil
+	return HasPermission(ctx, roleRepo, globalRoleID, PermissionIsSuperAdmin)
 }
 
 func RequireScopedPermission(ctx context.Context, roleRepo repo.IRoleRepo, userID, courseID uuid.UUID, permission string) error {
@@ -90,10 +97,20 @@ func RequireScopedPermission(ctx context.Context, roleRepo repo.IRoleRepo, userI
 	return nil
 }
 
-func CoursePermissions() []string {
+// CourseStudentPermissions are granted when a user joins a course.
+func CourseStudentPermissions() []string {
+	return []string{
+		PermissionHomeworkRead,
+		PermissionTaskRead,
+		PermissionTaskSubmit,
+		PermissionLeaderboardRead,
+	}
+}
+
+// CourseAdminPermissions are granted when a course owner adds a course admin.
+func CourseAdminPermissions() []string {
 	return []string{
 		PermissionHomeworkCreate,
-		PermissionHomeworkRead,
 		PermissionHomeworkUpdate,
 		PermissionHomeworkDelete,
 		PermissionHomeworkPublish,
@@ -101,26 +118,34 @@ func CoursePermissions() []string {
 		PermissionDeadlineUpdate,
 		PermissionDeadlineDelete,
 		PermissionTaskCreate,
-		PermissionTaskRead,
 		PermissionTaskUpdate,
 		PermissionTaskDelete,
 		PermissionTaskScoreUpdate,
 	}
 }
 
-func AdminPermissions() []string {
+// CourseOwnerPermissions are granted to the creator/owner of a course.
+func CourseOwnerPermissions() []string {
+	return append(append(CourseStudentPermissions(), CourseAdminPermissions()...),
+		PermissionCourseRoleAssign,
+		PermissionCourseRoleRevoke,
+		PermissionCourseRoleList,
+		PermissionCoursePermissionAdd,
+		PermissionCoursePermissionRemove,
+		PermissionCoursePermissionList,
+	)
+}
+
+// ServiceSuperAdminPermissions are granted to global service admins.
+func ServiceSuperAdminPermissions() []string {
 	return []string{
-		PermissionAdminRoleAssign,
-		PermissionAdminRoleRevoke,
-		PermissionAdminRoleList,
-		PermissionAdminPermAdd,
-		PermissionAdminPermRemove,
-		PermissionAdminPermList,
-		PermissionAdminSuperCreate,
+		PermissionIsSuperAdmin,
+		PermissionCourseCreate,
+		PermissionSuperAdminCreate,
 	}
 }
 
-func EnsureRolePermissions(ctx context.Context, roleRepo repo.IRoleRepo, userID, courseID uuid.UUID, permissions []string) (*model.UserRole, error) {
+func EnsureUserRoleWithPermissions(ctx context.Context, roleRepo repo.IRoleRepo, userID, courseID uuid.UUID, permissions []string) (*model.UserRole, error) {
 	if userID == uuid.Nil {
 		return nil, BadRequest("user_id is required")
 	}
@@ -138,20 +163,20 @@ func EnsureRolePermissions(ctx context.Context, roleRepo repo.IRoleRepo, userID,
 			CourseID: courseID,
 			RoleID:   roleID,
 		}
-		if err := roleRepo.AssignRole(ctx, userRole); err != nil {
+		if err := roleRepo.AssignRoleWithPermissions(ctx, userRole, permissions); err != nil {
 			return nil, Internal("Failed to assign role", err)
 		}
+		return &model.UserRole{
+			UserID:   userID,
+			CourseID: courseID,
+			RoleID:   roleID,
+		}, nil
 	default:
 		return nil, Internal("Failed to load role", err)
 	}
 
-	for _, permission := range permissions {
-		if err := roleRepo.AddPermission(ctx, &model.CourseAdminPermission{
-			RoleID:     roleID,
-			Permission: permission,
-		}); err != nil {
-			return nil, Internal("Failed to add permission", err)
-		}
+	if err := roleRepo.AddPermissions(ctx, roleID, permissions); err != nil {
+		return nil, Internal("Failed to add permissions", err)
 	}
 
 	return &model.UserRole{
@@ -159,4 +184,34 @@ func EnsureRolePermissions(ctx context.Context, roleRepo repo.IRoleRepo, userID,
 		CourseID: courseID,
 		RoleID:   roleID,
 	}, nil
+}
+
+func GrantRolePermissions(ctx context.Context, roleRepo repo.IRoleRepo, roleID uuid.UUID, permissions []string) error {
+	if roleID == uuid.Nil {
+		return BadRequest("role_id is required")
+	}
+	if len(permissions) == 0 {
+		return BadRequest("permissions are required")
+	}
+
+	if err := roleRepo.AddPermissions(ctx, roleID, permissions); err != nil {
+		return Internal("Failed to add permissions", err)
+	}
+
+	return nil
+}
+
+func RevokeRolePermissions(ctx context.Context, roleRepo repo.IRoleRepo, roleID uuid.UUID, permissions []string) error {
+	if roleID == uuid.Nil {
+		return BadRequest("role_id is required")
+	}
+	if len(permissions) == 0 {
+		return BadRequest("permissions are required")
+	}
+
+	if err := roleRepo.RemovePermissions(ctx, roleID, permissions); err != nil {
+		return Internal("Failed to remove permissions", err)
+	}
+
+	return nil
 }
