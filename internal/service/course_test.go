@@ -167,7 +167,7 @@ func TestCreateCourse_WithProvidedInviteCode(t *testing.T) {
 	userID := uuid.New()
 	superRoleID := uuid.New()
 	input := validInput()
-	input.InviteCode = "my-secret"
+	input.InviteCode = stringPtr("my-secret")
 
 	rRepo.On("GetRoleIDByUserAndCourse", mock.Anything, userID, uuid.Nil).Return(superRoleID, nil).Once()
 	rRepo.On("HasPermission", mock.Anything, superRoleID, PermissionCourseCreate).Return(true, nil).Once()

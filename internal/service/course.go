@@ -26,7 +26,7 @@ type CourseInput struct {
 	Slug         string
 	Status       string
 	Type         models.CourseType
-	InviteCode   string
+	InviteCode   *string
 	StartDate    string
 	EndDate      string
 	RepoTemplate string
@@ -76,20 +76,12 @@ func (s *CourseService) CreateCourse(ctx context.Context, userID uuid.UUID, inpu
 		Slug:         input.Slug,
 		Status:       input.Status,
 		Type:         courseType,
+		InviteCode:   inviteCodeForCourse(courseType, input.InviteCode),
 		StartDate:    parseCourseDate(input.StartDate),
 		EndDate:      parseCourseDate(input.EndDate),
 		RepoTemplate: stringPtr(input.RepoTemplate),
 		Description:  stringPtr(input.Description),
 		URL:          "/course/" + input.Slug,
-	}
-
-	if courseType == models.CourseTypePrivate {
-		if input.InviteCode != "" {
-			course.InviteCode = &input.InviteCode
-		} else {
-			code := generateInviteCode()
-			course.InviteCode = &code
-		}
 	}
 
 	created, err := s.CourseRepo.CreateCourse(ctx, course)
@@ -136,13 +128,12 @@ func (s *CourseService) UpdateCourse(ctx context.Context, userID uuid.UUID, cour
 	}
 	if input.Type != "" {
 		updated.Type = input.Type
-		if input.Type == models.CourseTypePrivate && input.InviteCode == "" {
-			code := generateInviteCode()
-			updated.InviteCode = &code
-		}
-		if input.Type == models.CourseTypePublic {
-			updated.InviteCode = nil
-		}
+	}
+	switch {
+	case updated.Type == models.CourseTypePublic:
+		updated.InviteCode = nil
+	case updated.Type == models.CourseTypePrivate && (input.Type != "" || input.InviteCode != nil):
+		updated.InviteCode = inviteCodeForCourse(models.CourseTypePrivate, input.InviteCode)
 	}
 	if input.StartDate != "" {
 		updated.StartDate = parseCourseDate(input.StartDate)
@@ -232,6 +223,17 @@ func generateInviteCode() string {
 	code := make([]byte, 6)
 	_, _ = rand.Read(code)
 	return hex.EncodeToString(code)
+}
+
+func inviteCodeForCourse(courseType models.CourseType, inviteCode *string) *string {
+	if courseType != models.CourseTypePrivate {
+		return nil
+	}
+	if inviteCode != nil {
+		return inviteCode
+	}
+	code := generateInviteCode()
+	return &code
 }
 
 func validateCreateCourse(input CourseInput) error {

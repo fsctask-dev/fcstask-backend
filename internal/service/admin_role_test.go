@@ -214,7 +214,7 @@ func TestAssignCourseAdmin_MissingUserID(t *testing.T) {
 
 	assert.Error(t, err)
 	assert.Nil(t, result)
-	assert.Contains(t, err.Error(), "user_id is required")
+	assert.Contains(t, err.Error(), "user_id or course_id is required")
 }
 
 func TestAssignCourseAdmin_MissingCourseID(t *testing.T) {
@@ -228,7 +228,7 @@ func TestAssignCourseAdmin_MissingCourseID(t *testing.T) {
 
 	assert.Error(t, err)
 	assert.Nil(t, result)
-	assert.Contains(t, err.Error(), "course_id is required")
+	assert.Contains(t, err.Error(), "user_id or course_id is required")
 }
 
 func TestAssignCourseAdmin_UserNotFound(t *testing.T) {
@@ -308,7 +308,7 @@ func TestRevokeRole_MissingUserID(t *testing.T) {
 	})
 
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "user_id is required")
+	assert.Contains(t, err.Error(), "user_id or course_id is required")
 }
 
 func TestRevokeRole_MissingCourseID(t *testing.T) {
@@ -321,7 +321,7 @@ func TestRevokeRole_MissingCourseID(t *testing.T) {
 	})
 
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "course_id is required")
+	assert.Contains(t, err.Error(), "user_id or course_id is required")
 }
 
 func TestRevokeRole_RepoError(t *testing.T) {

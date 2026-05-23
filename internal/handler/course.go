@@ -11,15 +11,15 @@ import (
 )
 
 type PostCourseRequest struct {
-	Name         string `json:"name"`
-	Slug         string `json:"slug"`
-	Status       string `json:"status"`
-	Type         string `json:"type"`
-	InviteCode   string `json:"inviteCode,omitempty"`
-	StartDate    string `json:"startDate"`
-	EndDate      string `json:"endDate"`
-	RepoTemplate string `json:"repoTemplate"`
-	Description  string `json:"description"`
+	Name         string  `json:"name"`
+	Slug         string  `json:"slug"`
+	Status       string  `json:"status"`
+	Type         string  `json:"type"`
+	InviteCode   *string `json:"inviteCode,omitempty"`
+	StartDate    string  `json:"startDate"`
+	EndDate      string  `json:"endDate"`
+	RepoTemplate string  `json:"repoTemplate"`
+	Description  string  `json:"description"`
 }
 
 type JoinCourseRequest struct {
@@ -170,12 +170,19 @@ func courseInput(req PostCourseRequest) service.CourseInput {
 		Slug:         req.Slug,
 		Status:       req.Status,
 		Type:         model.CourseType(req.Type),
-		InviteCode:   req.InviteCode,
+		InviteCode:   optionalString(req.InviteCode),
 		StartDate:    req.StartDate,
 		EndDate:      req.EndDate,
 		RepoTemplate: req.RepoTemplate,
 		Description:  req.Description,
 	}
+}
+
+func optionalString(value *string) *string {
+	if value == nil || *value == "" {
+		return nil
+	}
+	return value
 }
 
 func isValidCourseStatus(status string) bool {

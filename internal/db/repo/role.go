@@ -105,19 +105,15 @@ func (r *RoleRepository) GetRoleIDByUserAndCourse(ctx context.Context, userID, c
 }
 
 func (r *RoleRepository) RoleBelongsToCourse(ctx context.Context, roleID, courseID uuid.UUID) (bool, error) {
-	var exists bool
-	err := r.db.WithContext(ctx).Raw(`
-		SELECT EXISTS (
-			SELECT 1
-			FROM user_roles
-			WHERE role_id = ?
-			  AND course_id = ?
-		)
-	`, roleID, courseID).Scan(&exists).Error
+	var count int64
+	err := r.db.WithContext(ctx).
+		Model(&model.UserRole{}).
+		Where("role_id = ? AND course_id = ?", roleID, courseID).
+		Count(&count).Error
 	if err != nil {
 		return false, err
 	}
-	return exists, nil
+	return count > 0, nil
 }
 
 func (r *RoleRepository) HasPermission(ctx context.Context, roleID uuid.UUID, permission string) (bool, error) {

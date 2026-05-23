@@ -47,11 +47,8 @@ type CreateSuperAdminInput struct {
 }
 
 func (s *AdminRoleService) AssignCourseAdmin(ctx context.Context, userID uuid.UUID, input AssignCourseAdminInput) (*model.UserRole, error) {
-	if input.UserID == uuid.Nil {
-		return nil, BadRequest("user_id is required")
-	}
-	if input.CourseID == uuid.Nil {
-		return nil, BadRequest("course_id is required")
+	if input.UserID == uuid.Nil || input.CourseID == uuid.Nil {
+		return nil, BadRequest("user_id or course_id is required")
 	}
 	if err := RequireScopedPermission(ctx, s.roleRepo, userID, input.CourseID, PermissionCourseRoleAssign); err != nil {
 		return nil, err
@@ -92,11 +89,8 @@ func (s *AdminRoleService) CreateSuperAdmin(ctx context.Context, userID uuid.UUI
 }
 
 func (s *AdminRoleService) RevokeCourseAdmin(ctx context.Context, userID uuid.UUID, input RevokeCourseAdminInput) error {
-	if input.UserID == uuid.Nil {
-		return BadRequest("user_id is required")
-	}
-	if input.CourseID == uuid.Nil {
-		return BadRequest("course_id is required")
+	if input.UserID == uuid.Nil || input.CourseID == uuid.Nil {
+		return BadRequest("user_id or course_id is required")
 	}
 	if err := RequireScopedPermission(ctx, s.roleRepo, userID, input.CourseID, PermissionCourseRoleRevoke); err != nil {
 		return err
@@ -114,11 +108,8 @@ func (s *AdminRoleService) RevokeCourseAdmin(ctx context.Context, userID uuid.UU
 }
 
 func (s *AdminRoleService) RemoveCourseParticipant(ctx context.Context, userID uuid.UUID, input RemoveCourseParticipantInput) error {
-	if input.UserID == uuid.Nil {
-		return BadRequest("user_id is required")
-	}
-	if input.CourseID == uuid.Nil {
-		return BadRequest("course_id is required")
+	if input.UserID == uuid.Nil || input.CourseID == uuid.Nil {
+		return BadRequest("user_id or course_id is required")
 	}
 	if err := RequireScopedPermission(ctx, s.roleRepo, userID, input.CourseID, PermissionCourseRoleRevoke); err != nil {
 		return err
@@ -155,11 +146,9 @@ func (s *AdminRoleService) ListUserRoles(ctx context.Context, userID, courseID u
 func (s *AdminRoleService) AddPermission(ctx context.Context, userID uuid.UUID, input AddPermissionInput) (*model.CourseAdminPermission, error) {
 	if input.CourseID == uuid.Nil {
 		return nil, BadRequest("course_id is required")
-	}
-	if input.RoleID == uuid.Nil {
+	} else if input.RoleID == uuid.Nil {
 		return nil, BadRequest("role_id is required")
-	}
-	if input.Permission == "" {
+	} else if input.Permission == "" {
 		return nil, BadRequest("permission is required")
 	}
 	if err := RequireScopedPermission(ctx, s.roleRepo, userID, input.CourseID, PermissionCoursePermissionAdd); err != nil {
