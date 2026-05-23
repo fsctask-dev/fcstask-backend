@@ -1,18 +1,56 @@
-version: '3.8'  # Можно убрать, но оставим для совместимости
+# PostgreSQL primary (master) + streaming replica (slave), Bitnami.
+# Master: localhost:6432   Replica (read-only): localhost:6433
+# User / password / database: postgres / postgres / fcstask
 
 services:
-  postgres:
-    image: postgres:16-alpine
-    container_name: fcstask-postgres
+  postgres-primary:
+    image: docker.io/bitnami/postgresql:latest
+    container_name: fcstask-postgres-primary
     restart: unless-stopped
+    networks: [fcstask-pg]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d fcstask"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+      start_period: 20s
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: fcstask
+      POSTGRESQL_USERNAME: postgres
+      POSTGRESQL_PASSWORD: postgres
+      POSTGRESQL_DATABASE: fcstask
+      POSTGRESQL_REPLICATION_MODE: master
+      POSTGRESQL_REPLICATION_USER: replicator
+      POSTGRESQL_REPLICATION_PASSWORD: replicatorpass
     ports:
       - "6432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_primary_data:/bitnami/postgresql
+
+  postgres-replica:
+    image: docker.io/bitnami/postgresql:latest
+    container_name: fcstask-postgres-replica
+    restart: unless-stopped
+    networks: [fcstask-pg]
+    depends_on:
+      postgres-primary:
+        condition: service_healthy
+    environment:
+      POSTGRESQL_USERNAME: postgres
+      POSTGRESQL_PASSWORD: postgres
+      POSTGRESQL_DATABASE: fcstask
+      POSTGRESQL_REPLICATION_MODE: slave
+      POSTGRESQL_MASTER_HOST: postgres-primary
+      POSTGRESQL_MASTER_PORT_NUMBER: "5432"
+      POSTGRESQL_REPLICATION_USER: replicator
+      POSTGRESQL_REPLICATION_PASSWORD: replicatorpass
+    ports:
+      - "6433:5432"
+    volumes:
+      - postgres_replica_data:/bitnami/postgresql
+
+networks:
+  fcstask-pg: {}
 
 volumes:
-  postgres_data:
+  postgres_primary_data:
+  postgres_replica_data:
