@@ -4,9 +4,12 @@ services:
   prometheus:
     image: prom/prometheus:v${PROMETHEUS_VERSION}
     container_name: fcstask-prometheus
+    env_file: .env
+    entrypoint: ["/bin/sh", "/entrypoint.sh"]
     volumes:
-      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
-      - ./prometheus/rules.yml:/etc/prometheus/rules.yml
+      - ./config/prometheus.entrypoint.sh:/entrypoint.sh:ro
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./config/rules.yml.tmpl:/etc/prometheus/rules.yml.tmpl:ro
       - prometheus_data:/prometheus
     ports:
       - "${PROMETHEUS_PORT}:${PROMETHEUS_PORT}"
@@ -25,16 +28,49 @@ services:
   alertmanager:
     image: prom/alertmanager:v${ALERTMANAGER_VERSION}
     container_name: fcstask-alertmanager
+    env_file: .env
+    entrypoint: ["/bin/sh", "/entrypoint.sh"]
     ports:
       - "${ALERTMANAGER_PORT}:${ALERTMANAGER_PORT}"
     volumes:
-      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml
+      - ./config/alertmanager.entrypoint.sh:/entrypoint.sh:ro
+      - ./config/alertmanager.yml.tmpl:/etc/alertmanager/alertmanager.yml.tmpl:ro
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+    networks:
+      - monitoring-net
+    restart: unless-stopped
+
+  monitor-postgres:
+    image: postgres:15-alpine
+    container_name: fcstask-monitor-postgres
+    environment:
+      POSTGRES_USER: fcstask
+      POSTGRES_PASSWORD: ${BOT_DB_PASSWORD}
+      POSTGRES_DB: fcstask-monitor-bot
+    volumes:
+      - monitor_postgres_data:/var/lib/postgresql/data
+    networks:
+      - monitoring-net
+    restart: unless-stopped
+
+  monitor-bot:
+    build:
+      context: ./bot
+      dockerfile: Dockerfile
+    container_name: fcstask-monitor-bot
+    env_file: ./bot/.env
+    ports:
+      - "9094:9094"
+    depends_on:
+      - monitor-postgres
     networks:
       - monitoring-net
     restart: unless-stopped
 
 volumes:
   prometheus_data:
+  monitor_postgres_data:
 
 networks:
   monitoring-net:

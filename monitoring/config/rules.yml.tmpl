@@ -2,7 +2,7 @@ groups:
   - name: fcstask-alerts
     rules:
       - alert: HighHTTP500Errors
-        expr: { { .DEBUG_RULE } }
+        expr: ${ACTIVE_RULE}
         for: 10s
         labels:
           severity: critical

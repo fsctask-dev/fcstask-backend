@@ -45,3 +45,5 @@ internal/api/types.gen.go
 internal/cmd/cmd
 script.sh
 res.txt
+
+**/.env

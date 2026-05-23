@@ -7,7 +7,7 @@ BINARY_NAME := fcstask-api
 DOCKER_IMAGE_NAME ?= miruken/$(MODULE_NAME)-backend
 DOCKER_IMAGE_TAG ?= 0.1.0
 
-.PHONY: init tidy migrate migrate install-tools gen test test-integration-db postgreplication-up docker-build docker-run docker-test docker-push ci-local ci monitoring-up monitoring-down
+.PHONY: init tidy migrate migrate install-tools gen test test-integration-db postgreplication-up docker-build docker-run docker-test docker-push ci-local ci monitoring-up monitoring-down monitoring-logs monitoring-ps
 
 init:
 	@echo "🔧 Initializing repo: $(MODULE_NAME)..."
@@ -96,11 +96,13 @@ ci: ci-local docker-push
 	@echo "✅ Full CI pipeline completed!"
 
 monitoring-up:
-	@echo "Running Prometheus + Alertmanager..."
-	@cd monitoring && docker compose up -d --force-recreate
+	@echo "🚀 Starting monitoring stack..."
+	@cd monitoring && docker compose up -d --build
 	@echo "   • Prometheus   → http://localhost:9090"
 	@echo "   • Alertmanager → http://localhost:9093"
+	@echo "   • Bot          → http://localhost:9094"
+	@echo "   • Telegram     → https://t.me/fcstask_monitor_bot"
 
 monitoring-down:
-	@echo "Stopping monitoring..."
+	@echo "🛑 Stopping monitoring stack..."
 	@cd monitoring && docker compose down
