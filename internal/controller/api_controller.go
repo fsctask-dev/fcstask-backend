@@ -104,11 +104,12 @@ func (c *APIController) RegisterAdminRoutes(
 	e.DELETE("/admin/courses/:courseId/homework/:hwId/tasks/:taskId", adminTaskHandler.DeleteTask)
 	e.PATCH("/admin/courses/:courseId/homework/:hwId/tasks/:taskId/score", adminTaskHandler.SetScore)
 
-	e.POST("/admin/courses/:courseId/roles", adminRoleHandler.AssignRole)
-	e.DELETE("/admin/courses/:courseId/roles", adminRoleHandler.RevokeRole)
+	e.POST("/admin/courses/:courseId/roles", adminRoleHandler.AssignCourseAdmin)
+	e.DELETE("/admin/courses/:courseId/roles", adminRoleHandler.RevokeCourseAdmin)
+	e.DELETE("/admin/courses/:courseId/participants", adminRoleHandler.RemoveCourseParticipant)
 	e.GET("/admin/courses/:courseId/roles", adminRoleHandler.ListUserRoles)
+	e.POST("/admin/courses/:courseId/roles/:roleId/permissions", adminRoleHandler.AddPermission)
+	e.DELETE("/admin/courses/:courseId/roles/:roleId/permissions/:permission", adminRoleHandler.RemovePermission)
+	e.GET("/admin/courses/:courseId/roles/:roleId/permissions", adminRoleHandler.ListPermissions)
 	e.POST("/admin/super-admins", adminRoleHandler.CreateSuperAdmin)
-	e.POST("/admin/roles/:roleId/permissions", adminRoleHandler.AddPermission)
-	e.DELETE("/admin/roles/:roleId/permissions/:permission", adminRoleHandler.RemovePermission)
-	e.GET("/admin/roles/:roleId/permissions", adminRoleHandler.ListPermissions)
 }
