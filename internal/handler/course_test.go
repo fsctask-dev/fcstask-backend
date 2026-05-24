@@ -27,7 +27,6 @@ func (m *mockCourseRepo) GetCoursesByUserID(ctx context.Context, userID uuid.UUI
 	args := m.Called(ctx, userID, status)
 	return args.Get(0).([]model.Course), args.Error(1)
 }
-
 func (m *mockCourseRepo) GetCourseByID(ctx context.Context, courseID string) (*model.Course, error) {
 	args := m.Called(ctx, courseID)
 	if args.Get(0) == nil {
@@ -35,7 +34,6 @@ func (m *mockCourseRepo) GetCourseByID(ctx context.Context, courseID string) (*m
 	}
 	return args.Get(0).(*model.Course), args.Error(1)
 }
-
 func (m *mockCourseRepo) CreateCourse(ctx context.Context, course model.Course) (*model.Course, error) {
 	args := m.Called(ctx, course)
 	if args.Get(0) == nil {
@@ -43,7 +41,6 @@ func (m *mockCourseRepo) CreateCourse(ctx context.Context, course model.Course) 
 	}
 	return args.Get(0).(*model.Course), args.Error(1)
 }
-
 func (m *mockCourseRepo) UpdateCourse(ctx context.Context, courseID string, course model.Course) (*model.Course, error) {
 	args := m.Called(ctx, courseID, course)
 	if args.Get(0) == nil {
@@ -51,7 +48,6 @@ func (m *mockCourseRepo) UpdateCourse(ctx context.Context, courseID string, cour
 	}
 	return args.Get(0).(*model.Course), args.Error(1)
 }
-
 func (m *mockCourseRepo) DeleteCourse(ctx context.Context, courseID string) error {
 	return nil
 }
@@ -60,6 +56,10 @@ func (m *mockCourseRepo) GetCourseBoard(ctx context.Context, courseID string) (*
 }
 func (m *mockCourseRepo) GetCourses(ctx context.Context) ([]model.Course, error) {
 	return nil, nil
+}
+func (m *mockCourseRepo) GetLeaderboard(ctx context.Context, courseID uuid.UUID) ([]model.LeaderboardEntry, error) {
+    args := m.Called(ctx, courseID)
+    return args.Get(0).([]model.LeaderboardEntry), args.Error(1)
 }
 
 type mockRoleRepo struct {
@@ -128,7 +128,7 @@ func setupTest() (*CourseHandler, *echo.Echo, *mockCourseRepo, *mockRoleRepo) {
 	e := echo.New()
 	courseRepo := new(mockCourseRepo)
 	roleRepo := new(mockRoleRepo)
-	svc := service.NewCourseService(courseRepo, roleRepo)
+	svc := service.NewCourseService(courseRepo, roleRepo, nil)
 	handler := NewCourseHandler(svc)
 	return handler, e, courseRepo, roleRepo
 }

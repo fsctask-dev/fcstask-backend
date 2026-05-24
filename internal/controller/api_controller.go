@@ -79,6 +79,8 @@ func (c *APIController) RegisterCourseRoutes(e *echo.Echo) {
 	e.GET("/api/courses/:courseId", c.courseHandler.GetCourse)
 	e.PUT("/api/courses/:courseId", c.courseHandler.UpdateCourse)
 	e.GET("/api/courses/:courseId/board", c.courseHandler.GetCourseBoard)
+	e.GET("/api/courses/:courseId/scores", c.courseHandler.GetScores)
+	e.POST("/api/courses/:courseId/join", c.courseHandler.JoinCourse)
 }
 
 func (c *APIController) RegisterAdminRoutes(

@@ -57,6 +57,11 @@ func (m *mockCourseRepo) GetCourseBoard(ctx context.Context, courseID string) (*
 	return args.Get(0).(*models.TaskBoardSummary), args.Bool(1), args.Error(2)
 }
 
+func (m *mockCourseRepo) GetLeaderboard(ctx context.Context, courseID uuid.UUID) ([]models.LeaderboardEntry, error) {
+    args := m.Called(ctx, courseID)
+    return args.Get(0).([]models.LeaderboardEntry), args.Error(1)
+}
+
 type mockRoleRepo struct {
 	mock.Mock
 }
@@ -104,7 +109,7 @@ func (m *mockRoleRepo) GetPermissions(ctx context.Context, roleID uuid.UUID) ([]
 func setupService() (*CourseService, *mockCourseRepo, *mockRoleRepo) {
 	cRepo := new(mockCourseRepo)
 	rRepo := new(mockRoleRepo)
-	svc := NewCourseService(cRepo, rRepo)
+	svc := NewCourseService(cRepo, rRepo, nil)
 	return svc, cRepo, rRepo
 }
 

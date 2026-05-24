@@ -183,11 +183,15 @@ func (r *controllerCourseRepo) GetCourseBoard(ctx context.Context, courseID stri
 	return nil, false, nil
 }
 
+func (r *controllerCourseRepo) GetLeaderboard(ctx context.Context, courseID uuid.UUID) ([]models.LeaderboardEntry, error) {
+    return nil, nil
+}
+
 func newTestController(userRepo *controllerUserRepo, sessionRepo *controllerSessionRepo, courseRepo *controllerCourseRepo) *APIController {
 	userService := service.NewUserService(userRepo)
 	authService := service.NewAuthService(userRepo, sessionRepo)
 	sessionService := service.NewSessionService(sessionRepo)
-	courseService := service.NewCourseService(courseRepo, nil)
+	courseService := service.NewCourseService(courseRepo, nil, nil)
 
 	return NewAPIController(
 		handler.NewAuthHandler(authService),
