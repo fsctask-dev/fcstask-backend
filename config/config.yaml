@@ -14,6 +14,13 @@ database:
   max_idle_conns: 25
   conn_max_lifetime: 5m
   ping_timeout: 5s
+  replicas:
+    - host: "localhost"
+      port: 6433
+      username: "postgres"
+      password: "postgres"
+      database: "fcstask"
+      ssl_mode: "disable"
 
 session:
   ttl: 24h

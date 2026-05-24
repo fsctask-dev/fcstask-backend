@@ -1,0 +1,152 @@
+package controller
+
+import (
+	"github.com/labstack/echo/v4"
+	openapi_types "github.com/oapi-codegen/runtime/types"
+
+	"fcstask-backend/internal/api"
+	"fcstask-backend/internal/handler"
+)
+
+type APIController struct {
+	authHandler    *handler.AuthHandler
+	userHandler    *handler.UserHandler
+	sessionHandler *handler.SessionHandler
+	courseHandler  *handler.CourseHandler
+	signUpHandler  *handler.SignUpHandler
+	pwdResetHandler *handler.PasswordResetHandler
+	oauthHandler   *handler.OAuthHandler
+}
+
+func NewAPIController(
+	authHandler *handler.AuthHandler,
+	userHandler *handler.UserHandler,
+	sessionHandler *handler.SessionHandler,
+	courseHandler *handler.CourseHandler,
+	signUpHandler *handler.SignUpHandler,
+	pwdResetHandler *handler.PasswordResetHandler,
+	oauthHandler *handler.OAuthHandler,
+) *APIController {
+	return &APIController{
+		authHandler:     authHandler,
+		userHandler:     userHandler,
+		sessionHandler:  sessionHandler,
+		courseHandler:   courseHandler,
+		signUpHandler:   signUpHandler,
+		pwdResetHandler: pwdResetHandler,
+		oauthHandler:    oauthHandler,
+	}
+}
+
+func (c *APIController) PostV1Echo(ctx echo.Context) error {
+	return handler.Echo(ctx)
+}
+
+func (c *APIController) CreateUser(ctx echo.Context) error {
+	return c.userHandler.CreateUser(ctx)
+}
+
+func (c *APIController) GetUserByID(ctx echo.Context, id openapi_types.UUID) error {
+	return c.userHandler.GetUserByID(ctx, id)
+}
+
+func (c *APIController) GetUserByUsername(ctx echo.Context, username string) error {
+	return c.userHandler.GetUserByUsername(ctx, username)
+}
+
+func (c *APIController) GetUserByEmail(ctx echo.Context, email openapi_types.Email) error {
+	return c.userHandler.GetUserByEmail(ctx, email)
+}
+
+func (c *APIController) SignUp(ctx echo.Context) error {
+	return c.signUpHandler.Submit(ctx)
+}
+
+func (c *APIController) SignUpVerify(ctx echo.Context) error {
+	return c.signUpHandler.Verify(ctx)
+}
+
+func (c *APIController) SignUpResendCode(ctx echo.Context) error {
+	return c.signUpHandler.Resend(ctx)
+}
+
+func (c *APIController) PasswordResetRequest(ctx echo.Context) error {
+	return c.pwdResetHandler.Request(ctx)
+}
+
+func (c *APIController) PasswordResetResend(ctx echo.Context) error {
+	return c.pwdResetHandler.Resend(ctx)
+}
+
+func (c *APIController) PasswordResetConfirm(ctx echo.Context) error {
+	return c.pwdResetHandler.Confirm(ctx)
+}
+
+func (c *APIController) OAuthExchange(ctx echo.Context, provider string) error {
+	return c.oauthHandler.Exchange(ctx, provider)
+}
+
+func (c *APIController) OAuthCompleteSignUp(ctx echo.Context) error {
+	return c.oauthHandler.CompleteSignUp(ctx)
+}
+
+func (c *APIController) SignIn(ctx echo.Context) error {
+	return c.authHandler.SignIn(ctx)
+}
+
+func (c *APIController) SignOut(ctx echo.Context) error {
+	return c.authHandler.SignOut(ctx)
+}
+
+func (c *APIController) GetMe(ctx echo.Context) error {
+	return c.authHandler.GetMe(ctx)
+}
+
+func (c *APIController) GetSessions(ctx echo.Context, params api.GetSessionsParams) error {
+	return c.sessionHandler.GetSessions(ctx, params)
+}
+
+func (c *APIController) GetUsersWithSessions(ctx echo.Context, params api.GetUsersWithSessionsParams) error {
+	return c.sessionHandler.GetUsersWithSessions(ctx, params)
+}
+
+func (c *APIController) RegisterCourseRoutes(e *echo.Echo) {
+	e.GET("/api/courses", c.courseHandler.GetCourses)
+	e.POST("/api/courses", c.courseHandler.CreateCourse)
+	e.GET("/api/courses/:courseId", c.courseHandler.GetCourse)
+	e.PUT("/api/courses/:courseId", c.courseHandler.UpdateCourse)
+	e.GET("/api/courses/:courseId/board", c.courseHandler.GetCourseBoard)
+}
+
+func (c *APIController) RegisterAdminRoutes(
+	e *echo.Echo,
+	adminHomeworkHandler *handler.AdminHomeworkHandler,
+	adminTaskHandler *handler.AdminTaskHandler,
+	adminRoleHandler *handler.AdminRoleHandler,
+) {
+	e.POST("/admin/courses/:courseId/homework", adminHomeworkHandler.CreateHomework)
+	e.GET("/admin/courses/:courseId/homework/:hwId", adminHomeworkHandler.GetHomework)
+	e.GET("/admin/courses/:courseId/homework", adminHomeworkHandler.ListHomework)
+	e.PATCH("/admin/courses/:courseId/homework/:hwId", adminHomeworkHandler.UpdateHomework)
+	e.DELETE("/admin/courses/:courseId/homework/:hwId", adminHomeworkHandler.DeleteHomework)
+	e.PATCH("/admin/courses/:courseId/homework/:hwId/publish", adminHomeworkHandler.PublishHomework)
+	e.PUT("/admin/courses/:courseId/homework/:hwId/deadline", adminHomeworkHandler.SetDeadline)
+	e.PATCH("/admin/deadlines/:deadlineId", adminHomeworkHandler.UpdateDeadline)
+	e.DELETE("/admin/deadlines/:deadlineId", adminHomeworkHandler.DeleteDeadline)
+
+	e.POST("/admin/courses/:courseId/homework/:hwId/tasks", adminTaskHandler.CreateTask)
+	e.GET("/admin/courses/:courseId/homework/:hwId/tasks", adminTaskHandler.ListTasks)
+	e.GET("/admin/courses/:courseId/homework/:hwId/tasks/:taskId", adminTaskHandler.GetTask)
+	e.PATCH("/admin/courses/:courseId/homework/:hwId/tasks/:taskId", adminTaskHandler.UpdateTask)
+	e.DELETE("/admin/courses/:courseId/homework/:hwId/tasks/:taskId", adminTaskHandler.DeleteTask)
+	e.PATCH("/admin/courses/:courseId/homework/:hwId/tasks/:taskId/score", adminTaskHandler.SetScore)
+
+	e.POST("/admin/courses/:courseId/roles", adminRoleHandler.AssignCourseAdmin)
+	e.DELETE("/admin/courses/:courseId/roles", adminRoleHandler.RevokeCourseAdmin)
+	e.DELETE("/admin/courses/:courseId/participants", adminRoleHandler.RemoveCourseParticipant)
+	e.GET("/admin/courses/:courseId/roles", adminRoleHandler.ListUserRoles)
+	e.POST("/admin/courses/:courseId/roles/:roleId/permissions", adminRoleHandler.AddPermission)
+	e.DELETE("/admin/courses/:courseId/roles/:roleId/permissions/:permission", adminRoleHandler.RemovePermission)
+	e.GET("/admin/courses/:courseId/roles/:roleId/permissions", adminRoleHandler.ListPermissions)
+	e.POST("/admin/super-admins", adminRoleHandler.CreateSuperAdmin)
+}

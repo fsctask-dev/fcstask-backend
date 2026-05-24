@@ -4,11 +4,16 @@ import (
 	"context"
 	"fcstask-backend/internal/api"
 	"fcstask-backend/internal/config"
+	"fcstask-backend/internal/controller"
 	"fcstask-backend/internal/db"
+	"fcstask-backend/internal/db/repo"
+	"fcstask-backend/internal/handler"
+	"fcstask-backend/internal/mailer"
 	"fcstask-backend/internal/metrics"
+	authmw "fcstask-backend/internal/middleware"
+	"fcstask-backend/internal/oauth"
 	"fcstask-backend/internal/server"
-	"fcstask-backend/internal/server/handler"
-	authmw "fcstask-backend/internal/server/middleware"
+	"fcstask-backend/internal/service"
 	"fmt"
 	"log"
 	"time"
@@ -20,7 +25,9 @@ import (
 type App struct {
 	echo            *echo.Echo
 	db              *db.Client
-	apiServer       *server.APIServer
+	sessionRepo     repo.SessionRepositoryInterface
+	emailRegRepo    repo.IEmailRegistrationRepo
+	pwdResetRepo    repo.IPasswordResetRepo
 	httpServer      server.HTTPServer
 	shutdownTimeout time.Duration
 	sessionCfg      config.SessionConfig
@@ -35,7 +42,56 @@ func New(cfg *config.Config) (*App, error) {
 		return nil, fmt.Errorf("failed to init database: %w", err)
 	}
 
-	apiServer := server.NewAPIServer(dbClient, cfg.OAuth, cfg.Mailer)
+	userRepo := repo.NewUserRepository(dbClient)
+	sessionRepo := repo.NewSessionRepository(dbClient)
+	courseRepo := repo.NewCourseRepository(dbClient)
+	roleRepo := repo.NewRoleRepository(dbClient.DB())
+	homeworkRepo := repo.NewHomeworkRepository(dbClient.DB())
+	taskRepo := repo.NewTaskRepository(dbClient.DB())
+	deadlineRepo := repo.NewDeadlineRepository(dbClient.DB())
+	emailRegRepo := repo.NewEmailRegistrationRepository(dbClient.DB())
+	pwdResetRepo := repo.NewPasswordResetRepository(dbClient.DB())
+	oauthIdentityRepo := repo.NewOAuthIdentityRepository(dbClient.DB())
+	regSessionRepo := repo.NewRegistrationSessionRepository(dbClient.DB())
+
+	userService := service.NewUserService(userRepo)
+	authService := service.NewAuthService(userRepo, sessionRepo)
+	sessionService := service.NewSessionService(sessionRepo)
+	courseService := service.NewCourseService(courseRepo, roleRepo)
+	adminHomeworkService := service.NewAdminHomeworkService(homeworkRepo, deadlineRepo, roleRepo)
+	adminTaskService := service.NewAdminTaskService(taskRepo, homeworkRepo, roleRepo)
+	adminRoleService := service.NewAdminRoleService(roleRepo, userRepo)
+
+	var m mailer.Mailer
+	if cfg.Mailer.Enabled {
+		m = mailer.NewSMTPMailer(cfg.Mailer)
+	} else {
+		m = mailer.NewLogMailer()
+	}
+
+	oauthRegistry := oauth.NewRegistry(
+		oauth.NewGitLabProvider(cfg.OAuth.GitLab),
+		oauth.NewGoogleProvider(cfg.OAuth.Google),
+		oauth.NewTelegramProvider(cfg.OAuth.Telegram),
+	)
+
+	signUpHandler := handler.NewSignUpHandler(userRepo, sessionRepo, emailRegRepo, m, cfg.Mailer)
+	pwdResetHandler := handler.NewPasswordResetHandler(userRepo, sessionRepo, pwdResetRepo, m, cfg.Mailer)
+	oauthHandler := handler.NewOAuthHandler(userRepo, sessionRepo, oauthIdentityRepo, regSessionRepo, oauthRegistry)
+
+	adminHomeworkHandler := handler.NewAdminHomeworkHandler(adminHomeworkService)
+	adminTaskHandler := handler.NewAdminTaskHandler(adminTaskService)
+	adminRoleHandler := handler.NewAdminRoleHandler(adminRoleService)
+
+	apiController := controller.NewAPIController(
+		handler.NewAuthHandler(authService),
+		handler.NewUserHandler(userService),
+		handler.NewSessionHandler(sessionService, userService),
+		handler.NewCourseHandler(courseService),
+		signUpHandler,
+		pwdResetHandler,
+		oauthHandler,
+	)
 
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
 		AllowOrigins: []string{"http://localhost:5173", "http://localhost:3000"},
@@ -43,21 +99,29 @@ func New(cfg *config.Config) (*App, error) {
 		AllowHeaders: []string{"Content-Type", "Authorization"},
 	}))
 
-	e.Use(authmw.Auth(apiServer.UserRepo(), apiServer.SessionRepo(), []string{
+	e.Use(authmw.Auth(userRepo, sessionRepo, []string{
 		"/v1/api/me",
 		"/api/signout",
 		"/v1/sessions",
 		"/v1/users/sessions",
+		"/admin/courses/:courseId/homework",
+		"/admin/courses/:courseId/homework/:hwId",
+		"/admin/courses/:courseId/homework/:hwId/publish",
+		"/admin/courses/:courseId/homework/:hwId/deadline",
+		"/admin/deadlines/:deadlineId",
+		"/admin/courses/:courseId/homework/:hwId/tasks",
+		"/admin/courses/:courseId/homework/:hwId/tasks/:taskId",
+		"/admin/courses/:courseId/homework/:hwId/tasks/:taskId/score",
+		"/admin/courses/:courseId/roles",
+		"/admin/courses/:courseId/participants",
+		"/admin/courses/:courseId/roles/:roleId/permissions",
+		"/admin/courses/:courseId/roles/:roleId/permissions/:permission",
+		"/admin/super-admins",
 	}))
 
-	api.RegisterHandlers(e, apiServer)
-
-	// Course and board routes (in-memory storage)
-	e.GET("/api/courses", handler.GetCoursesHandler)
-	e.POST("/api/courses", handler.CreateCourseHandler)
-	e.GET("/api/courses/:courseId", handler.GetCourseHandler)
-	e.PUT("/api/courses/:courseId", handler.UpdateCourseHandler)
-	e.GET("/api/courses/:courseId/board", handler.GetCourseBoardHandler)
+	api.RegisterHandlers(e, apiController)
+	apiController.RegisterCourseRoutes(e)
+	apiController.RegisterAdminRoutes(e, adminHomeworkHandler, adminTaskHandler, adminRoleHandler)
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 	metrics.EchoPrometheus(e)
@@ -67,7 +131,9 @@ func New(cfg *config.Config) (*App, error) {
 	return &App{
 		echo:            e,
 		db:              dbClient,
-		apiServer:       apiServer,
+		sessionRepo:     sessionRepo,
+		emailRegRepo:    emailRegRepo,
+		pwdResetRepo:    pwdResetRepo,
 		httpServer:      httpServer,
 		shutdownTimeout: cfg.Server.ShutdownTimeout,
 		sessionCfg:      cfg.Session,
@@ -116,7 +182,7 @@ func (a *App) runSessionCleanup(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			deleted, err := a.apiServer.SessionRepo().CleanOutdated(ctx, a.sessionCfg.TTL)
+			deleted, err := a.sessionRepo.CleanOutdatedSessions(ctx, a.sessionCfg.TTL)
 			if err != nil {
 				log.Printf("Session cleanup error: %v", err)
 			} else if deleted > 0 {
@@ -140,12 +206,12 @@ func (a *App) runEmailFlowCleanup(ctx context.Context) {
 			return
 		case <-ticker.C:
 			now := time.Now().UTC()
-			if n, err := a.apiServer.EmailRegRepo().DeleteExpired(ctx, now); err != nil {
+			if n, err := a.emailRegRepo.DeleteExpired(ctx, now); err != nil {
 				log.Printf("Email registration cleanup error: %v", err)
 			} else if n > 0 {
 				log.Printf("Email registration cleanup: removed %d expired rows", n)
 			}
-			if n, err := a.apiServer.PasswordResetRepo().DeleteExpired(ctx, now); err != nil {
+			if n, err := a.pwdResetRepo.DeleteExpired(ctx, now); err != nil {
 				log.Printf("Password reset cleanup error: %v", err)
 			} else if n > 0 {
 				log.Printf("Password reset cleanup: removed %d expired rows", n)
