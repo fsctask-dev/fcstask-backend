@@ -62,6 +62,11 @@ func (m *mockCourseRepo) GetLeaderboard(ctx context.Context, courseID uuid.UUID)
     return args.Get(0).([]models.LeaderboardEntry), args.Error(1)
 }
 
+func (m *mockCourseRepo) UpdateInviteCode(ctx context.Context, courseID uuid.UUID, code *string) error {
+    args := m.Called(ctx, courseID, code)
+    return args.Error(0)
+}
+
 type mockRoleRepo struct {
 	mock.Mock
 }

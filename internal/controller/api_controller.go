@@ -81,6 +81,7 @@ func (c *APIController) RegisterCourseRoutes(e *echo.Echo) {
 	e.GET("/api/courses/:courseId/board", c.courseHandler.GetCourseBoard)
 	e.GET("/api/courses/:courseId/scores", c.courseHandler.GetScores)
 	e.POST("/api/courses/:courseId/join", c.courseHandler.JoinCourse)
+	e.POST("/api/courses/:courseId/invite", c.courseHandler.RegenerateInviteCode)
 }
 
 func (c *APIController) RegisterAdminRoutes(

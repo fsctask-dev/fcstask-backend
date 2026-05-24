@@ -13,10 +13,11 @@ import (
 	"fcstask-backend/internal/server"
 	"fcstask-backend/internal/service"
 	"fmt"
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
 	"log"
 	"time"
+
+	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 )
 
 type App struct {
@@ -75,8 +76,10 @@ func New(cfg *config.Config) (*App, error) {
 		"/v1/sessions",
 		"/v1/users/sessions",
 		"/api/signout",
+		"/api/courses",
 		"/api/courses/:courseId/scores",
 		"/api/courses/:courseId/join",
+		"/api/courses/:courseId/invite",
 		"/admin/courses/:courseId/homework",
 		"/admin/courses/:courseId/homework/:hwId",
 		"/admin/courses/:courseId/homework/:hwId/publish",

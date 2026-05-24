@@ -239,6 +239,27 @@ func (s *CourseService) GetLeaderboard(ctx context.Context, userID uuid.UUID, co
     return entries, nil
 }
 
+func (s *CourseService) RegenerateInviteCode(ctx context.Context, userID uuid.UUID, courseID string) (*string, error) {
+    if courseID == "" {
+        return nil, BadRequest("course_id is required")
+    }
+    course, err := s.GetCourse(ctx, courseID)
+    if err != nil {
+        return nil, err
+    }
+    if err := RequireScopedPermission(ctx, s.RoleRepo, userID, course.ID, PermissionHomeworkUpdate); err != nil {
+        return nil, err
+    }
+    if course.Type != models.CourseTypePrivate {
+        return nil, BadRequest("course is not private")
+    }
+    code := generateInviteCode()
+    if err := s.CourseRepo.UpdateInviteCode(ctx, course.ID, &code); err != nil {
+        return nil, Internal("Failed to regenerate invite code", err)
+    }
+    return &code, nil
+}
+
 func generateInviteCode() string {
 	code := make([]byte, 6)
 	_, _ = rand.Read(code)

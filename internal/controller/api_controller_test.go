@@ -187,6 +187,10 @@ func (r *controllerCourseRepo) GetLeaderboard(ctx context.Context, courseID uuid
     return nil, nil
 }
 
+func (r *controllerCourseRepo) UpdateInviteCode(ctx context.Context, courseID uuid.UUID, code *string) error {
+    return nil
+}
+
 func newTestController(userRepo *controllerUserRepo, sessionRepo *controllerSessionRepo, courseRepo *controllerCourseRepo) *APIController {
 	userService := service.NewUserService(userRepo)
 	authService := service.NewAuthService(userRepo, sessionRepo)

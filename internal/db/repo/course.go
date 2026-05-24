@@ -20,6 +20,7 @@ type CourseRepositoryInterface interface {
 	DeleteCourse(ctx context.Context, courseID string) error
 	GetCourseBoard(ctx context.Context, courseID string) (*models.TaskBoardSummary, bool, error)
 	GetLeaderboard(ctx context.Context, courseID uuid.UUID) ([]models.LeaderboardEntry, error)
+	UpdateInviteCode(ctx context.Context, courseID uuid.UUID, code *string) error
 }
 
 type CourseRepository struct {
@@ -142,4 +143,11 @@ func (r *CourseRepository) GetLeaderboard(ctx context.Context, courseID uuid.UUI
         }
     }
     return entries, nil
+}
+
+func (r *CourseRepository) UpdateInviteCode(ctx context.Context, courseID uuid.UUID, code *string) error {
+    return r.rw.WriteDB().WithContext(ctx).
+        Model(&models.Course{}).
+        Where("id = ?", courseID).
+        Update("invite_code", code).Error
 }
