@@ -184,7 +184,7 @@ func (r *controllerCourseRepo) GetCourseBoard(ctx context.Context, courseID stri
 }
 
 func (r *controllerCourseRepo) GetLeaderboard(ctx context.Context, courseID uuid.UUID) ([]models.LeaderboardEntry, error) {
-    return nil, nil
+	return nil, nil
 }
 
 func newTestController(userRepo *controllerUserRepo, sessionRepo *controllerSessionRepo, courseRepo *controllerCourseRepo) *APIController {
@@ -248,8 +248,17 @@ func TestAPIController_GetUserByID(t *testing.T) {
 
 func TestAPIController_RegisterCourseRoutes(t *testing.T) {
 	e := echo.New()
+	userID := uuid.New()
+	userRepo := &controllerUserRepo{
+		user: &models.User{
+			ID:       userID,
+			Email:    "test@example.com",
+			Username: "testuser",
+			UserID:   uuid.New(),
+		},
+	}
 	controller := newTestController(
-		&controllerUserRepo{},
+		userRepo,
 		&controllerSessionRepo{},
 		&controllerCourseRepo{courses: map[string]models.Course{
 			"go": {
@@ -267,6 +276,14 @@ func TestAPIController_RegisterCourseRoutes(t *testing.T) {
 		}},
 	)
 	controller.RegisterCourseRoutes(e)
+
+	// Добавляем middleware, который кладёт пользователя в контекст
+	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			c.Set(handler.UserContextKey, userRepo.user)
+			return next(c)
+		}
+	})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/courses/go", nil)
 	rec := httptest.NewRecorder()
