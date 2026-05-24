@@ -19,6 +19,7 @@ type IAdminHomeworkService interface {
 	SetDeadline(ctx context.Context, userID uuid.UUID, input service.SetDeadlineInput) (*model.Deadline, error)
 	UpdateDeadline(ctx context.Context, userID, deadlineID uuid.UUID, input service.UpdateDeadlineInput) (*model.Deadline, error)
 	DeleteDeadline(ctx context.Context, userID, deadlineID uuid.UUID) error
+	UpdateLatePolicy(ctx context.Context, userID, hwID uuid.UUID, input service.UpdateLatePolicyInput) (*model.LatePolicy, error)
 }
 
 type IAdminRoleService interface {
@@ -39,4 +40,8 @@ type IAdminTaskService interface {
 	UpdateTask(ctx context.Context, userID, taskID uuid.UUID, input service.UpdateTaskInput) (*model.Task, error)
 	DeleteTask(ctx context.Context, userID, taskID uuid.UUID) error
 	SetScore(ctx context.Context, userID uuid.UUID, input service.SetTaskScoreInput) (*model.Task, error)
+}
+
+type ICheckerService interface {
+	SubmitGrade(ctx context.Context, input service.SubmitGradeInput) (*model.StudentTaskScore, error)
 }

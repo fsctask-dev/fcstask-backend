@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
@@ -86,6 +87,14 @@ func (m *MockAdminHomeworkService) UpdateDeadline(ctx context.Context, userID, d
 func (m *MockAdminHomeworkService) DeleteDeadline(ctx context.Context, userID, deadlineID uuid.UUID) error {
 	args := m.Called(ctx, userID, deadlineID)
 	return args.Error(0)
+}
+
+func (m *MockAdminHomeworkService) UpdateLatePolicy(ctx context.Context, userID, hwID uuid.UUID, input service.UpdateLatePolicyInput) (*model.LatePolicy, error) {
+	args := m.Called(ctx, userID, hwID, input)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*model.LatePolicy), args.Error(1)
 }
 
 func newEchoContext(method, path string, body interface{}, params map[string]string) (echo.Context, *httptest.ResponseRecorder) {
@@ -525,6 +534,178 @@ func TestHandlerDeleteDeadline_NotFound(t *testing.T) {
 	svc.On("DeleteDeadline", mock.Anything, mock.Anything, dlID).Return(service.NotFound("Deadline not found"))
 
 	err := h.DeleteDeadline(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusNotFound, rec.Code)
+	svc.AssertExpectations(t)
+}
+
+func TestHandlerCreateHomework_WithLatePolicy_Success(t *testing.T) {
+	svc := new(MockAdminHomeworkService)
+	h := handler.NewAdminHomeworkHandler(svc)
+
+	courseID := uuid.New()
+	hwID := uuid.New()
+	startDate := "2025-01-01"
+	endDate := "2025-06-01"
+	softDeadline := time.Now().Add(24 * time.Hour)
+	hardDeadline := time.Now().Add(48 * time.Hour)
+
+	body := map[string]interface{}{
+		"start_date": startDate,
+		"end_date":   endDate,
+		"late_policy": map[string]interface{}{
+			"soft_deadline": softDeadline,
+			"hard_deadline": hardDeadline,
+			"soft_penalty":  0.1,
+			"hard_penalty":  0.5,
+		},
+	}
+
+	expected := &model.Homework{HwID: hwID, CourseID: courseID}
+
+	c, rec := newEchoContext(http.MethodPost, "/", body, map[string]string{"courseId": courseID.String()})
+	svc.On("CreateHomework", mock.Anything, mock.Anything, mock.MatchedBy(func(input service.CreateHomeworkInput) bool {
+		return input.CourseID == courseID &&
+			input.StartDate == startDate &&
+			input.EndDate == endDate &&
+			input.LatePolicy != nil &&
+			input.LatePolicy.SoftPenalty == 0.1 &&
+			input.LatePolicy.HardPenalty == 0.5
+	})).Return(expected, nil)
+
+	err := h.CreateHomework(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusCreated, rec.Code)
+	svc.AssertExpectations(t)
+}
+
+func TestHandlerCreateHomework_WithInvalidLatePolicy(t *testing.T) {
+	svc := new(MockAdminHomeworkService)
+	h := handler.NewAdminHomeworkHandler(svc)
+
+	courseID := uuid.New()
+	softDeadline := time.Now().Add(48 * time.Hour)
+	hardDeadline := time.Now().Add(24 * time.Hour) // hard before soft - invalid
+
+	body := map[string]interface{}{
+		"start_date": "2025-01-01",
+		"end_date":   "2025-06-01",
+		"late_policy": map[string]interface{}{
+			"soft_deadline": softDeadline,
+			"hard_deadline": hardDeadline,
+			"soft_penalty":  0.1,
+			"hard_penalty":  0.5,
+		},
+	}
+
+	c, rec := newEchoContext(http.MethodPost, "/", body, map[string]string{"courseId": courseID.String()})
+	svc.On("CreateHomework", mock.Anything, mock.Anything, mock.Anything).Return(nil, service.BadRequest("late_policy.hard_deadline must be after soft_deadline"))
+
+	err := h.CreateHomework(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	svc.AssertExpectations(t)
+}
+
+func TestHandlerUpdateLatePolicy_Success(t *testing.T) {
+	svc := new(MockAdminHomeworkService)
+	h := handler.NewAdminHomeworkHandler(svc)
+
+	hwID := uuid.New()
+
+	softDeadline := time.Date(2025, 12, 25, 10, 0, 0, 0, time.UTC)
+	hardDeadline := time.Date(2025, 12, 26, 10, 0, 0, 0, time.UTC)
+
+	body := map[string]interface{}{
+		"soft_deadline": softDeadline,
+		"hard_deadline": hardDeadline,
+		"soft_penalty":  0.15,
+		"hard_penalty":  0.6,
+	}
+
+	expected := &model.LatePolicy{
+		HwID:         hwID,
+		SoftDeadline: softDeadline,
+		HardDeadline: hardDeadline,
+		SoftPenalty:  0.15,
+		HardPenalty:  0.6,
+	}
+
+	c, rec := newEchoContext(http.MethodPatch, "/", body, map[string]string{"HwId": hwID.String()})
+
+	svc.On("UpdateLatePolicy", mock.Anything, mock.Anything, hwID, mock.MatchedBy(func(input service.UpdateLatePolicyInput) bool {
+		return input.SoftPenalty == 0.15 &&
+			input.HardPenalty == 0.6 &&
+			input.SoftDeadline.Equal(softDeadline) &&
+			input.HardDeadline.Equal(hardDeadline)
+	})).Return(expected, nil)
+
+	err := h.UpdateLatePolicy(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, rec.Code)
+
+	var response model.LatePolicy
+	err = json.Unmarshal(rec.Body.Bytes(), &response)
+	assert.NoError(t, err)
+	assert.Equal(t, 0.15, response.SoftPenalty)
+	assert.Equal(t, 0.6, response.HardPenalty)
+	svc.AssertExpectations(t)
+}
+
+func TestHandlerUpdateLatePolicy_InvalidHomeworkID(t *testing.T) {
+	svc := new(MockAdminHomeworkService)
+	h := handler.NewAdminHomeworkHandler(svc)
+
+	c, rec := newEchoContext(http.MethodPatch, "/", nil, map[string]string{"HwId": "invalid-uuid"})
+
+	err := h.UpdateLatePolicy(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestHandlerUpdateLatePolicy_InvalidPenaltyRange(t *testing.T) {
+	svc := new(MockAdminHomeworkService)
+	h := handler.NewAdminHomeworkHandler(svc)
+
+	hwID := uuid.New()
+	softDeadline := time.Now().Add(48 * time.Hour)
+	hardDeadline := time.Now().Add(72 * time.Hour)
+
+	body := map[string]interface{}{
+		"soft_deadline": softDeadline,
+		"hard_deadline": hardDeadline,
+		"soft_penalty":  1.5,
+		"hard_penalty":  0.5,
+	}
+
+	c, rec := newEchoContext(http.MethodPatch, "/", body, map[string]string{"HwId": hwID.String()})
+	svc.On("UpdateLatePolicy", mock.Anything, mock.Anything, hwID, mock.Anything).Return(nil, service.BadRequest("late_policy.soft_penalty must be between 0.0 and 1.0"))
+
+	err := h.UpdateLatePolicy(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	svc.AssertExpectations(t)
+}
+
+func TestHandlerUpdateLatePolicy_HomeworkNotFound(t *testing.T) {
+	svc := new(MockAdminHomeworkService)
+	h := handler.NewAdminHomeworkHandler(svc)
+
+	hwID := uuid.New()
+	softDeadline := time.Now().Add(48 * time.Hour)
+	hardDeadline := time.Now().Add(72 * time.Hour)
+
+	body := map[string]interface{}{
+		"soft_deadline": softDeadline,
+		"hard_deadline": hardDeadline,
+		"soft_penalty":  0.1,
+		"hard_penalty":  0.5,
+	}
+
+	c, rec := newEchoContext(http.MethodPatch, "/", body, map[string]string{"HwId": hwID.String()})
+	svc.On("UpdateLatePolicy", mock.Anything, mock.Anything, hwID, mock.Anything).Return(nil, service.NotFound("Homework not found"))
+
+	err := h.UpdateLatePolicy(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusNotFound, rec.Code)
 	svc.AssertExpectations(t)

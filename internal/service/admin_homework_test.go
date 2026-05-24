@@ -17,6 +17,30 @@ type MockHomeworkRepo struct {
 	mock.Mock
 }
 
+type MockLatePolicyRepo struct {
+	mock.Mock
+}
+
+func (m *MockLatePolicyRepo) Create(ctx context.Context, policy *model.LatePolicy) error {
+	return m.Called(ctx, policy).Error(0)
+}
+
+func (m *MockLatePolicyRepo) GetByHwID(ctx context.Context, hwID uuid.UUID) (*model.LatePolicy, error) {
+	args := m.Called(ctx, hwID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*model.LatePolicy), args.Error(1)
+}
+
+func (m *MockLatePolicyRepo) Update(ctx context.Context, policy *model.LatePolicy) error {
+	return m.Called(ctx, policy).Error(0)
+}
+
+func (m *MockLatePolicyRepo) Delete(ctx context.Context, hwID uuid.UUID) error {
+	return m.Called(ctx, hwID).Error(0)
+}
+
 func (m *MockHomeworkRepo) Create(ctx context.Context, hw *model.Homework) error {
 	args := m.Called(ctx, hw)
 	return args.Error(0)
@@ -86,11 +110,12 @@ func (m *MockDeadlineRepo) Delete(ctx context.Context, id uuid.UUID) error {
 func setupService() (*service.AdminHomeworkService, *MockHomeworkRepo, *MockDeadlineRepo) {
 	hwRepo := new(MockHomeworkRepo)
 	dlRepo := new(MockDeadlineRepo)
+	lpRepo := new(MockLatePolicyRepo)
 	roleRepo := new(MockRoleRepo)
 	roleID := uuid.New()
 	roleRepo.On("GetRoleIDByUserAndCourse", mock.Anything, mock.Anything, mock.Anything).Return(roleID, nil)
 	roleRepo.On("HasPermission", mock.Anything, roleID, mock.Anything).Return(true, nil)
-	svc := service.NewAdminHomeworkService(hwRepo, dlRepo, roleRepo)
+	svc := service.NewAdminHomeworkService(hwRepo, dlRepo, roleRepo, lpRepo)
 	return svc, hwRepo, dlRepo
 }
 
@@ -466,4 +491,416 @@ func TestDeleteDeadline_NotFound(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "Deadline not found")
 	dlRepo.AssertExpectations(t)
+}
+
+func TestCreateHomework_WithLatePolicy_Success(t *testing.T) {
+	hwRepo := new(MockHomeworkRepo)
+	lpRepo := new(MockLatePolicyRepo)
+	roleRepo := new(MockRoleRepo)
+	roleID := uuid.New()
+	roleRepo.On("GetRoleIDByUserAndCourse", mock.Anything, mock.Anything, mock.Anything).Return(roleID, nil)
+	roleRepo.On("HasPermission", mock.Anything, roleID, mock.Anything).Return(true, nil)
+
+	svc := service.NewAdminHomeworkService(hwRepo, nil, roleRepo, lpRepo)
+
+	ctx := context.Background()
+	userID := uuid.New()
+	courseID := uuid.New()
+
+	softDeadline := time.Now().Add(24 * time.Hour)
+	hardDeadline := time.Now().Add(48 * time.Hour)
+
+	input := service.CreateHomeworkInput{
+		CourseID:  courseID,
+		StartDate: "2025-01-01",
+		EndDate:   "2025-06-01",
+		LatePolicy: &service.LatePolicyInput{
+			SoftDeadline: softDeadline,
+			HardDeadline: hardDeadline,
+			SoftPenalty:  0.1,
+			HardPenalty:  0.5,
+		},
+	}
+
+	hwRepo.On("Create", ctx, mock.AnythingOfType("*model.Homework")).Return(nil)
+	lpRepo.On("Create", ctx, mock.MatchedBy(func(policy *model.LatePolicy) bool {
+		return policy.SoftPenalty == 0.1 &&
+			policy.HardPenalty == 0.5 &&
+			policy.SoftDeadline.Equal(softDeadline) &&
+			policy.HardDeadline.Equal(hardDeadline)
+	})).Return(nil)
+
+	result, err := svc.CreateHomework(ctx, userID, input)
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
+	hwRepo.AssertExpectations(t)
+	lpRepo.AssertExpectations(t)
+}
+
+func TestCreateHomework_WithLatePolicyInvalidDates(t *testing.T) {
+	hwRepo := new(MockHomeworkRepo)
+	lpRepo := new(MockLatePolicyRepo)
+	roleRepo := new(MockRoleRepo)
+
+	roleID := uuid.New()
+	roleRepo.On("GetRoleIDByUserAndCourse", mock.Anything, mock.Anything, mock.Anything).Return(roleID, nil)
+	roleRepo.On("HasPermission", mock.Anything, roleID, mock.Anything).Return(true, nil)
+
+	svc := service.NewAdminHomeworkService(hwRepo, nil, roleRepo, lpRepo)
+
+	ctx := context.Background()
+
+	softDeadline := time.Now().Add(48 * time.Hour)
+	hardDeadline := time.Now().Add(24 * time.Hour)
+
+	input := service.CreateHomeworkInput{
+		CourseID:  uuid.New(),
+		StartDate: "2025-01-01",
+		EndDate:   "2025-06-01",
+		LatePolicy: &service.LatePolicyInput{
+			SoftDeadline: softDeadline,
+			HardDeadline: hardDeadline,
+			SoftPenalty:  0.1,
+			HardPenalty:  0.5,
+		},
+	}
+
+	hwRepo.On("Create", ctx, mock.AnythingOfType("*model.Homework")).Return(nil)
+
+	result, err := svc.CreateHomework(ctx, uuid.New(), input)
+	assert.Error(t, err)
+	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), "hard_deadline must be after soft_deadline")
+}
+
+func TestCreateHomework_WithLatePolicyInvalidPenalty(t *testing.T) {
+	hwRepo := new(MockHomeworkRepo)
+	lpRepo := new(MockLatePolicyRepo)
+	roleRepo := new(MockRoleRepo)
+
+	roleID := uuid.New()
+	roleRepo.On("GetRoleIDByUserAndCourse", mock.Anything, mock.Anything, mock.Anything).Return(roleID, nil)
+	roleRepo.On("HasPermission", mock.Anything, roleID, mock.Anything).Return(true, nil)
+
+	svc := service.NewAdminHomeworkService(hwRepo, nil, roleRepo, lpRepo)
+
+	ctx := context.Background()
+	courseID := uuid.New()
+	startDate := "2025-01-01"
+	endDate := "2025-06-01"
+	softDeadline := time.Now().Add(24 * time.Hour)
+	hardDeadline := time.Now().Add(48 * time.Hour)
+
+	testCases := []struct {
+		name        string
+		softPenalty float64
+		hardPenalty float64
+		errMsg      string
+	}{
+		{"Soft penalty negative", -0.1, 0.5, "soft_penalty must be between 0.0 and 1.0"},
+		{"Soft penalty > 1", 1.5, 0.5, "soft_penalty must be between 0.0 and 1.0"},
+		{"Hard penalty negative", 0.1, -0.5, "hard_penalty must be between 0.0 and 1.0"},
+		{"Hard penalty > 1", 0.1, 1.5, "hard_penalty must be between 0.0 and 1.0"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			input := service.CreateHomeworkInput{
+				CourseID:  courseID,
+				StartDate: startDate,
+				EndDate:   endDate,
+				LatePolicy: &service.LatePolicyInput{
+					SoftDeadline: softDeadline,
+					HardDeadline: hardDeadline,
+					SoftPenalty:  tc.softPenalty,
+					HardPenalty:  tc.hardPenalty,
+				},
+			}
+
+			hwRepo.On("Create", ctx, mock.AnythingOfType("*model.Homework")).Return(nil).Once()
+
+			result, err := svc.CreateHomework(ctx, uuid.New(), input)
+			assert.Error(t, err)
+			assert.Nil(t, result)
+			assert.Contains(t, err.Error(), tc.errMsg)
+		})
+	}
+}
+
+func TestUpdateLatePolicy_CreateNew_Success(t *testing.T) {
+	hwRepo := new(MockHomeworkRepo)
+	lpRepo := new(MockLatePolicyRepo)
+	roleRepo := new(MockRoleRepo)
+
+	roleID := uuid.New()
+	roleRepo.On("GetRoleIDByUserAndCourse", mock.Anything, mock.Anything, mock.Anything).Return(roleID, nil)
+	roleRepo.On("HasPermission", mock.Anything, roleID, mock.Anything).Return(true, nil)
+
+	svc := service.NewAdminHomeworkService(hwRepo, nil, roleRepo, lpRepo)
+
+	ctx := context.Background()
+	userID := uuid.New()
+	hwID := uuid.New()
+
+	softDeadline := time.Now().Add(48 * time.Hour)
+	hardDeadline := time.Now().Add(72 * time.Hour)
+
+	hw := &model.Homework{HwID: hwID, CourseID: uuid.New()}
+
+	hwRepo.On("GetByID", ctx, hwID).Return(hw, nil)
+	lpRepo.On("GetByHwID", ctx, hwID).Return(nil, assert.AnError) // не существует
+	lpRepo.On("Create", ctx, mock.MatchedBy(func(policy *model.LatePolicy) bool {
+		return policy.HwID == hwID &&
+			policy.SoftPenalty == 0.2 &&
+			policy.HardPenalty == 0.7 &&
+			policy.SoftDeadline.Equal(softDeadline) &&
+			policy.HardDeadline.Equal(hardDeadline)
+	})).Return(nil)
+
+	input := service.UpdateLatePolicyInput{
+		SoftDeadline: softDeadline,
+		HardDeadline: hardDeadline,
+		SoftPenalty:  0.2,
+		HardPenalty:  0.7,
+	}
+
+	result, err := svc.UpdateLatePolicy(ctx, userID, hwID, input)
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
+	assert.Equal(t, 0.2, result.SoftPenalty)
+	assert.Equal(t, 0.7, result.HardPenalty)
+	hwRepo.AssertExpectations(t)
+	lpRepo.AssertExpectations(t)
+}
+
+func TestUpdateLatePolicy_UpdateExisting_Success(t *testing.T) {
+	hwRepo := new(MockHomeworkRepo)
+	lpRepo := new(MockLatePolicyRepo)
+	roleRepo := new(MockRoleRepo)
+
+	roleID := uuid.New()
+	roleRepo.On("GetRoleIDByUserAndCourse", mock.Anything, mock.Anything, mock.Anything).Return(roleID, nil)
+	roleRepo.On("HasPermission", mock.Anything, roleID, mock.Anything).Return(true, nil)
+
+	svc := service.NewAdminHomeworkService(hwRepo, nil, roleRepo, lpRepo)
+
+	ctx := context.Background()
+	userID := uuid.New()
+	hwID := uuid.New()
+
+	softDeadline := time.Now().Add(48 * time.Hour)
+	hardDeadline := time.Now().Add(72 * time.Hour)
+
+	hw := &model.Homework{HwID: hwID, CourseID: uuid.New()}
+	existingPolicy := &model.LatePolicy{
+		HwID:         hwID,
+		SoftDeadline: time.Now().Add(24 * time.Hour),
+		HardDeadline: time.Now().Add(48 * time.Hour),
+		SoftPenalty:  0.1,
+		HardPenalty:  0.5,
+	}
+
+	hwRepo.On("GetByID", ctx, hwID).Return(hw, nil)
+	lpRepo.On("GetByHwID", ctx, hwID).Return(existingPolicy, nil)
+	lpRepo.On("Update", ctx, mock.MatchedBy(func(policy *model.LatePolicy) bool {
+		return policy.SoftPenalty == 0.3 &&
+			policy.HardPenalty == 0.8 &&
+			policy.SoftDeadline.Equal(softDeadline) &&
+			policy.HardDeadline.Equal(hardDeadline)
+	})).Return(nil)
+
+	input := service.UpdateLatePolicyInput{
+		SoftDeadline: softDeadline,
+		HardDeadline: hardDeadline,
+		SoftPenalty:  0.3,
+		HardPenalty:  0.8,
+	}
+
+	result, err := svc.UpdateLatePolicy(ctx, userID, hwID, input)
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
+	assert.Equal(t, 0.3, result.SoftPenalty)
+	assert.Equal(t, 0.8, result.HardPenalty)
+	hwRepo.AssertExpectations(t)
+	lpRepo.AssertExpectations(t)
+}
+
+func TestUpdateLatePolicy_InvalidInput(t *testing.T) {
+	hwRepo := new(MockHomeworkRepo)
+	lpRepo := new(MockLatePolicyRepo)
+	roleRepo := new(MockRoleRepo)
+
+	roleID := uuid.New()
+	roleRepo.On("GetRoleIDByUserAndCourse", mock.Anything, mock.Anything, mock.Anything).Return(roleID, nil)
+	roleRepo.On("HasPermission", mock.Anything, roleID, mock.Anything).Return(true, nil)
+
+	svc := service.NewAdminHomeworkService(hwRepo, nil, roleRepo, lpRepo)
+
+	ctx := context.Background()
+	userID := uuid.New()
+	hwID := uuid.New()
+
+	hw := &model.Homework{HwID: hwID, CourseID: uuid.New()}
+	hwRepo.On("GetByID", ctx, hwID).Return(hw, nil)
+
+	testCases := []struct {
+		name         string
+		softDeadline time.Time
+		hardDeadline time.Time
+		softPenalty  float64
+		hardPenalty  float64
+		errMsg       string
+	}{
+		{
+			name:         "hard deadline before soft",
+			softDeadline: time.Now().Add(48 * time.Hour),
+			hardDeadline: time.Now().Add(24 * time.Hour),
+			softPenalty:  0.1,
+			hardPenalty:  0.5,
+			errMsg:       "hard_deadline must be after soft_deadline",
+		},
+		{
+			name:         "soft penalty out of range >1",
+			softDeadline: time.Now().Add(24 * time.Hour),
+			hardDeadline: time.Now().Add(48 * time.Hour),
+			softPenalty:  1.5,
+			hardPenalty:  0.5,
+			errMsg:       "soft_penalty must be between 0.0 and 1.0",
+		},
+		{
+			name:         "soft penalty negative",
+			softDeadline: time.Now().Add(24 * time.Hour),
+			hardDeadline: time.Now().Add(48 * time.Hour),
+			softPenalty:  -0.1,
+			hardPenalty:  0.5,
+			errMsg:       "soft_penalty must be between 0.0 and 1.0",
+		},
+		{
+			name:         "hard penalty out of range >1",
+			softDeadline: time.Now().Add(24 * time.Hour),
+			hardDeadline: time.Now().Add(48 * time.Hour),
+			softPenalty:  0.1,
+			hardPenalty:  1.5,
+			errMsg:       "hard_penalty must be between 0.0 and 1.0",
+		},
+		{
+			name:         "hard penalty negative",
+			softDeadline: time.Now().Add(24 * time.Hour),
+			hardDeadline: time.Now().Add(48 * time.Hour),
+			softPenalty:  0.1,
+			hardPenalty:  -0.5,
+			errMsg:       "hard_penalty must be between 0.0 and 1.0",
+		},
+		{
+			name:         "zero soft deadline",
+			softDeadline: time.Time{},
+			hardDeadline: time.Now().Add(48 * time.Hour),
+			softPenalty:  0.1,
+			hardPenalty:  0.5,
+			errMsg:       "soft_deadline is required",
+		},
+		{
+			name:         "zero hard deadline",
+			softDeadline: time.Now().Add(24 * time.Hour),
+			hardDeadline: time.Time{},
+			softPenalty:  0.1,
+			hardPenalty:  0.5,
+			errMsg:       "hard_deadline is required",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			input := service.UpdateLatePolicyInput{
+				SoftDeadline: tc.softDeadline,
+				HardDeadline: tc.hardDeadline,
+				SoftPenalty:  tc.softPenalty,
+				HardPenalty:  tc.hardPenalty,
+			}
+
+			result, err := svc.UpdateLatePolicy(ctx, userID, hwID, input)
+			assert.Error(t, err)
+			assert.Nil(t, result)
+			assert.Contains(t, err.Error(), tc.errMsg)
+		})
+	}
+}
+
+func TestUpdateLatePolicy_HomeworkNotFound(t *testing.T) {
+	hwRepo := new(MockHomeworkRepo)
+	lpRepo := new(MockLatePolicyRepo)
+	roleRepo := new(MockRoleRepo)
+
+	svc := service.NewAdminHomeworkService(hwRepo, nil, roleRepo, lpRepo)
+
+	ctx := context.Background()
+	hwID := uuid.New()
+
+	hwRepo.On("GetByID", ctx, hwID).Return(nil, assert.AnError)
+
+	input := service.UpdateLatePolicyInput{
+		SoftDeadline: time.Now().Add(24 * time.Hour),
+		HardDeadline: time.Now().Add(48 * time.Hour),
+		SoftPenalty:  0.1,
+		HardPenalty:  0.5,
+	}
+
+	result, err := svc.UpdateLatePolicy(ctx, uuid.New(), hwID, input)
+	assert.Error(t, err)
+	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), "Homework not found")
+	hwRepo.AssertExpectations(t)
+}
+
+func TestUpdateLatePolicy_EmptyHomeworkID(t *testing.T) {
+	hwRepo := new(MockHomeworkRepo)
+	lpRepo := new(MockLatePolicyRepo)
+	roleRepo := new(MockRoleRepo)
+
+	svc := service.NewAdminHomeworkService(hwRepo, nil, roleRepo, lpRepo)
+
+	ctx := context.Background()
+
+	input := service.UpdateLatePolicyInput{
+		SoftDeadline: time.Now().Add(24 * time.Hour),
+		HardDeadline: time.Now().Add(48 * time.Hour),
+		SoftPenalty:  0.1,
+		HardPenalty:  0.5,
+	}
+
+	result, err := svc.UpdateLatePolicy(ctx, uuid.New(), uuid.Nil, input)
+	assert.Error(t, err)
+	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), "hw_id is required")
+}
+
+func TestUpdateLatePolicy_PermissionDenied(t *testing.T) {
+	hwRepo := new(MockHomeworkRepo)
+	lpRepo := new(MockLatePolicyRepo)
+	roleRepo := new(MockRoleRepo)
+
+	roleID := uuid.New()
+	roleRepo.On("GetRoleIDByUserAndCourse", mock.Anything, mock.Anything, mock.Anything).Return(roleID, nil)
+	roleRepo.On("HasPermission", mock.Anything, roleID, mock.Anything).Return(false, nil)
+
+	svc := service.NewAdminHomeworkService(hwRepo, nil, roleRepo, lpRepo)
+
+	ctx := context.Background()
+	userID := uuid.New()
+	hwID := uuid.New()
+	courseID := uuid.New()
+
+	hw := &model.Homework{HwID: hwID, CourseID: courseID}
+	hwRepo.On("GetByID", ctx, hwID).Return(hw, nil)
+
+	input := service.UpdateLatePolicyInput{
+		SoftDeadline: time.Now().Add(24 * time.Hour),
+		HardDeadline: time.Now().Add(48 * time.Hour),
+		SoftPenalty:  0.1,
+		HardPenalty:  0.5,
+	}
+	result, err := svc.UpdateLatePolicy(ctx, userID, hwID, input)
+	assert.Error(t, err)
+	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), "You don't have permission to access this resource")
 }

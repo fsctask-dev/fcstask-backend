@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
@@ -18,9 +19,17 @@ func NewAdminHomeworkHandler(homeworkService IAdminHomeworkService) *AdminHomewo
 	return &AdminHomeworkHandler{homeworkService: homeworkService}
 }
 
+type latePolicyRequest struct {
+	SoftDeadline time.Time `json:"soft_deadline"`
+	HardDeadline time.Time `json:"hard_deadline"`
+	SoftPenalty  float64   `json:"soft_penalty"`
+	HardPenalty  float64   `json:"hard_penalty"`
+}
+
 type CreateHomeworkRequest struct {
-	StartDate *string `json:"start_date"`
-	EndDate   *string `json:"end_date"`
+	StartDate  *string            `json:"start_date"`
+	EndDate    *string            `json:"end_date"`
+	LatePolicy *latePolicyRequest `json:"late_policy"`
 }
 
 type UpdateHomeworkRequest struct {
@@ -42,6 +51,13 @@ type UpdateDeadlineRequest struct {
 	Title       *string `json:"title"`
 	Description *string `json:"description"`
 	DueDate     *string `json:"due_date"`
+}
+
+type UpdateLatePolicyRequest struct {
+	SoftDeadline time.Time `json:"soft_deadline"`
+	HardDeadline time.Time `json:"hard_deadline"`
+	SoftPenalty  float64   `json:"soft_penalty"`
+	HardPenalty  float64   `json:"hard_penalty"`
 }
 
 // POST /admin/courses/:courseId/homework
@@ -69,6 +85,14 @@ func (h *AdminHomeworkHandler) CreateHomework(c echo.Context) error {
 	}
 	if req.EndDate != nil {
 		input.EndDate = *req.EndDate
+	}
+	if req.LatePolicy != nil {
+		input.LatePolicy = &service.LatePolicyInput{
+			SoftDeadline: req.LatePolicy.SoftDeadline,
+			HardDeadline: req.LatePolicy.HardDeadline,
+			SoftPenalty:  req.LatePolicy.SoftPenalty,
+			HardPenalty:  req.LatePolicy.HardPenalty,
+		}
 	}
 
 	hw, err := h.homeworkService.CreateHomework(c.Request().Context(), user.ID, input)
@@ -289,4 +313,34 @@ func (h *AdminHomeworkHandler) DeleteDeadline(c echo.Context) error {
 	}
 
 	return c.NoContent(http.StatusNoContent)
+}
+
+// PATCH /admin/courses/:courseId/homework/:hwId/late-policy
+func (h *AdminHomeworkHandler) UpdateLatePolicy(c echo.Context) error {
+	user, ok := c.Get(UserContextKey).(*model.User)
+	if !ok || user == nil {
+		return unauthorized(c, "User not found")
+	}
+
+	HwID, err := uuid.Parse(c.Param("HwId"))
+	if err != nil {
+		return badRequest(c, "Invalid homework ID")
+	}
+
+	var req UpdateLatePolicyRequest
+	if err := c.Bind(&req); err != nil {
+		return badRequest(c, "Invalid request body")
+	}
+
+	policy, err := h.homeworkService.UpdateLatePolicy(c.Request().Context(), user.ID, HwID, service.UpdateLatePolicyInput{
+		SoftDeadline: req.SoftDeadline,
+		HardDeadline: req.HardDeadline,
+		SoftPenalty:  req.SoftPenalty,
+		HardPenalty:  req.HardPenalty,
+	})
+	if err != nil {
+		return serviceError(c, err)
+	}
+
+	return c.JSON(http.StatusOK, policy)
 }

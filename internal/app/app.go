@@ -13,10 +13,11 @@ import (
 	"fcstask-backend/internal/server"
 	"fcstask-backend/internal/service"
 	"fmt"
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
 	"log"
 	"time"
+
+	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 )
 
 type App struct {
@@ -44,12 +45,13 @@ func New(cfg *config.Config) (*App, error) {
 	taskRepo := repo.NewTaskRepository(dbClient.DB())
 	deadlineRepo := repo.NewDeadlineRepository(dbClient.DB())
 	studentScoreRepo := repo.NewStudentTaskScoreRepository(dbClient.DB())
+	latePolicyRepo := repo.NewLatePolicyRepository(dbClient.DB())
 
 	userService := service.NewUserService(userRepo)
 	authService := service.NewAuthService(userRepo, sessionRepo)
 	sessionService := service.NewSessionService(sessionRepo)
 	courseService := service.NewCourseService(courseRepo, roleRepo, studentScoreRepo)
-	adminHomeworkService := service.NewAdminHomeworkService(homeworkRepo, deadlineRepo, roleRepo)
+	adminHomeworkService := service.NewAdminHomeworkService(homeworkRepo, deadlineRepo, roleRepo, latePolicyRepo)
 	adminTaskService := service.NewAdminTaskService(taskRepo, homeworkRepo, roleRepo)
 	adminRoleService := service.NewAdminRoleService(roleRepo, userRepo)
 
