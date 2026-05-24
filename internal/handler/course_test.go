@@ -58,8 +58,8 @@ func (m *mockCourseRepo) GetCourses(ctx context.Context) ([]model.Course, error)
 	return nil, nil
 }
 func (m *mockCourseRepo) GetLeaderboard(ctx context.Context, courseID uuid.UUID) ([]model.LeaderboardEntry, error) {
-    args := m.Called(ctx, courseID)
-    return args.Get(0).([]model.LeaderboardEntry), args.Error(1)
+	args := m.Called(ctx, courseID)
+	return args.Get(0).([]model.LeaderboardEntry), args.Error(1)
 }
 
 type mockRoleRepo struct {
@@ -182,11 +182,14 @@ func TestGetCourses_Success(t *testing.T) {
 }
 
 func TestGetCourse_Public(t *testing.T) {
-	handler, e, courseRepo, _ := setupTest()
+	handler, e, courseRepo, roleRepo := setupTest()
 	user := newTestUser()
+	roleID := uuid.New()
 	course := &model.Course{ID: uuid.New(), Name: "Pub", Type: model.CourseTypePublic}
 
 	courseRepo.On("GetCourseByID", mock.Anything, "pub").Return(course, nil)
+	roleRepo.On("GetRoleIDByUserAndCourse", mock.Anything, user.ID, course.ID).Return(roleID, nil)
+	roleRepo.On("HasPermission", mock.Anything, roleID, service.PermissionCourseRead).Return(true, nil)
 
 	c := makeContext(e, user, map[string]string{"courseId": "pub"})
 	err := handler.GetCourse(c)
@@ -280,12 +283,12 @@ func TestUpdateCourse_Success(t *testing.T) {
 
 	courseRepo.On("GetCourseByID", mock.Anything, "old").Return(course, nil)
 	roleRepo.On("GetRoleIDByUserAndCourse", mock.Anything, user.ID, course.ID).Return(roleID, nil)
-	roleRepo.On("HasPermission", mock.Anything, roleID, service.PermissionHomeworkUpdate).Return(true, nil)
+	roleRepo.On("HasPermission", mock.Anything, roleID, service.PermissionCourseRead).Return(true, nil)   // ← GetCourse
+	roleRepo.On("HasPermission", mock.Anything, roleID, service.PermissionCourseUpdate).Return(true, nil) // ← UpdateCourse
 	courseRepo.On("UpdateCourse", mock.Anything, "old", mock.Anything).Return(course, nil)
 
 	body := `{"name":"Updated"}`
-	c := makeContext(e, user, map[string]string{"courseId": "old"})
-	c = jsonContextWithParams(e, http.MethodPut, user, []byte(body), "old")
+	c := jsonContextWithParams(e, http.MethodPut, user, []byte(body), "old")
 
 	err := handler.UpdateCourse(c)
 	assert.NoError(t, err)
@@ -351,11 +354,14 @@ func TestJoinCourse_Unauthorized(t *testing.T) {
 }
 
 func TestGetCourseBoard_Public(t *testing.T) {
-	handler, e, courseRepo, _ := setupTest()
+	handler, e, courseRepo, roleRepo := setupTest()
 	user := newTestUser()
+	roleID := uuid.New()
 	course := &model.Course{ID: uuid.New(), Name: "Pub", Type: model.CourseTypePublic}
 
 	courseRepo.On("GetCourseByID", mock.Anything, "pub").Return(course, nil)
+	roleRepo.On("GetRoleIDByUserAndCourse", mock.Anything, user.ID, course.ID).Return(roleID, nil)
+	roleRepo.On("HasPermission", mock.Anything, roleID, service.PermissionCourseRead).Return(true, nil)
 	courseRepo.On("GetCourseBoard", mock.Anything, "pub").Return(nil, false, nil)
 
 	c := makeContext(e, user, map[string]string{"courseId": "pub"})
@@ -364,7 +370,6 @@ func TestGetCourseBoard_Public(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, c.Response().Status)
 }
-
 func parseDate(s string) *time.Time {
 	t, _ := time.Parse("2006-01-02", s)
 	return &t
