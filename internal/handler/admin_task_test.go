@@ -50,6 +50,14 @@ func (m *MockAdminTaskService) UpdateTask(ctx context.Context, userID, taskID uu
 	return args.Get(0).(*model.Task), args.Error(1)
 }
 
+func (m *MockAdminTaskService) PublishTask(ctx context.Context, userID uuid.UUID, input service.PublishTaskInput) (*model.Task, error) {
+	args := m.Called(ctx, userID, input)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*model.Task), args.Error(1)
+}
+
 func (m *MockAdminTaskService) DeleteTask(ctx context.Context, userID, taskID uuid.UUID) error {
 	args := m.Called(ctx, userID, taskID)
 	return args.Error(0)
@@ -331,6 +339,74 @@ func TestHandlerUpdateTask_PartialUpdate(t *testing.T) {
 	svc.AssertExpectations(t)
 }
 
+func TestHandlerPublishTask_Success(t *testing.T) {
+	svc := new(MockAdminTaskService)
+	h := handler.NewAdminTaskHandler(svc)
+
+	taskID := uuid.New()
+	body := map[string]interface{}{"is_public": true}
+	expected := &model.Task{TaskID: taskID, IsPublic: boolPtr(true)}
+
+	c, rec := newEchoContext(http.MethodPatch, "/", body, map[string]string{"taskId": taskID.String()})
+	svc.On("PublishTask", mock.Anything, mock.Anything, service.PublishTaskInput{
+		TaskID:   taskID,
+		IsPublic: true,
+	}).Return(expected, nil)
+
+	err := h.PublishTask(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	svc.AssertExpectations(t)
+}
+
+func TestHandlerPublishTask_Unpublish(t *testing.T) {
+	svc := new(MockAdminTaskService)
+	h := handler.NewAdminTaskHandler(svc)
+
+	taskID := uuid.New()
+	body := map[string]interface{}{"is_public": false}
+	expected := &model.Task{TaskID: taskID, IsPublic: boolPtr(false)}
+
+	c, rec := newEchoContext(http.MethodPatch, "/", body, map[string]string{"taskId": taskID.String()})
+	svc.On("PublishTask", mock.Anything, mock.Anything, service.PublishTaskInput{
+		TaskID:   taskID,
+		IsPublic: false,
+	}).Return(expected, nil)
+
+	err := h.PublishTask(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	svc.AssertExpectations(t)
+}
+
+func TestHandlerPublishTask_InvalidID(t *testing.T) {
+	svc := new(MockAdminTaskService)
+	h := handler.NewAdminTaskHandler(svc)
+
+	c, rec := newEchoContext(http.MethodPatch, "/", map[string]interface{}{"is_public": true}, map[string]string{"taskId": "bad"})
+
+	err := h.PublishTask(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestHandlerPublishTask_NotFound(t *testing.T) {
+	svc := new(MockAdminTaskService)
+	h := handler.NewAdminTaskHandler(svc)
+
+	taskID := uuid.New()
+	body := map[string]interface{}{"is_public": true}
+
+	c, rec := newEchoContext(http.MethodPatch, "/", body, map[string]string{"taskId": taskID.String()})
+	svc.On("PublishTask", mock.Anything, mock.Anything, mock.Anything).
+		Return(nil, service.NotFound("Task not found"))
+
+	err := h.PublishTask(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusNotFound, rec.Code)
+	svc.AssertExpectations(t)
+}
+
 func TestHandlerDeleteTask_Success(t *testing.T) {
 	svc := new(MockAdminTaskService)
 	h := handler.NewAdminTaskHandler(svc)
@@ -466,3 +542,5 @@ func TestHandlerSetScore_ServiceError(t *testing.T) {
 	assert.Equal(t, http.StatusInternalServerError, rec.Code)
 	svc.AssertExpectations(t)
 }
+
+func boolPtr(b bool) *bool { return &b }

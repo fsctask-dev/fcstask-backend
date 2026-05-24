@@ -25,6 +25,7 @@ const (
 	PermissionTaskCreate      = "task.create"
 	PermissionTaskRead        = "task.read"
 	PermissionTaskUpdate      = "task.update"
+	PermissionTaskPublish     = "task.publish"
 	PermissionTaskDelete      = "task.delete"
 	PermissionTaskScoreUpdate = "task.score.update"
 	PermissionTaskSubmit      = "task.submit"
@@ -119,6 +120,7 @@ func CourseAdminPermissions() []string {
 		PermissionDeadlineDelete,
 		PermissionTaskCreate,
 		PermissionTaskUpdate,
+		PermissionTaskPublish,
 		PermissionTaskDelete,
 		PermissionTaskScoreUpdate,
 	}

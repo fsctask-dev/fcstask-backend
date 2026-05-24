@@ -84,6 +84,7 @@ func New(cfg *config.Config) (*App, error) {
 		"/admin/deadlines/:deadlineId",
 		"/admin/courses/:courseId/homework/:hwId/tasks",
 		"/admin/courses/:courseId/homework/:hwId/tasks/:taskId",
+		"/admin/courses/:courseId/homework/:hwId/tasks/:taskId/publish",
 		"/admin/courses/:courseId/homework/:hwId/tasks/:taskId/score",
 		"/admin/courses/:courseId/roles",
 		"/admin/courses/:courseId/participants",
