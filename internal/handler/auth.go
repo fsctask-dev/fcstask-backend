@@ -6,25 +6,21 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"fcstask-backend/internal/api"
-	models "fcstask-backend/internal/db/model"
 	"fcstask-backend/internal/service"
 )
 
-const UserContextKey = "user"
-const SessionContextKey = "session"
-
 type AuthHandler struct {
-	authService *service.AuthService
+	authService IAuthService
 }
 
-func NewAuthHandler(authService *service.AuthService) *AuthHandler {
+func NewAuthHandler(authService IAuthService) *AuthHandler {
 	return &AuthHandler{authService: authService}
 }
 
 func (h *AuthHandler) SignUp(ctx echo.Context) error {
 	var req api.SignUpRequest
-	if err := ctx.Bind(&req); err != nil {
-		return badRequest(ctx, "Invalid request body")
+	if !bindRequest(ctx, &req, "Invalid request body") {
+		return nil
 	}
 
 	result, err := h.authService.SignUp(ctx.Request().Context(), service.SignUpInput{
@@ -44,8 +40,8 @@ func (h *AuthHandler) SignUp(ctx echo.Context) error {
 
 func (h *AuthHandler) SignIn(ctx echo.Context) error {
 	var req api.SignInRequest
-	if err := ctx.Bind(&req); err != nil {
-		return badRequest(ctx, "Invalid request body")
+	if !bindRequest(ctx, &req, "Invalid request body") {
+		return nil
 	}
 
 	var email *string
@@ -69,7 +65,7 @@ func (h *AuthHandler) SignIn(ctx echo.Context) error {
 }
 
 func (h *AuthHandler) GetMe(ctx echo.Context) error {
-	user, ok := ctx.Get(UserContextKey).(*models.User)
+	user, ok := authenticatedUser(ctx)
 	if !ok {
 		return unauthorized(ctx, "Not authenticated")
 	}
@@ -87,7 +83,7 @@ func (h *AuthHandler) GetMe(ctx echo.Context) error {
 }
 
 func (h *AuthHandler) SignOut(ctx echo.Context) error {
-	session, ok := ctx.Get(SessionContextKey).(*models.Session)
+	session, ok := authenticatedSession(ctx)
 	if !ok {
 		return unauthorized(ctx, "Not authenticated")
 	}

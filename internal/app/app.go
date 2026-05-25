@@ -2,21 +2,15 @@ package app
 
 import (
 	"context"
-	"fcstask-backend/internal/api"
 	"fcstask-backend/internal/config"
-	"fcstask-backend/internal/controller"
 	"fcstask-backend/internal/db"
 	"fcstask-backend/internal/db/repo"
-	"fcstask-backend/internal/handler"
-	"fcstask-backend/internal/metrics"
-	authmw "fcstask-backend/internal/middleware"
 	"fcstask-backend/internal/server"
-	"fcstask-backend/internal/service"
 	"fmt"
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
 	"log"
 	"time"
+
+	"github.com/labstack/echo/v4"
 )
 
 type App struct {
@@ -36,75 +30,20 @@ func New(cfg *config.Config) (*App, error) {
 		return nil, fmt.Errorf("failed to init database: %w", err)
 	}
 
-	userRepo := repo.NewUserRepository(dbClient)
-	sessionRepo := repo.NewSessionRepository(dbClient)
-	courseRepo := repo.NewCourseRepository(dbClient)
-	roleRepo := repo.NewRoleRepository(dbClient.DB())
-	homeworkRepo := repo.NewHomeworkRepository(dbClient.DB())
-	taskRepo := repo.NewTaskRepository(dbClient.DB())
-	deadlineRepo := repo.NewDeadlineRepository(dbClient.DB())
-	studentScoreRepo := repo.NewStudentTaskScoreRepository(dbClient.DB())
+	repositories := newRepositories(dbClient)
+	services := newServices(repositories)
+	handlers := newHTTPHandlers(services)
 
-	userService := service.NewUserService(userRepo)
-	authService := service.NewAuthService(userRepo, sessionRepo)
-	sessionService := service.NewSessionService(sessionRepo)
-	courseService := service.NewCourseService(courseRepo, roleRepo, studentScoreRepo)
-	adminHomeworkService := service.NewAdminHomeworkService(homeworkRepo, deadlineRepo, roleRepo)
-	adminTaskService := service.NewAdminTaskService(taskRepo, homeworkRepo, roleRepo)
-	adminRoleService := service.NewAdminRoleService(roleRepo, userRepo)
-
-	adminHomeworkHandler := handler.NewAdminHomeworkHandler(adminHomeworkService)
-	adminTaskHandler := handler.NewAdminTaskHandler(adminTaskService)
-	adminRoleHandler := handler.NewAdminRoleHandler(adminRoleService)
-
-	apiController := controller.NewAPIController(
-		handler.NewAuthHandler(authService),
-		handler.NewUserHandler(userService),
-		handler.NewSessionHandler(sessionService, userService),
-		handler.NewCourseHandler(courseService),
-	)
-
-	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
-		AllowOrigins: []string{"http://localhost:5173", "http://localhost:3000"},
-		AllowMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowHeaders: []string{"Content-Type", "Authorization"},
-	}))
-
-	e.Use(authmw.Auth(userRepo, sessionRepo, []string{
-		"/v1/api/me",
-		"/v1/sessions",
-		"/v1/users/sessions",
-		"/api/signout",
-		"/api/courses/:courseId/scores",
-		"/api/courses/:courseId/join",
-		"/admin/courses/:courseId/homework",
-		"/admin/courses/:courseId/homework/:hwId",
-		"/admin/courses/:courseId/homework/:hwId/publish",
-		"/admin/courses/:courseId/homework/:hwId/deadline",
-		"/admin/deadlines/:deadlineId",
-		"/admin/courses/:courseId/homework/:hwId/tasks",
-		"/admin/courses/:courseId/homework/:hwId/tasks/:taskId",
-		"/admin/courses/:courseId/homework/:hwId/tasks/:taskId/score",
-		"/admin/courses/:courseId/roles",
-		"/admin/courses/:courseId/participants",
-		"/admin/courses/:courseId/roles/:roleId/permissions",
-		"/admin/courses/:courseId/roles/:roleId/permissions/:permission",
-		"/admin/super-admins",
-	}))
-
-	api.RegisterHandlers(e, apiController)
-	apiController.RegisterCourseRoutes(e)
-	apiController.RegisterAdminRoutes(e, adminHomeworkHandler, adminTaskHandler, adminRoleHandler)
+	registerHTTPMiddleware(e, repositories)
+	registerHTTPRoutes(e, handlers)
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
-	metrics.EchoPrometheus(e)
-
 	httpServer := server.NewHTTPServer(addr, e)
 
 	return &App{
 		echo:            e,
 		db:              dbClient,
-		sessionRepo:     sessionRepo,
+		sessionRepo:     repositories.session,
 		httpServer:      httpServer,
 		shutdownTimeout: cfg.Server.ShutdownTimeout,
 		sessionCfg:      cfg.Session,

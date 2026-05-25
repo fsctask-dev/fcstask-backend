@@ -12,17 +12,17 @@ import (
 )
 
 type UserHandler struct {
-	userService *service.UserService
+	userService IUserService
 }
 
-func NewUserHandler(userService *service.UserService) *UserHandler {
+func NewUserHandler(userService IUserService) *UserHandler {
 	return &UserHandler{userService: userService}
 }
 
 func (h *UserHandler) CreateUser(ctx echo.Context) error {
 	var req api.CreateUserRequest
-	if err := ctx.Bind(&req); err != nil {
-		return badRequest(ctx, "Invalid request body")
+	if !bindRequest(ctx, &req, "Invalid request body") {
+		return nil
 	}
 
 	user, err := h.userService.CreateUser(ctx.Request().Context(), service.CreateUserInput{
