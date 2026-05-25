@@ -19,7 +19,7 @@ type IAdminHomeworkService interface {
 	SetDeadline(ctx context.Context, userID uuid.UUID, input service.SetDeadlineInput) (*model.Deadline, error)
 	UpdateDeadline(ctx context.Context, userID, deadlineID uuid.UUID, input service.UpdateDeadlineInput) (*model.Deadline, error)
 	DeleteDeadline(ctx context.Context, userID, deadlineID uuid.UUID) error
-	GetDeadlineByHomeworkID(ctx context.Context, hwID uuid.UUID) (*model.Deadline, error)
+	GetDeadlineByHomeworkID(ctx context.Context, userID, hwID uuid.UUID) (*model.Deadline, error)
 }
 
 type IAdminRoleService interface {

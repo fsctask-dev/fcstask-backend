@@ -245,13 +245,17 @@ func (s *AdminHomeworkService) SetDeadline(ctx context.Context, userID uuid.UUID
 	return deadline, nil
 }
 
-func (s *AdminHomeworkService) GetDeadlineByHomeworkID(ctx context.Context, hwID uuid.UUID) (*model.Deadline, error) {
+func (s *AdminHomeworkService) GetDeadlineByHomeworkID(ctx context.Context, userID, hwID uuid.UUID) (*model.Deadline, error) {
 	if hwID == uuid.Nil {
 		return nil, BadRequest("homework ID is required")
 	}
 
-	if _, err := s.homeworkRepo.GetByID(ctx, hwID); err != nil {
+	hw, err := s.homeworkRepo.GetByID(ctx, hwID)
+	if err != nil {
 		return nil, NotFound("Homework not found")
+	}
+	if err := RequireScopedPermission(ctx, s.roleRepo, userID, hw.CourseID, PermissionDeadlineRead); err != nil {
+		return nil, err
 	}
 
 	deadline, err := s.deadlineRepo.GetByHomeworkID(ctx, hwID)

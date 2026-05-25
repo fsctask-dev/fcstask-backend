@@ -196,12 +196,17 @@ func (h *AdminHomeworkHandler) PublishHomework(c echo.Context) error {
 
 // GET /api/homework/:hwId/deadline
 func (h *AdminHomeworkHandler) GetDeadlineByHomeworkID(c echo.Context) error {
+	user, ok := c.Get(UserContextKey).(*model.User)
+	if !ok || user == nil {
+		return unauthorized(c, "User not found")
+	}
+
 	hwID, err := uuid.Parse(c.Param("hwId"))
 	if err != nil {
 		return badRequest(c, "Invalid homework ID")
 	}
 
-	deadline, err := h.homeworkService.GetDeadlineByHomeworkID(c.Request().Context(), hwID)
+	deadline, err := h.homeworkService.GetDeadlineByHomeworkID(c.Request().Context(), user.ID, hwID)
 	if err != nil {
 		return serviceError(c, err)
 	}

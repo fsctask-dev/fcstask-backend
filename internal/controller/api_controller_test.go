@@ -194,6 +194,7 @@ func newTestController(userRepo *controllerUserRepo, sessionRepo *controllerSess
 		handler.NewUserHandler(userService),
 		handler.NewSessionHandler(sessionService, userService),
 		handler.NewCourseHandler(courseService),
+		nil,
 	)
 }
 

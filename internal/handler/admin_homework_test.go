@@ -88,8 +88,8 @@ func (m *MockAdminHomeworkService) DeleteDeadline(ctx context.Context, userID, d
 	return args.Error(0)
 }
 
-func (m *MockAdminHomeworkService) GetDeadlineByHomeworkID(ctx context.Context, hwID uuid.UUID) (*model.Deadline, error) {
-	args := m.Called(ctx, hwID)
+func (m *MockAdminHomeworkService) GetDeadlineByHomeworkID(ctx context.Context, userID, hwID uuid.UUID) (*model.Deadline, error) {
+	args := m.Called(ctx, userID, hwID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
