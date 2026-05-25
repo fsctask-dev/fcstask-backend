@@ -51,16 +51,22 @@ func New(cfg *config.Config) (*App, error) {
 	adminHomeworkService := service.NewAdminHomeworkService(homeworkRepo, deadlineRepo, roleRepo)
 	adminTaskService := service.NewAdminTaskService(taskRepo, homeworkRepo, roleRepo)
 	adminRoleService := service.NewAdminRoleService(roleRepo, userRepo)
+	namespaceService := service.NewNamespaceService(
+		repo.NewNamespaceRepository(dbClient),
+		userRepo,
+	)
 
 	adminHomeworkHandler := handler.NewAdminHomeworkHandler(adminHomeworkService)
 	adminTaskHandler := handler.NewAdminTaskHandler(adminTaskService)
 	adminRoleHandler := handler.NewAdminRoleHandler(adminRoleService)
+	namespaceHandler := handler.NewNamespaceHandler(namespaceService)
 
 	apiController := controller.NewAPIController(
 		handler.NewAuthHandler(authService),
 		handler.NewUserHandler(userService),
 		handler.NewSessionHandler(sessionService, userService),
 		handler.NewCourseHandler(courseService),
+		namespaceHandler,
 	)
 
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
@@ -72,6 +78,10 @@ func New(cfg *config.Config) (*App, error) {
 	e.Use(authmw.Auth(userRepo, sessionRepo, []string{
 		"/v1/api/me",
 		"/api/signout",
+		"/api/namespaces",
+		"/api/namespaces/:id",
+		"/api/namespaces/:id/users",
+		"/api/namespaces/:id/courses",
 		"/v1/sessions",
 		"/v1/users/sessions",
 		"/admin/courses/:courseId/homework",
@@ -91,6 +101,7 @@ func New(cfg *config.Config) (*App, error) {
 
 	api.RegisterHandlers(e, apiController)
 	apiController.RegisterCourseRoutes(e)
+	apiController.RegisterNamespaceRoutes(e)
 	apiController.RegisterAdminRoutes(e, adminHomeworkHandler, adminTaskHandler, adminRoleHandler)
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
