@@ -75,3 +75,9 @@ type TaskBoardSummary struct {
 	SolvedPercent int          `json:"solvedPercent"`
 	Groups        []BoardGroup `json:"groups"`
 }
+
+type LeaderboardEntry struct {
+    Username   string `json:"username"`
+    TotalScore int    `json:"totalScore"`
+    Rank       int    `json:"rank"`
+}
