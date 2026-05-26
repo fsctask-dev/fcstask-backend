@@ -22,8 +22,7 @@ type submitGradeRequest struct {
 	StudentID   uuid.UUID `json:"student_id"`
 	TaskID      uuid.UUID `json:"task_id"`
 	CourseID    uuid.UUID `json:"course_id"`
-	RawScore    int       `json:"raw_score"`
-	IsPassed    bool      `json:"is_passed"`
+	Status      string    `json:"status"`
 	SubmittedAt time.Time `json:"submitted_at"`
 }
 
@@ -53,8 +52,7 @@ func (h *CheckerHandler) SubmitGrade(c echo.Context) error {
 		StudentID:   req.StudentID,
 		TaskID:      req.TaskID,
 		CourseID:    req.CourseID,
-		RawScore:    req.RawScore,
-		IsPassed:    req.IsPassed,
+		Status:      req.Status,
 		SubmittedAt: submittedAt,
 	})
 	if err != nil {

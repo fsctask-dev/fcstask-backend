@@ -83,6 +83,10 @@ func (c *APIController) RegisterCourseRoutes(e *echo.Echo) {
 	e.POST("/api/courses/:courseId/join", c.courseHandler.JoinCourse)
 }
 
+func (c *APIController) RegisterCheckerRoutes(e *echo.Echo, checkerHandler *handler.CheckerHandler) {
+	e.POST("api/grades", checkerHandler.SubmitGrade)
+}
+
 func (c *APIController) RegisterAdminRoutes(
 	e *echo.Echo,
 	adminHomeworkHandler *handler.AdminHomeworkHandler,
@@ -98,6 +102,7 @@ func (c *APIController) RegisterAdminRoutes(
 	e.PUT("/admin/courses/:courseId/homework/:hwId/deadline", adminHomeworkHandler.SetDeadline)
 	e.PATCH("/admin/deadlines/:deadlineId", adminHomeworkHandler.UpdateDeadline)
 	e.DELETE("/admin/deadlines/:deadlineId", adminHomeworkHandler.DeleteDeadline)
+	e.PATCH("/admin/courses/:courseId/homework/:hwId/late-policy", adminHomeworkHandler.UpdateLatePolicy)
 
 	e.POST("/admin/courses/:courseId/homework/:hwId/tasks", adminTaskHandler.CreateTask)
 	e.GET("/admin/courses/:courseId/homework/:hwId/tasks", adminTaskHandler.ListTasks)

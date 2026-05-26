@@ -2,9 +2,11 @@ package service
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 
 	"fcstask-backend/internal/db/model"
 	"fcstask-backend/internal/db/repo"
@@ -365,6 +367,9 @@ func (s *AdminHomeworkService) UpdateLatePolicy(ctx context.Context, userID, HwI
 
 	existing, err := s.latePolicyRepo.GetByHwID(ctx, HwID)
 	if err != nil {
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, Internal("Failed to fetch late policy", err)
+		}
 		policy := &model.LatePolicy{
 			HwID:         HwID,
 			SoftDeadline: input.SoftDeadline,

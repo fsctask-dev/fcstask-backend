@@ -54,10 +54,12 @@ func New(cfg *config.Config) (*App, error) {
 	adminHomeworkService := service.NewAdminHomeworkService(homeworkRepo, deadlineRepo, roleRepo, latePolicyRepo)
 	adminTaskService := service.NewAdminTaskService(taskRepo, homeworkRepo, roleRepo)
 	adminRoleService := service.NewAdminRoleService(roleRepo, userRepo)
+	checkerService := service.NewCheckerService(taskRepo, homeworkRepo, studentScoreRepo, latePolicyRepo)
 
 	adminHomeworkHandler := handler.NewAdminHomeworkHandler(adminHomeworkService)
 	adminTaskHandler := handler.NewAdminTaskHandler(adminTaskService)
 	adminRoleHandler := handler.NewAdminRoleHandler(adminRoleService)
+	checkerHandler := handler.NewCheckerHandler(checkerService)
 
 	apiController := controller.NewAPIController(
 		handler.NewAuthHandler(authService),
@@ -97,6 +99,7 @@ func New(cfg *config.Config) (*App, error) {
 	api.RegisterHandlers(e, apiController)
 	apiController.RegisterCourseRoutes(e)
 	apiController.RegisterAdminRoutes(e, adminHomeworkHandler, adminTaskHandler, adminRoleHandler)
+	apiController.RegisterCheckerRoutes(e, checkerHandler)
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 	metrics.EchoPrometheus(e)

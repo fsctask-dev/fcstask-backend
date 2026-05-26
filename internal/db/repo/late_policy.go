@@ -11,9 +11,9 @@ import (
 
 type ILatePolicyRepo interface {
 	Create(ctx context.Context, policy *model.LatePolicy) error
-	GetByHwID(ctx context.Context, HwID uuid.UUID) (*model.LatePolicy, error)
+	GetByHwID(ctx context.Context, hwId uuid.UUID) (*model.LatePolicy, error)
 	Update(ctx context.Context, policy *model.LatePolicy) error
-	Delete(ctx context.Context, HwID uuid.UUID) error
+	Delete(ctx context.Context, hwId uuid.UUID) error
 }
 
 type LatePolicyRepository struct {
@@ -30,10 +30,10 @@ func (r *LatePolicyRepository) Create(ctx context.Context, policy *model.LatePol
 	return r.db.WithContext(ctx).Create(policy).Error
 }
 
-func (r *LatePolicyRepository) GetByHwID(ctx context.Context, HwID uuid.UUID) (*model.LatePolicy, error) {
+func (r *LatePolicyRepository) GetByHwID(ctx context.Context, hwId uuid.UUID) (*model.LatePolicy, error) {
 	var policy model.LatePolicy
 	err := r.db.WithContext(ctx).
-		Where("hw_id = ?", HwID).
+		Where("hw_id = ?", hwId).
 		First(&policy).Error
 	if err != nil {
 		return nil, err
@@ -45,8 +45,8 @@ func (r *LatePolicyRepository) Update(ctx context.Context, policy *model.LatePol
 	return r.db.WithContext(ctx).Save(policy).Error
 }
 
-func (r *LatePolicyRepository) Delete(ctx context.Context, HwID uuid.UUID) error {
+func (r *LatePolicyRepository) Delete(ctx context.Context, hwId uuid.UUID) error {
 	return r.db.WithContext(ctx).
-		Where("hw_id = ?", HwID).
+		Where("hw_id = ?", hwId).
 		Delete(&model.LatePolicy{}).Error
 }

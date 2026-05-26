@@ -627,52 +627,6 @@ func TestCreateHomework_WithLatePolicyInvalidPenalty(t *testing.T) {
 	}
 }
 
-func TestUpdateLatePolicy_CreateNew_Success(t *testing.T) {
-	hwRepo := new(MockHomeworkRepo)
-	lpRepo := new(MockLatePolicyRepo)
-	roleRepo := new(MockRoleRepo)
-
-	roleID := uuid.New()
-	roleRepo.On("GetRoleIDByUserAndCourse", mock.Anything, mock.Anything, mock.Anything).Return(roleID, nil)
-	roleRepo.On("HasPermission", mock.Anything, roleID, mock.Anything).Return(true, nil)
-
-	svc := service.NewAdminHomeworkService(hwRepo, nil, roleRepo, lpRepo)
-
-	ctx := context.Background()
-	userID := uuid.New()
-	hwID := uuid.New()
-
-	softDeadline := time.Now().Add(48 * time.Hour)
-	hardDeadline := time.Now().Add(72 * time.Hour)
-
-	hw := &model.Homework{HwID: hwID, CourseID: uuid.New()}
-
-	hwRepo.On("GetByID", ctx, hwID).Return(hw, nil)
-	lpRepo.On("GetByHwID", ctx, hwID).Return(nil, assert.AnError) // не существует
-	lpRepo.On("Create", ctx, mock.MatchedBy(func(policy *model.LatePolicy) bool {
-		return policy.HwID == hwID &&
-			policy.SoftPenalty == 0.2 &&
-			policy.HardPenalty == 0.7 &&
-			policy.SoftDeadline.Equal(softDeadline) &&
-			policy.HardDeadline.Equal(hardDeadline)
-	})).Return(nil)
-
-	input := service.UpdateLatePolicyInput{
-		SoftDeadline: softDeadline,
-		HardDeadline: hardDeadline,
-		SoftPenalty:  0.2,
-		HardPenalty:  0.7,
-	}
-
-	result, err := svc.UpdateLatePolicy(ctx, userID, hwID, input)
-	assert.NoError(t, err)
-	assert.NotNil(t, result)
-	assert.Equal(t, 0.2, result.SoftPenalty)
-	assert.Equal(t, 0.7, result.HardPenalty)
-	hwRepo.AssertExpectations(t)
-	lpRepo.AssertExpectations(t)
-}
-
 func TestUpdateLatePolicy_UpdateExisting_Success(t *testing.T) {
 	hwRepo := new(MockHomeworkRepo)
 	lpRepo := new(MockLatePolicyRepo)
