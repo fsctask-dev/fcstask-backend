@@ -150,6 +150,6 @@ ingress:
   hosts:
     - host: fcs-task-dev.turbomuza.ru
       paths:
-        - path: /
+        - path: /api
           pathType: Prefix
   tls: []
