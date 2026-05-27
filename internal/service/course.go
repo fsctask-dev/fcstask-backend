@@ -174,7 +174,7 @@ func (s *CourseService) GetCourseBoard(ctx context.Context, userID uuid.UUID, co
 		return nil, err
 	}
 
-	board, ok, err := s.CourseRepo.GetCourseBoard(ctx, courseID)
+	board, ok, err := s.CourseRepo.GetCourseBoard(ctx, courseID, userID)
 	if err != nil {
 		return nil, Internal("Failed to get course board", err)
 	}

@@ -18,7 +18,7 @@ type CourseRepositoryInterface interface {
 	CreateCourse(ctx context.Context, course models.Course) (*models.Course, error)
 	UpdateCourse(ctx context.Context, courseID string, course models.Course) (*models.Course, error)
 	DeleteCourse(ctx context.Context, courseID string) error
-	GetCourseBoard(ctx context.Context, courseID uuid.UUID, userID uuid.UUID) (*models.TaskBoardSummary, bool, error)
+	GetCourseBoard(ctx context.Context, courseID string, userID uuid.UUID) (*models.TaskBoardSummary, bool, error)
 	GetLeaderboard(ctx context.Context, courseID uuid.UUID) ([]models.LeaderboardEntry, error)
 }
 
@@ -111,7 +111,7 @@ func (r *CourseRepository) DeleteCourse(ctx context.Context, courseID string) er
 		Delete(&models.Course{}).Error
 }
 
-func (r *CourseRepository) GetCourseBoard(ctx context.Context, courseID uuid.UUID, userID uuid.UUID) (*models.TaskBoardSummary, bool, error) {
+func (r *CourseRepository) GetCourseBoard(ctx context.Context, courseID string, userID uuid.UUID) (*models.TaskBoardSummary, bool, error) {
 	return nil, false, nil
 }
 
