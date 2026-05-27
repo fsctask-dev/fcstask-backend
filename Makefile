@@ -12,6 +12,7 @@ GO_MIN_VERSION := 1.26
 
 .PHONY: check-go check-docker init tidy migrate install-tools gen test test-integration-db postgreplication-up \
 	deps db-up db-down db-wait up down stop-api run-api \
+	monitoring-up monitoring-down monitoring-logs load-test \
 	docker-build docker-run docker-test docker-push ci-local ci
 
 check-go:
@@ -149,6 +150,31 @@ postgreplication-up: db-up
 
 test-integration-db:
 	$(GO) test -tags=integration -count=1 -v ./internal/db/...
+
+COMPOSE_MONITORING ?= docker compose -f docker-compose.yaml --profile monitoring
+
+monitoring-up: check-docker
+	@echo "Starting monitoring stack (prometheus, alertmanager, exporters)..."
+	@$(COMPOSE_MONITORING) up -d
+	@echo "Stack is up. UIs:"
+	@echo "  Prometheus:        http://localhost:9090"
+	@echo "  Alertmanager:      http://localhost:9093"
+	@echo "  Postgres exporter: http://localhost:9187/metrics"
+	@echo "  SQL exporter:      http://localhost:9399/metrics"
+	@echo "Make sure the app is running on host:8081/metrics (run: make run-api)"
+
+monitoring-down:
+	@echo "Stopping monitoring stack..."
+	@$(COMPOSE_MONITORING) stop prometheus alertmanager postgres-exporter sql-exporter
+	@$(COMPOSE_MONITORING) rm -f prometheus alertmanager postgres-exporter sql-exporter
+	@echo "Monitoring stack stopped (Postgres primary/replica left running)"
+
+monitoring-logs:
+	@$(COMPOSE_MONITORING) logs -f prometheus alertmanager postgres-exporter sql-exporter
+
+load-test:
+	@echo "Running smoke load against http://localhost:8080 ..."
+	@bash scripts/smoke-load.sh
 
 docker-build:
 	@echo "🐳 Building Docker image..."

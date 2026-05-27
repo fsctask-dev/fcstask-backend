@@ -2,12 +2,14 @@
 # Master: localhost:6432   Replica (read-only): localhost:6433
 # User / password / database: postgres / postgres / fcstask
 
+# run: make up
+
 services:
   postgres-primary:
     image: docker.io/bitnami/postgresql:latest
     container_name: fcstask-postgres-primary
     restart: unless-stopped
-    networks: [fcstask-pg]
+    networks: [fcstask-net]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d fcstask"]
       interval: 5s
@@ -15,12 +17,12 @@ services:
       retries: 15
       start_period: 20s
     environment:
-      POSTGRESQL_USERNAME: postgres
-      POSTGRESQL_PASSWORD: postgres
-      POSTGRESQL_DATABASE: fcstask
+      POSTGRESQL_USERNAME: ${POSTGRES_USER:-postgres}
+      POSTGRESQL_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRESQL_DATABASE: ${POSTGRES_DB:-fcstask}
       POSTGRESQL_REPLICATION_MODE: master
-      POSTGRESQL_REPLICATION_USER: replicator
-      POSTGRESQL_REPLICATION_PASSWORD: replicatorpass
+      POSTGRESQL_REPLICATION_USER: ${POSTGRES_REPLICATION_USER:-replicator}
+      POSTGRESQL_REPLICATION_PASSWORD: ${POSTGRES_REPLICATION_PASSWORD:-replicatorpass}
     ports:
       - "6432:5432"
     volumes:
@@ -30,27 +32,105 @@ services:
     image: docker.io/bitnami/postgresql:latest
     container_name: fcstask-postgres-replica
     restart: unless-stopped
-    networks: [fcstask-pg]
+    networks: [fcstask-net]
     depends_on:
       postgres-primary:
         condition: service_healthy
     environment:
-      POSTGRESQL_USERNAME: postgres
-      POSTGRESQL_PASSWORD: postgres
-      POSTGRESQL_DATABASE: fcstask
+      POSTGRESQL_USERNAME: ${POSTGRES_USER:-postgres}
+      POSTGRESQL_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRESQL_DATABASE: ${POSTGRES_DB:-fcstask}
       POSTGRESQL_REPLICATION_MODE: slave
       POSTGRESQL_MASTER_HOST: postgres-primary
       POSTGRESQL_MASTER_PORT_NUMBER: "5432"
-      POSTGRESQL_REPLICATION_USER: replicator
-      POSTGRESQL_REPLICATION_PASSWORD: replicatorpass
+      POSTGRESQL_REPLICATION_USER: ${POSTGRES_REPLICATION_USER:-replicator}
+      POSTGRESQL_REPLICATION_PASSWORD: ${POSTGRES_REPLICATION_PASSWORD:-replicatorpass}
     ports:
       - "6433:5432"
     volumes:
       - postgres_replica_data:/bitnami/postgresql
 
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    container_name: fcstask-prometheus
+    profiles: ["monitoring"]
+    restart: unless-stopped
+    networks: [fcstask-net]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --config.expand-env=true
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+      - --storage.tsdb.retention.size=5GB
+      - --web.enable-lifecycle
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/rules.yml:/etc/prometheus/rules.yml:ro
+      - prometheus_data:/prometheus
+    env_file:
+      - .env
+    ports:
+      - "9090:9090"
+
+  alertmanager:
+    image: quay.io/prometheus/alertmanager:v0.28.1
+    container_name: fcstask-alertmanager
+    profiles: ["monitoring"]
+    restart: unless-stopped
+    networks: [fcstask-net]
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+    volumes:
+      - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    env_file:
+      - .env
+    ports:
+      - "9093:9093"
+
+  postgres-exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.17.1
+    container_name: fcstask-postgres-exporter
+    profiles: ["monitoring"]
+    restart: unless-stopped
+    networks: [fcstask-net]
+    depends_on:
+      postgres-primary:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      DATA_SOURCE_NAME: ${DATA_SOURCE_NAME:-postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres-primary:5432/${POSTGRES_DB:-fcstask}?sslmode=disable}
+    ports:
+      - "9187:9187"
+
+  sql-exporter:
+    image: burningalchemist/sql_exporter:0.18
+    container_name: fcstask-sql-exporter
+    profiles: ["monitoring"]
+    restart: unless-stopped
+    networks: [fcstask-net]
+    depends_on:
+      postgres-primary:
+        condition: service_healthy
+    command:
+      - --config.file=/etc/sql_exporter/sql_exporter.yaml
+    volumes:
+      - ./monitoring/sql-exporter/sql_exporter.yaml:/etc/sql_exporter/sql_exporter.yaml:ro
+      - ./monitoring/sql-exporter/pg_fcstask.collector.yaml:/etc/sql_exporter/pg_fcstask.collector.yaml:ro
+    env_file:
+      - .env
+    ports:
+      - "9399:9399"
+
 networks:
-  fcstask-pg: {}
+  fcstask-net: {}
 
 volumes:
   postgres_primary_data:
   postgres_replica_data:
+  prometheus_data:
+  alertmanager_data:
