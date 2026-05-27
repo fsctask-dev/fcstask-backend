@@ -45,13 +45,23 @@ groups:
         annotations:
           summary: "p95 latency > 1s for {{ $labels.route }}"
 
-      - alert: DBPoolNearExhaustion
-        expr: fcstask_db_pool_in_use / fcstask_db_pool_max_open > 0.9
+      - alert: DBPoolExhausted
+        expr: fcstask_db_pool_idle == 0 and fcstask_db_pool_open > 0
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "DB pool {{ $labels.role }}#{{ $labels.replica_index }} > 90% in_use"
+          summary: "DB pool {{ $labels.role }}#{{ $labels.replica_index }} has no idle connections (all in use)"
+          description: "in_use={{ $value }}, no idle connections for 5 minutes — pool likely under-sized or queries are slow."
+
+      - alert: DBPoolWaitGrowing
+        expr: rate(fcstask_db_pool_wait_count_total[5m]) > 1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "DB pool {{ $labels.role }}#{{ $labels.replica_index }} has consistent wait queue"
+          description: "{{ $value }} waits/sec over last 10 minutes — increase pool size or speed up queries."
 
       - alert: PostgresExporterDown
         expr: up{job="postgres-exporter"} == 0
