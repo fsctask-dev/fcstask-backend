@@ -70,11 +70,11 @@ deps: check-go init tidy install-tools
 	@$(GO) mod download
 	@echo "Go dependencies ready"
 
-# Поднять всё с нуля: deps → Postgres (docker) → codegen → миграции → API (foreground)
-up: check-go check-docker deps db-up db-wait gen migrate run-api
+# Поднять всё с нуля: deps → Postgres (docker) → monitoring stack → codegen → миграции → API (foreground)
+up: check-go check-docker deps db-up db-wait monitoring-up gen migrate run-api
 
-# Остановить API и контейнеры Postgres
-down: stop-api db-down
+# Остановить API, monitoring и контейнеры Postgres
+down: stop-api monitoring-down db-down
 	@echo "Development stack stopped"
 
 stop-api:
