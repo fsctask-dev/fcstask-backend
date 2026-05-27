@@ -55,13 +55,22 @@ func newAuthMetrics(reg prometheus.Registerer) *AuthMetrics {
 }
 
 func (m *AuthMetrics) IncSignup(outcome AuthOutcome) {
+	if m == nil {
+		return
+	}
 	m.SignupsTotal.WithLabelValues(string(outcome)).Inc()
 }
 
 func (m *AuthMetrics) IncSignIn(outcome AuthOutcome) {
+	if m == nil {
+		return
+	}
 	m.SignInsTotal.WithLabelValues(string(outcome)).Inc()
 }
 
 func (m *AuthMetrics) IncSignOut() {
+	if m == nil {
+		return
+	}
 	m.SignOutsTotal.Inc()
 }

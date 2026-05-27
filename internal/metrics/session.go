@@ -60,12 +60,30 @@ func newSessionMetrics(reg prometheus.Registerer) *SessionMetrics {
 	}
 }
 
-func (m *SessionMetrics) IncCreated() { m.CreatedTotal.Inc() }
+func (m *SessionMetrics) IncCreated() {
+	if m == nil {
+		return
+	}
+	m.CreatedTotal.Inc()
+}
 
 func (m *SessionMetrics) IncRevoked(reason SessionRevokeReason) {
+	if m == nil {
+		return
+	}
 	m.RevokedTotal.WithLabelValues(string(reason)).Inc()
 }
 
-func (m *SessionMetrics) AddCleanupDeleted(n int64) { m.CleanupDeletedTotal.Add(float64(n)) }
+func (m *SessionMetrics) AddCleanupDeleted(n int64) {
+	if m == nil {
+		return
+	}
+	m.CleanupDeletedTotal.Add(float64(n))
+}
 
-func (m *SessionMetrics) IncCleanupError() { m.CleanupErrorsTotal.Inc() }
+func (m *SessionMetrics) IncCleanupError() {
+	if m == nil {
+		return
+	}
+	m.CleanupErrorsTotal.Inc()
+}

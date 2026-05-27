@@ -22,6 +22,7 @@ const (
 
 	AdminActionAssignRole        AdminAction = "assign_role"
 	AdminActionRevokeRole        AdminAction = "revoke_role"
+	AdminActionRemoveParticipant AdminAction = "remove_participant"
 	AdminActionGrantPermission   AdminAction = "grant_permission"
 	AdminActionRevokePermission  AdminAction = "revoke_permission"
 	AdminActionPromoteSuperAdmin AdminAction = "promote_super_admin"
@@ -56,5 +57,8 @@ func newAdminMetrics(reg prometheus.Registerer) *AdminMetrics {
 }
 
 func (m *AdminMetrics) IncAction(action AdminAction, outcome AdminOutcome) {
+	if m == nil {
+		return
+	}
 	m.ActionTotal.WithLabelValues(string(action), string(outcome)).Inc()
 }

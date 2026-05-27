@@ -45,10 +45,16 @@ func newCourseMetrics(reg prometheus.Registerer) *CourseMetrics {
 }
 
 func (m *CourseMetrics) IncJoin(outcome JoinOutcome) {
+	if m == nil {
+		return
+	}
 	m.JoinTotal.WithLabelValues(string(outcome)).Inc()
 }
 
 func (m *CourseMetrics) IncGradeRecorded(isPassed bool) {
+	if m == nil {
+		return
+	}
 	v := "false"
 	if isPassed {
 		v = "true"

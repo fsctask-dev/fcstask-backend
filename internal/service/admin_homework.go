@@ -8,12 +8,15 @@ import (
 
 	"fcstask-backend/internal/db/model"
 	"fcstask-backend/internal/db/repo"
+	"fcstask-backend/internal/metrics"
 )
 
 type AdminHomeworkService struct {
 	homeworkRepo repo.IHomeworkRepo
 	deadlineRepo repo.IDeadlineRepo
 	roleRepo     repo.IRoleRepo
+
+	adminMetrics *metrics.AdminMetrics
 }
 
 func NewAdminHomeworkService(homeworkRepo repo.IHomeworkRepo, deadlineRepo repo.IDeadlineRepo, roleRepo repo.IRoleRepo) *AdminHomeworkService {
@@ -22,6 +25,11 @@ func NewAdminHomeworkService(homeworkRepo repo.IHomeworkRepo, deadlineRepo repo.
 		deadlineRepo: deadlineRepo,
 		roleRepo:     roleRepo,
 	}
+}
+
+func (s *AdminHomeworkService) WithMetrics(m *metrics.AdminMetrics) *AdminHomeworkService {
+	s.adminMetrics = m
+	return s
 }
 
 type CreateHomeworkInput struct {
@@ -50,7 +58,8 @@ type UpdateDeadlineInput struct {
 	DueDate     string // RFC3339
 }
 
-func (s *AdminHomeworkService) CreateHomework(ctx context.Context, userID uuid.UUID, input CreateHomeworkInput) (*model.Homework, error) {
+func (s *AdminHomeworkService) CreateHomework(ctx context.Context, userID uuid.UUID, input CreateHomeworkInput) (hw *model.Homework, err error) {
+	defer func() { s.adminMetrics.IncAction(metrics.AdminActionCreateHomework, adminOutcome(err)) }()
 	if input.CourseID == uuid.Nil {
 		return nil, BadRequest("course_id is required")
 	}
@@ -80,7 +89,7 @@ func (s *AdminHomeworkService) CreateHomework(ctx context.Context, userID uuid.U
 	if err != nil {
 		return nil, err
 	}
-	hw := &model.Homework{
+	hw = &model.Homework{
 		CourseID:  input.CourseID,
 		StartDate: startDate,
 		EndDate:   endDate,
@@ -125,8 +134,9 @@ func (s *AdminHomeworkService) ListHomework(ctx context.Context, userID, courseI
 	return hws, nil
 }
 
-func (s *AdminHomeworkService) UpdateHomework(ctx context.Context, userID, hwID uuid.UUID, input UpdateHomeworkInput) (*model.Homework, error) {
-	hw, err := s.GetHomework(ctx, userID, hwID)
+func (s *AdminHomeworkService) UpdateHomework(ctx context.Context, userID, hwID uuid.UUID, input UpdateHomeworkInput) (hw *model.Homework, err error) {
+	defer func() { s.adminMetrics.IncAction(metrics.AdminActionUpdateHomework, adminOutcome(err)) }()
+	hw, err = s.GetHomework(ctx, userID, hwID)
 	if err != nil {
 		return nil, err
 	}
@@ -164,7 +174,9 @@ func (s *AdminHomeworkService) UpdateHomework(ctx context.Context, userID, hwID 
 	return hw, nil
 }
 
-func (s *AdminHomeworkService) DeleteHomework(ctx context.Context, userID, hwID uuid.UUID) error {
+func (s *AdminHomeworkService) DeleteHomework(ctx context.Context, userID, hwID uuid.UUID) (err error) {
+	defer func() { s.adminMetrics.IncAction(metrics.AdminActionDeleteHomework, adminOutcome(err)) }()
+
 	if hwID == uuid.Nil {
 		return BadRequest("homework ID is required")
 	}
@@ -184,8 +196,9 @@ func (s *AdminHomeworkService) DeleteHomework(ctx context.Context, userID, hwID 
 	return nil
 }
 
-func (s *AdminHomeworkService) PublishHomework(ctx context.Context, userID, hwID uuid.UUID, isPublic bool) (*model.Homework, error) {
-	hw, err := s.GetHomework(ctx, userID, hwID)
+func (s *AdminHomeworkService) PublishHomework(ctx context.Context, userID, hwID uuid.UUID, isPublic bool) (hw *model.Homework, err error) {
+	defer func() { s.adminMetrics.IncAction(metrics.AdminActionPublishHomework, adminOutcome(err)) }()
+	hw, err = s.GetHomework(ctx, userID, hwID)
 	if err != nil {
 		return nil, err
 	}
@@ -202,7 +215,8 @@ func (s *AdminHomeworkService) PublishHomework(ctx context.Context, userID, hwID
 	return hw, nil
 }
 
-func (s *AdminHomeworkService) SetDeadline(ctx context.Context, userID uuid.UUID, input SetDeadlineInput) (*model.Deadline, error) {
+func (s *AdminHomeworkService) SetDeadline(ctx context.Context, userID uuid.UUID, input SetDeadlineInput) (deadline *model.Deadline, err error) {
+	defer func() { s.adminMetrics.IncAction(metrics.AdminActionSetDeadline, adminOutcome(err)) }()
 	if input.CourseID == uuid.Nil {
 		return nil, BadRequest("course_id is required")
 	}
@@ -225,7 +239,7 @@ func (s *AdminHomeworkService) SetDeadline(ctx context.Context, userID uuid.UUID
 		return nil, err
 	}
 
-	deadline := &model.Deadline{
+	deadline = &model.Deadline{
 		Title:       input.Title,
 		Description: stringPtr(input.Description),
 		CourseID:    input.CourseID,
@@ -240,12 +254,14 @@ func (s *AdminHomeworkService) SetDeadline(ctx context.Context, userID uuid.UUID
 	return deadline, nil
 }
 
-func (s *AdminHomeworkService) UpdateDeadline(ctx context.Context, userID, deadlineID uuid.UUID, input UpdateDeadlineInput) (*model.Deadline, error) {
+func (s *AdminHomeworkService) UpdateDeadline(ctx context.Context, userID, deadlineID uuid.UUID, input UpdateDeadlineInput) (deadline *model.Deadline, err error) {
+	defer func() { s.adminMetrics.IncAction(metrics.AdminActionSetDeadline, adminOutcome(err)) }()
+
 	if deadlineID == uuid.Nil {
 		return nil, BadRequest("deadline ID is required")
 	}
 
-	deadline, err := s.deadlineRepo.GetByID(ctx, deadlineID)
+	deadline, err = s.deadlineRepo.GetByID(ctx, deadlineID)
 	if err != nil {
 		return nil, NotFound("Deadline not found")
 	}
@@ -274,7 +290,8 @@ func (s *AdminHomeworkService) UpdateDeadline(ctx context.Context, userID, deadl
 	return deadline, nil
 }
 
-func (s *AdminHomeworkService) DeleteDeadline(ctx context.Context, userID, deadlineID uuid.UUID) error {
+func (s *AdminHomeworkService) DeleteDeadline(ctx context.Context, userID, deadlineID uuid.UUID) (err error) {
+	defer func() { s.adminMetrics.IncAction(metrics.AdminActionDeleteDeadline, adminOutcome(err)) }()
 	if deadlineID == uuid.Nil {
 		return BadRequest("deadline ID is required")
 	}
