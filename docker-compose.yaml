@@ -58,27 +58,10 @@ services:
     networks: [fcstask-net]
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    # using `sed` at container startup so secrets stay in `.env` (not in the repo).
-    entrypoint:
-      - /bin/sh
-      - -c
-      - |
-        set -eu
-        : "$${GRAFANA_CLOUD_REMOTE_WRITE_URL:?GRAFANA_CLOUD_REMOTE_WRITE_URL is not set}"
-        : "$${GRAFANA_CLOUD_REMOTE_WRITE_USERNAME:?GRAFANA_CLOUD_REMOTE_WRITE_USERNAME is not set}"
-        : "$${GRAFANA_CLOUD_REMOTE_WRITE_PASSWORD:?GRAFANA_CLOUD_REMOTE_WRITE_PASSWORD is not set}"
-        sed \
-          -e "s|\$${GRAFANA_CLOUD_REMOTE_WRITE_URL}|$${GRAFANA_CLOUD_REMOTE_WRITE_URL}|g" \
-          -e "s|\$${GRAFANA_CLOUD_REMOTE_WRITE_USERNAME}|$${GRAFANA_CLOUD_REMOTE_WRITE_USERNAME}|g" \
-          -e "s|\$${GRAFANA_CLOUD_REMOTE_WRITE_PASSWORD}|$${GRAFANA_CLOUD_REMOTE_WRITE_PASSWORD}|g" \
-          /etc/prometheus/prometheus.yml.tmpl > /tmp/prometheus.yml
-        exec /bin/prometheus \
-          --config.file=/tmp/prometheus.yml \
-          --storage.tsdb.path=/prometheus \
-          --storage.tsdb.retention.time=7d \
-          --storage.tsdb.retention.size=5GB \
-          --web.enable-lifecycle
+    # render config from template (sed) at container startup so secrets stay in .env
+    entrypoint: ["/bin/sh", "/etc/prometheus/entrypoint.sh"]
     volumes:
+      - ./monitoring/prometheus/entrypoint.sh:/etc/prometheus/entrypoint.sh:ro
       - ./monitoring/prometheus/prometheus.yml.tmpl:/etc/prometheus/prometheus.yml.tmpl:ro
       - ./monitoring/prometheus/rules.yml:/etc/prometheus/rules.yml:ro
       - prometheus_data:/prometheus
