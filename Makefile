@@ -172,10 +172,6 @@ monitoring-down:
 monitoring-logs:
 	@$(COMPOSE_MONITORING) logs -f prometheus alertmanager postgres-exporter sql-exporter
 
-load-test:
-	@echo "Running smoke load against http://localhost:8080 ..."
-	@bash scripts/smoke-load.sh
-
 docker-build:
 	@echo "🐳 Building Docker image..."
 	@docker build -t $(DOCKER_IMAGE_NAME):$(DOCKER_IMAGE_TAG) .
