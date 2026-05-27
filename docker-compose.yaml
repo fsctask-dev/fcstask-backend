@@ -58,15 +58,28 @@ services:
     networks: [fcstask-net]
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    command:
-      - --config.file=/etc/prometheus/prometheus.yml
-      - --config.expand-env=true
-      - --storage.tsdb.path=/prometheus
-      - --storage.tsdb.retention.time=7d
-      - --storage.tsdb.retention.size=5GB
-      - --web.enable-lifecycle
+    # using `sed` at container startup so secrets stay in `.env` (not in the repo).
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+        : "$${GRAFANA_CLOUD_REMOTE_WRITE_URL:?GRAFANA_CLOUD_REMOTE_WRITE_URL is not set}"
+        : "$${GRAFANA_CLOUD_REMOTE_WRITE_USERNAME:?GRAFANA_CLOUD_REMOTE_WRITE_USERNAME is not set}"
+        : "$${GRAFANA_CLOUD_REMOTE_WRITE_PASSWORD:?GRAFANA_CLOUD_REMOTE_WRITE_PASSWORD is not set}"
+        sed \
+          -e "s|\$${GRAFANA_CLOUD_REMOTE_WRITE_URL}|$${GRAFANA_CLOUD_REMOTE_WRITE_URL}|g" \
+          -e "s|\$${GRAFANA_CLOUD_REMOTE_WRITE_USERNAME}|$${GRAFANA_CLOUD_REMOTE_WRITE_USERNAME}|g" \
+          -e "s|\$${GRAFANA_CLOUD_REMOTE_WRITE_PASSWORD}|$${GRAFANA_CLOUD_REMOTE_WRITE_PASSWORD}|g" \
+          /etc/prometheus/prometheus.yml.tmpl > /tmp/prometheus.yml
+        exec /bin/prometheus \
+          --config.file=/tmp/prometheus.yml \
+          --storage.tsdb.path=/prometheus \
+          --storage.tsdb.retention.time=7d \
+          --storage.tsdb.retention.size=5GB \
+          --web.enable-lifecycle
     volumes:
-      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/prometheus.yml.tmpl:/etc/prometheus/prometheus.yml.tmpl:ro
       - ./monitoring/prometheus/rules.yml:/etc/prometheus/rules.yml:ro
       - prometheus_data:/prometheus
     env_file:
@@ -123,6 +136,8 @@ services:
       - ./monitoring/sql-exporter/pg_fcstask.collector.yaml:/etc/sql_exporter/pg_fcstask.collector.yaml:ro
     env_file:
       - .env
+    environment:
+      DATA_SOURCE_NAME: ${DATA_SOURCE_NAME:-postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres-primary:5432/${POSTGRES_DB:-fcstask}?sslmode=disable}
     ports:
       - "9399:9399"
 
