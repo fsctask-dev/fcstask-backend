@@ -4,18 +4,17 @@ import (
 	"net/http"
 
 	"github.com/labstack/echo/v4"
-	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"fcstask-backend/internal/api"
 	"fcstask-backend/internal/service"
 )
 
 type SessionHandler struct {
-	sessionService *service.SessionService
-	userService    *service.UserService
+	sessionService ISessionService
+	userService    IUserService
 }
 
-func NewSessionHandler(sessionService *service.SessionService, userService *service.UserService) *SessionHandler {
+func NewSessionHandler(sessionService ISessionService, userService IUserService) *SessionHandler {
 	return &SessionHandler{sessionService: sessionService, userService: userService}
 }
 
@@ -30,22 +29,8 @@ func (h *SessionHandler) GetSessions(ctx echo.Context, params api.GetSessionsPar
 		return serviceError(ctx, err)
 	}
 
-	items := make([]sessionWithUserResponse, 0, len(sessions))
-	for _, s := range sessions {
-		items = append(items, sessionWithUserResponse{
-			sessionResponse: sessionResponse{
-				Id:        openapi_types.UUID(s.ID),
-				Ip:        s.IP,
-				UserAgent: s.UserAgent,
-				CreatedAt: s.CreatedAt,
-				UpdatedAt: s.UpdatedAt,
-			},
-			User: userToAPI(&s.User),
-		})
-	}
-
 	return ctx.JSON(http.StatusOK, paginatedSessionsResponse{
-		Items:  items,
+		Items:  sessionResultsToAPI(sessions),
 		Total:  total,
 		Limit:  limitOrDefault(params.Limit),
 		Offset: offset,
@@ -63,27 +48,8 @@ func (h *SessionHandler) GetUsersWithSessions(ctx echo.Context, params api.GetUs
 		return serviceError(ctx, err)
 	}
 
-	items := make([]userWithSessionsResponse, 0, len(users))
-	for _, u := range users {
-		sessions := make([]sessionResponse, 0, len(u.Sessions))
-		for _, s := range u.Sessions {
-			sessions = append(sessions, sessionResponse{
-				Id:        openapi_types.UUID(s.ID),
-				Ip:        s.IP,
-				UserAgent: s.UserAgent,
-				CreatedAt: s.CreatedAt,
-				UpdatedAt: s.UpdatedAt,
-			})
-		}
-
-		items = append(items, userWithSessionsResponse{
-			User:     userToAPI(&u),
-			Sessions: sessions,
-		})
-	}
-
 	return ctx.JSON(http.StatusOK, paginatedUsersWithSessionsResponse{
-		Items:  items,
+		Items:  userSessionsResultsToAPI(users),
 		Total:  total,
 		Limit:  limitOrDefault(params.Limit),
 		Offset: offset,

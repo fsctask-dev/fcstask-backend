@@ -58,8 +58,8 @@ func (m *mockCourseRepo) GetCourseBoard(ctx context.Context, courseID string) (*
 }
 
 func (m *mockCourseRepo) GetLeaderboard(ctx context.Context, courseID uuid.UUID) ([]models.LeaderboardEntry, error) {
-    args := m.Called(ctx, courseID)
-    return args.Get(0).([]models.LeaderboardEntry), args.Error(1)
+	args := m.Called(ctx, courseID)
+	return args.Get(0).([]models.LeaderboardEntry), args.Error(1)
 }
 
 type mockRoleRepo struct {
@@ -236,6 +236,47 @@ func TestCreateCourse_ValidationErrors(t *testing.T) {
 			assert.Equal(t, "bad_request", svcErr.Code)
 		})
 	}
+}
+
+func TestCanReadCourse_PublicCourse(t *testing.T) {
+	svc, _, _ := setupService()
+
+	allowed, err := svc.CanReadCourse(context.Background(), uuid.New(), &models.Course{
+		ID:   uuid.New(),
+		Type: models.CourseTypePublic,
+	})
+
+	assert.NoError(t, err)
+	assert.True(t, allowed)
+}
+
+func TestCanReadCourse_PrivateCourseAllowed(t *testing.T) {
+	svc, _, rRepo := setupService()
+	userID := uuid.New()
+	roleID := uuid.New()
+	course := &models.Course{ID: uuid.New(), Type: models.CourseTypePrivate}
+
+	rRepo.On("GetRoleIDByUserAndCourse", mock.Anything, userID, course.ID).Return(roleID, nil).Once()
+	rRepo.On("HasPermission", mock.Anything, roleID, PermissionHomeworkRead).Return(true, nil).Once()
+
+	allowed, err := svc.CanReadCourse(context.Background(), userID, course)
+
+	assert.NoError(t, err)
+	assert.True(t, allowed)
+}
+
+func TestCanReadCourse_PrivateCourseDenied(t *testing.T) {
+	svc, _, rRepo := setupService()
+	userID := uuid.New()
+	course := &models.Course{ID: uuid.New(), Type: models.CourseTypePrivate}
+
+	rRepo.On("GetRoleIDByUserAndCourse", mock.Anything, userID, course.ID).Return(uuid.Nil, gorm.ErrRecordNotFound).Once()
+	rRepo.On("GetRoleIDByUserAndCourse", mock.Anything, userID, uuid.Nil).Return(uuid.Nil, gorm.ErrRecordNotFound).Once()
+
+	allowed, err := svc.CanReadCourse(context.Background(), userID, course)
+
+	assert.NoError(t, err)
+	assert.False(t, allowed)
 }
 
 // ==================== UpdateCourse ====================

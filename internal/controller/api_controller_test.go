@@ -184,7 +184,7 @@ func (r *controllerCourseRepo) GetCourseBoard(ctx context.Context, courseID stri
 }
 
 func (r *controllerCourseRepo) GetLeaderboard(ctx context.Context, courseID uuid.UUID) ([]models.LeaderboardEntry, error) {
-    return nil, nil
+	return nil, nil
 }
 
 func newTestController(userRepo *controllerUserRepo, sessionRepo *controllerSessionRepo, courseRepo *controllerCourseRepo) *APIController {
@@ -246,7 +246,7 @@ func TestAPIController_GetUserByID(t *testing.T) {
 	assert.Equal(t, userID, uuid.UUID(resp.Id))
 }
 
-func TestAPIController_RegisterCourseRoutes(t *testing.T) {
+func TestRegisterRoutes(t *testing.T) {
 	e := echo.New()
 	controller := newTestController(
 		&controllerUserRepo{},
@@ -266,7 +266,7 @@ func TestAPIController_RegisterCourseRoutes(t *testing.T) {
 			},
 		}},
 	)
-	controller.RegisterCourseRoutes(e)
+	RegisterRoutes(e, controller, nil, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/courses/go", nil)
 	rec := httptest.NewRecorder()

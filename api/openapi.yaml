@@ -153,6 +153,8 @@ paths:
     get:
       operationId: GetSessions
       summary: Get all active sessions with user data (paginated)
+      security:
+        - BearerAuth: []
       parameters:
         - name: limit
           in: query
@@ -195,6 +197,8 @@ paths:
     get:
       operationId: GetUsersWithSessions
       summary: Get all users with their active sessions (paginated by user)
+      security:
+        - BearerAuth: []
       parameters:
         - name: limit
           in: query
@@ -297,6 +301,8 @@ paths:
     post:
       operationId: SignOut
       summary: Sign out and delete current session
+      security:
+        - BearerAuth: []
       responses:
         "204":
           description: Successfully signed out
@@ -311,6 +317,8 @@ paths:
     get:
       operationId: GetMe
       summary: Get current authenticated user
+      security:
+        - BearerAuth: []
       responses:
         "200":
           description: Current user info
@@ -324,9 +332,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-
-security:
-  - BearerAuth: []
 
 components:
   securitySchemes:

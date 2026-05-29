@@ -9,6 +9,36 @@ import (
 	"fcstask-backend/internal/service"
 )
 
+type IAuthService interface {
+	SignUp(ctx context.Context, input service.SignUpInput) (*service.AuthResult, error)
+	SignIn(ctx context.Context, input service.SignInInput) (*service.AuthResult, error)
+	GetMe(ctx context.Context, user *model.User) (string, string, error)
+	SignOut(ctx context.Context, session *model.Session) error
+}
+
+type IUserService interface {
+	CreateUser(ctx context.Context, input service.CreateUserInput) (*model.User, error)
+	GetUserByID(ctx context.Context, id uuid.UUID) (*model.User, error)
+	GetUserByUsername(ctx context.Context, username string) (*model.User, error)
+	GetUserByEmail(ctx context.Context, email string) (*model.User, error)
+	GetUsersWithSessions(ctx context.Context, limit, offset int) ([]model.User, int64, error)
+}
+
+type ISessionService interface {
+	GetSessions(ctx context.Context, limit, offset int) ([]model.Session, int64, error)
+}
+
+type ICourseService interface {
+	GetCourses(ctx context.Context, userID uuid.UUID, status string) ([]model.Course, error)
+	GetCourse(ctx context.Context, courseID string) (*model.Course, error)
+	CanReadCourse(ctx context.Context, userID uuid.UUID, course *model.Course) (bool, error)
+	CreateCourse(ctx context.Context, userID uuid.UUID, input service.CourseInput) (*model.Course, error)
+	UpdateCourse(ctx context.Context, userID uuid.UUID, courseID string, input service.CourseInput) (*model.Course, error)
+	GetCourseBoard(ctx context.Context, courseID string) (*model.TaskBoardSummary, error)
+	JoinCourse(ctx context.Context, userID uuid.UUID, courseID string, code string) error
+	GetLeaderboard(ctx context.Context, userID uuid.UUID, courseID string) ([]model.LeaderboardEntry, error)
+}
+
 type IAdminHomeworkService interface {
 	CreateHomework(ctx context.Context, userID uuid.UUID, input service.CreateHomeworkInput) (*model.Homework, error)
 	GetHomework(ctx context.Context, userID, hwID uuid.UUID) (*model.Homework, error)
@@ -40,3 +70,13 @@ type IAdminTaskService interface {
 	DeleteTask(ctx context.Context, userID, taskID uuid.UUID) error
 	SetScore(ctx context.Context, userID uuid.UUID, input service.SetTaskScoreInput) (*model.Task, error)
 }
+
+var (
+	_ IAuthService          = (*service.AuthService)(nil)
+	_ IUserService          = (*service.UserService)(nil)
+	_ ISessionService       = (*service.SessionService)(nil)
+	_ ICourseService        = (*service.CourseService)(nil)
+	_ IAdminHomeworkService = (*service.AdminHomeworkService)(nil)
+	_ IAdminRoleService     = (*service.AdminRoleService)(nil)
+	_ IAdminTaskService     = (*service.AdminTaskService)(nil)
+)

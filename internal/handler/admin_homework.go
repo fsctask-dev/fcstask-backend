@@ -3,10 +3,8 @@ package handler
 import (
 	"net/http"
 
-	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 
-	"fcstask-backend/internal/db/model"
 	"fcstask-backend/internal/service"
 )
 
@@ -46,19 +44,19 @@ type UpdateDeadlineRequest struct {
 
 // POST /admin/courses/:courseId/homework
 func (h *AdminHomeworkHandler) CreateHomework(c echo.Context) error {
-	user, ok := c.Get(UserContextKey).(*model.User)
-	if !ok || user == nil {
+	user, ok := authenticatedUser(c)
+	if !ok {
 		return unauthorized(c, "User not found")
 	}
 
-	courseID, err := uuid.Parse(c.Param("courseId"))
-	if err != nil {
-		return badRequest(c, "Invalid course ID")
+	courseID, ok := parseUUIDParam(c, "courseId", "Invalid course ID")
+	if !ok {
+		return nil
 	}
 
 	var req CreateHomeworkRequest
-	if err := c.Bind(&req); err != nil {
-		return badRequest(c, "Invalid request body")
+	if !bindRequest(c, &req, "Invalid request body") {
+		return nil
 	}
 
 	input := service.CreateHomeworkInput{
@@ -81,14 +79,14 @@ func (h *AdminHomeworkHandler) CreateHomework(c echo.Context) error {
 
 // GET /admin/courses/:courseId/homework/:hwId
 func (h *AdminHomeworkHandler) GetHomework(c echo.Context) error {
-	user, ok := c.Get(UserContextKey).(*model.User)
-	if !ok || user == nil {
+	user, ok := authenticatedUser(c)
+	if !ok {
 		return unauthorized(c, "User not found")
 	}
 
-	hwID, err := uuid.Parse(c.Param("hwId"))
-	if err != nil {
-		return badRequest(c, "Invalid homework ID")
+	hwID, ok := parseUUIDParam(c, "hwId", "Invalid homework ID")
+	if !ok {
+		return nil
 	}
 	hw, err := h.homeworkService.GetHomework(c.Request().Context(), user.ID, hwID)
 	if err != nil {
@@ -100,14 +98,14 @@ func (h *AdminHomeworkHandler) GetHomework(c echo.Context) error {
 
 // GET /admin/courses/:courseId/homework
 func (h *AdminHomeworkHandler) ListHomework(c echo.Context) error {
-	user, ok := c.Get(UserContextKey).(*model.User)
-	if !ok || user == nil {
+	user, ok := authenticatedUser(c)
+	if !ok {
 		return unauthorized(c, "User not found")
 	}
 
-	courseID, err := uuid.Parse(c.Param("courseId"))
-	if err != nil {
-		return badRequest(c, "Invalid course ID")
+	courseID, ok := parseUUIDParam(c, "courseId", "Invalid course ID")
+	if !ok {
+		return nil
 	}
 	hws, err := h.homeworkService.ListHomework(c.Request().Context(), user.ID, courseID)
 	if err != nil {
@@ -119,19 +117,19 @@ func (h *AdminHomeworkHandler) ListHomework(c echo.Context) error {
 
 // PATCH /admin/courses/:courseId/homework/:hwId
 func (h *AdminHomeworkHandler) UpdateHomework(c echo.Context) error {
-	user, ok := c.Get(UserContextKey).(*model.User)
-	if !ok || user == nil {
+	user, ok := authenticatedUser(c)
+	if !ok {
 		return unauthorized(c, "User not found")
 	}
 
-	hwID, err := uuid.Parse(c.Param("hwId"))
-	if err != nil {
-		return badRequest(c, "Invalid homework ID")
+	hwID, ok := parseUUIDParam(c, "hwId", "Invalid homework ID")
+	if !ok {
+		return nil
 	}
 
 	var req UpdateHomeworkRequest
-	if err := c.Bind(&req); err != nil {
-		return badRequest(c, "Invalid request body")
+	if !bindRequest(c, &req, "Invalid request body") {
+		return nil
 	}
 
 	input := service.UpdateHomeworkInput{}
@@ -152,14 +150,14 @@ func (h *AdminHomeworkHandler) UpdateHomework(c echo.Context) error {
 
 // DELETE /admin/courses/:courseId/homework/:hwId
 func (h *AdminHomeworkHandler) DeleteHomework(c echo.Context) error {
-	user, ok := c.Get(UserContextKey).(*model.User)
-	if !ok || user == nil {
+	user, ok := authenticatedUser(c)
+	if !ok {
 		return unauthorized(c, "User not found")
 	}
 
-	hwID, err := uuid.Parse(c.Param("hwId"))
-	if err != nil {
-		return badRequest(c, "Invalid homework ID")
+	hwID, ok := parseUUIDParam(c, "hwId", "Invalid homework ID")
+	if !ok {
+		return nil
 	}
 	if err := h.homeworkService.DeleteHomework(c.Request().Context(), user.ID, hwID); err != nil {
 		return serviceError(c, err)
@@ -170,19 +168,19 @@ func (h *AdminHomeworkHandler) DeleteHomework(c echo.Context) error {
 
 // PATCH /admin/courses/:courseId/homework/:hwId/publish
 func (h *AdminHomeworkHandler) PublishHomework(c echo.Context) error {
-	user, ok := c.Get(UserContextKey).(*model.User)
-	if !ok || user == nil {
+	user, ok := authenticatedUser(c)
+	if !ok {
 		return unauthorized(c, "User not found")
 	}
 
-	hwID, err := uuid.Parse(c.Param("hwId"))
-	if err != nil {
-		return badRequest(c, "Invalid homework ID")
+	hwID, ok := parseUUIDParam(c, "hwId", "Invalid homework ID")
+	if !ok {
+		return nil
 	}
 
 	var req PublishHomeworkRequest
-	if err := c.Bind(&req); err != nil {
-		return badRequest(c, "Invalid request body")
+	if !bindRequest(c, &req, "Invalid request body") {
+		return nil
 	}
 
 	hw, err := h.homeworkService.PublishHomework(c.Request().Context(), user.ID, hwID, req.IsPublic)
@@ -195,28 +193,27 @@ func (h *AdminHomeworkHandler) PublishHomework(c echo.Context) error {
 
 // PUT /admin/courses/:courseId/homework/:hwId/deadline
 func (h *AdminHomeworkHandler) SetDeadline(c echo.Context) error {
-	user, ok := c.Get(UserContextKey).(*model.User)
-	if !ok || user == nil {
+	user, ok := authenticatedUser(c)
+	if !ok {
 		return unauthorized(c, "User not found")
 	}
 
-	courseID, err := uuid.Parse(c.Param("courseId"))
-	if err != nil {
-		return badRequest(c, "Invalid course ID")
+	courseID, ok := parseUUIDParam(c, "courseId", "Invalid course ID")
+	if !ok {
+		return nil
 	}
 
-	hwID, err := uuid.Parse(c.Param("hwId"))
-	if err != nil {
-		return badRequest(c, "Invalid homework ID")
+	hwID, ok := parseUUIDParam(c, "hwId", "Invalid homework ID")
+	if !ok {
+		return nil
 	}
 
 	var req SetDeadlineRequest
-	if err := c.Bind(&req); err != nil {
-		return badRequest(c, "Invalid request body")
+	if !bindRequest(c, &req, "Invalid request body") {
+		return nil
 	}
 
-	var assignedBy *uuid.UUID
-	assignedBy = &user.ID
+	assignedBy := &user.ID
 
 	input := service.SetDeadlineInput{
 		CourseID:   courseID,
@@ -239,19 +236,19 @@ func (h *AdminHomeworkHandler) SetDeadline(c echo.Context) error {
 
 // PATCH /admin/deadlines/:deadlineId
 func (h *AdminHomeworkHandler) UpdateDeadline(c echo.Context) error {
-	user, ok := c.Get(UserContextKey).(*model.User)
-	if !ok || user == nil {
+	user, ok := authenticatedUser(c)
+	if !ok {
 		return unauthorized(c, "User not found")
 	}
 
-	deadlineID, err := uuid.Parse(c.Param("deadlineId"))
-	if err != nil {
-		return badRequest(c, "Invalid deadline ID")
+	deadlineID, ok := parseUUIDParam(c, "deadlineId", "Invalid deadline ID")
+	if !ok {
+		return nil
 	}
 
 	var req UpdateDeadlineRequest
-	if err := c.Bind(&req); err != nil {
-		return badRequest(c, "Invalid request body")
+	if !bindRequest(c, &req, "Invalid request body") {
+		return nil
 	}
 
 	input := service.UpdateDeadlineInput{}
@@ -275,14 +272,14 @@ func (h *AdminHomeworkHandler) UpdateDeadline(c echo.Context) error {
 
 // DELETE /admin/deadlines/:deadlineId
 func (h *AdminHomeworkHandler) DeleteDeadline(c echo.Context) error {
-	user, ok := c.Get(UserContextKey).(*model.User)
-	if !ok || user == nil {
+	user, ok := authenticatedUser(c)
+	if !ok {
 		return unauthorized(c, "User not found")
 	}
 
-	deadlineID, err := uuid.Parse(c.Param("deadlineId"))
-	if err != nil {
-		return badRequest(c, "Invalid deadline ID")
+	deadlineID, ok := parseUUIDParam(c, "deadlineId", "Invalid deadline ID")
+	if !ok {
+		return nil
 	}
 	if err := h.homeworkService.DeleteDeadline(c.Request().Context(), user.ID, deadlineID); err != nil {
 		return serviceError(c, err)

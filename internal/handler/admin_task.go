@@ -3,10 +3,8 @@ package handler
 import (
 	"net/http"
 
-	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 
-	"fcstask-backend/internal/db/model"
 	"fcstask-backend/internal/service"
 )
 
@@ -36,19 +34,19 @@ type SetTaskScoreRequest struct {
 
 // POST /admin/courses/:courseId/homework/:hwId/tasks
 func (h *AdminTaskHandler) CreateTask(c echo.Context) error {
-	user, ok := c.Get(UserContextKey).(*model.User)
-	if !ok || user == nil {
+	user, ok := authenticatedUser(c)
+	if !ok {
 		return unauthorized(c, "User not found")
 	}
 
-	hwID, err := uuid.Parse(c.Param("hwId"))
-	if err != nil {
-		return badRequest(c, "Invalid homework ID")
+	hwID, ok := parseUUIDParam(c, "hwId", "Invalid homework ID")
+	if !ok {
+		return nil
 	}
 
 	var req CreateTaskRequest
-	if err := c.Bind(&req); err != nil {
-		return badRequest(c, "Invalid request body")
+	if !bindRequest(c, &req, "Invalid request body") {
+		return nil
 	}
 
 	input := service.CreateTaskInput{
@@ -74,14 +72,14 @@ func (h *AdminTaskHandler) CreateTask(c echo.Context) error {
 
 // GET /admin/courses/:courseId/homework/:hwId/tasks
 func (h *AdminTaskHandler) ListTasks(c echo.Context) error {
-	user, ok := c.Get(UserContextKey).(*model.User)
-	if !ok || user == nil {
+	user, ok := authenticatedUser(c)
+	if !ok {
 		return unauthorized(c, "User not found")
 	}
 
-	hwID, err := uuid.Parse(c.Param("hwId"))
-	if err != nil {
-		return badRequest(c, "Invalid homework ID")
+	hwID, ok := parseUUIDParam(c, "hwId", "Invalid homework ID")
+	if !ok {
+		return nil
 	}
 	tasks, err := h.taskService.ListTasks(c.Request().Context(), user.ID, hwID)
 	if err != nil {
@@ -93,14 +91,14 @@ func (h *AdminTaskHandler) ListTasks(c echo.Context) error {
 
 // GET /admin/courses/:courseId/homework/:hwId/tasks/:taskId
 func (h *AdminTaskHandler) GetTask(c echo.Context) error {
-	user, ok := c.Get(UserContextKey).(*model.User)
-	if !ok || user == nil {
+	user, ok := authenticatedUser(c)
+	if !ok {
 		return unauthorized(c, "User not found")
 	}
 
-	taskID, err := uuid.Parse(c.Param("taskId"))
-	if err != nil {
-		return badRequest(c, "Invalid task ID")
+	taskID, ok := parseUUIDParam(c, "taskId", "Invalid task ID")
+	if !ok {
+		return nil
 	}
 	task, err := h.taskService.GetTask(c.Request().Context(), user.ID, taskID)
 	if err != nil {
@@ -112,19 +110,19 @@ func (h *AdminTaskHandler) GetTask(c echo.Context) error {
 
 // PATCH /admin/courses/:courseId/homework/:hwId/tasks/:taskId
 func (h *AdminTaskHandler) UpdateTask(c echo.Context) error {
-	user, ok := c.Get(UserContextKey).(*model.User)
-	if !ok || user == nil {
+	user, ok := authenticatedUser(c)
+	if !ok {
 		return unauthorized(c, "User not found")
 	}
 
-	taskID, err := uuid.Parse(c.Param("taskId"))
-	if err != nil {
-		return badRequest(c, "Invalid task ID")
+	taskID, ok := parseUUIDParam(c, "taskId", "Invalid task ID")
+	if !ok {
+		return nil
 	}
 
 	var req UpdateTaskRequest
-	if err := c.Bind(&req); err != nil {
-		return badRequest(c, "Invalid request body")
+	if !bindRequest(c, &req, "Invalid request body") {
+		return nil
 	}
 
 	input := service.UpdateTaskInput{}
@@ -148,14 +146,14 @@ func (h *AdminTaskHandler) UpdateTask(c echo.Context) error {
 
 // DELETE /admin/courses/:courseId/homework/:hwId/tasks/:taskId
 func (h *AdminTaskHandler) DeleteTask(c echo.Context) error {
-	user, ok := c.Get(UserContextKey).(*model.User)
-	if !ok || user == nil {
+	user, ok := authenticatedUser(c)
+	if !ok {
 		return unauthorized(c, "User not found")
 	}
 
-	taskID, err := uuid.Parse(c.Param("taskId"))
-	if err != nil {
-		return badRequest(c, "Invalid task ID")
+	taskID, ok := parseUUIDParam(c, "taskId", "Invalid task ID")
+	if !ok {
+		return nil
 	}
 	if err := h.taskService.DeleteTask(c.Request().Context(), user.ID, taskID); err != nil {
 		return serviceError(c, err)
@@ -166,19 +164,19 @@ func (h *AdminTaskHandler) DeleteTask(c echo.Context) error {
 
 // PATCH /admin/courses/:courseId/homework/:hwId/tasks/:taskId/score
 func (h *AdminTaskHandler) SetScore(c echo.Context) error {
-	user, ok := c.Get(UserContextKey).(*model.User)
-	if !ok || user == nil {
+	user, ok := authenticatedUser(c)
+	if !ok {
 		return unauthorized(c, "User not found")
 	}
 
-	taskID, err := uuid.Parse(c.Param("taskId"))
-	if err != nil {
-		return badRequest(c, "Invalid task ID")
+	taskID, ok := parseUUIDParam(c, "taskId", "Invalid task ID")
+	if !ok {
+		return nil
 	}
 
 	var req SetTaskScoreRequest
-	if err := c.Bind(&req); err != nil {
-		return badRequest(c, "Invalid request body")
+	if !bindRequest(c, &req, "Invalid request body") {
+		return nil
 	}
 
 	task, err := h.taskService.SetScore(c.Request().Context(), user.ID, service.SetTaskScoreInput{

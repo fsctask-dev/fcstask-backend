@@ -13,13 +13,13 @@ import (
 )
 
 type CourseService struct {
-    CourseRepo          repo.CourseRepositoryInterface
-    RoleRepo            repo.IRoleRepo
-    StudentScoreRepo    repo.IStudentTaskScoreRepo
+	CourseRepo       repo.CourseRepositoryInterface
+	RoleRepo         repo.IRoleRepo
+	StudentScoreRepo repo.IStudentTaskScoreRepo
 }
 
 func NewCourseService(courseRepo repo.CourseRepositoryInterface, roleRepo repo.IRoleRepo, studentScoreRepo repo.IStudentTaskScoreRepo) *CourseService {
-    return &CourseService{CourseRepo: courseRepo, RoleRepo: roleRepo, StudentScoreRepo: studentScoreRepo}
+	return &CourseService{CourseRepo: courseRepo, RoleRepo: roleRepo, StudentScoreRepo: studentScoreRepo}
 }
 
 type CourseInput struct {
@@ -51,6 +51,18 @@ func (s *CourseService) GetCourse(ctx context.Context, courseID string) (*models
 		return nil, NotFound("course not found")
 	}
 	return course, nil
+}
+
+func (s *CourseService) CanReadCourse(ctx context.Context, userID uuid.UUID, course *models.Course) (bool, error) {
+	if course == nil {
+		return false, BadRequest("course is required")
+	}
+
+	if course.Type == models.CourseTypePublic {
+		return true, nil
+	}
+
+	return HasScopedPermission(ctx, s.RoleRepo, userID, course.ID, PermissionHomeworkRead)
 }
 
 func (s *CourseService) CreateCourse(ctx context.Context, userID uuid.UUID, input CourseInput) (*models.Course, error) {
@@ -221,22 +233,22 @@ func (s *CourseService) JoinCourse(ctx context.Context, userID uuid.UUID, course
 }
 
 func (s *CourseService) GetLeaderboard(ctx context.Context, userID uuid.UUID, courseID string) ([]models.LeaderboardEntry, error) {
-    if courseID == "" {
-        return nil, BadRequest("course_id is required")
-    }
-    course, err := s.GetCourse(ctx, courseID)
-    if err != nil {
-        return nil, err
-    }
-    // Проверяем, что у пользователя есть права на чтение leaderboard
-    if err := RequireScopedPermission(ctx, s.RoleRepo, userID, course.ID, PermissionLeaderboardRead); err != nil {
-        return nil, err
-    }
-    entries, err := s.CourseRepo.GetLeaderboard(ctx, course.ID)
-    if err != nil {
-        return nil, Internal("Failed to get leaderboard", err)
-    }
-    return entries, nil
+	if courseID == "" {
+		return nil, BadRequest("course_id is required")
+	}
+	course, err := s.GetCourse(ctx, courseID)
+	if err != nil {
+		return nil, err
+	}
+	// Проверяем, что у пользователя есть права на чтение leaderboard
+	if err := RequireScopedPermission(ctx, s.RoleRepo, userID, course.ID, PermissionLeaderboardRead); err != nil {
+		return nil, err
+	}
+	entries, err := s.CourseRepo.GetLeaderboard(ctx, course.ID)
+	if err != nil {
+		return nil, Internal("Failed to get leaderboard", err)
+	}
+	return entries, nil
 }
 
 func generateInviteCode() string {
