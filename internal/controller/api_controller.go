@@ -104,7 +104,7 @@ func (c *APIController) RegisterAdminRoutes(
 	e.GET("/admin/courses/:courseId/homework/:hwId/tasks/:taskId", adminTaskHandler.GetTask)
 	e.PATCH("/admin/courses/:courseId/homework/:hwId/tasks/:taskId", adminTaskHandler.UpdateTask)
 	e.DELETE("/admin/courses/:courseId/homework/:hwId/tasks/:taskId", adminTaskHandler.DeleteTask)
-	e.PATCH("/courses/:courseId/homework/:hwId/tasks/:taskId/publish", adminTaskHandler.PublishTask)
+	e.PATCH("/admin/courses/:courseId/homework/:hwId/tasks/:taskId/publish", adminTaskHandler.PublishTask)
 	e.PATCH("/admin/courses/:courseId/homework/:hwId/tasks/:taskId/score", adminTaskHandler.SetScore)
 
 	e.POST("/admin/courses/:courseId/roles", adminRoleHandler.AssignCourseAdmin)

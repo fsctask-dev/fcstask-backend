@@ -49,7 +49,7 @@ func (m *mockCourseRepo) UpdateCourse(ctx context.Context, courseID string, cour
 
 func (m *mockCourseRepo) DeleteCourse(ctx context.Context, courseID string) error { return nil }
 func (m *mockCourseRepo) GetCourses(ctx context.Context) ([]models.Course, error) { return nil, nil }
-func (m *mockCourseRepo) GetCourseBoard(ctx context.Context, courseID string) (*models.TaskBoardSummary, bool, error) {
+func (m *mockCourseRepo) GetCourseBoard(ctx context.Context, courseID string, userID uuid.UUID) (*models.TaskBoardSummary, bool, error) {
 	args := m.Called(ctx, courseID)
 	if args.Get(0) == nil {
 		return nil, args.Bool(1), args.Error(2)
@@ -343,19 +343,46 @@ func TestJoinCourse_AlreadyParticipant(t *testing.T) {
 	assert.Equal(t, "conflict", svcErr.Code)
 }
 
-func TestGetCourse_Success(t *testing.T) {
+func TestGetCourse_Public_NoPermissionCheck(t *testing.T) {
+	svc, cRepo, _ := setupService()
+	userID := uuid.Nil // неавторизованный
+	course := &models.Course{ID: uuid.New(), Name: "Pub", Type: models.CourseTypePublic}
+
+	cRepo.On("GetCourseByID", mock.Anything, "pub").Return(course, nil)
+
+	result, err := svc.GetCourse(context.Background(), userID, "pub")
+	assert.NoError(t, err)
+	assert.Equal(t, "Pub", result.Name)
+	// roleRepo не дёргался — публичный курс не проверяет права
+}
+
+func TestGetCourse_Private_HasPermission(t *testing.T) {
 	svc, cRepo, rRepo := setupService()
 	userID := uuid.New()
 	roleID := uuid.New()
-	course := &models.Course{ID: uuid.New(), Name: "Go", Type: models.CourseTypePublic}
+	course := &models.Course{ID: uuid.New(), Name: "Priv", Type: models.CourseTypePrivate}
 
-	cRepo.On("GetCourseByID", mock.Anything, "go").Return(course, nil)
+	cRepo.On("GetCourseByID", mock.Anything, "priv").Return(course, nil)
 	rRepo.On("GetRoleIDByUserAndCourse", mock.Anything, userID, course.ID).Return(roleID, nil)
 	rRepo.On("HasPermission", mock.Anything, roleID, PermissionCourseRead).Return(true, nil)
 
-	result, err := svc.GetCourse(context.Background(), userID, "go")
+	result, err := svc.GetCourse(context.Background(), userID, "priv")
 	assert.NoError(t, err)
-	assert.Equal(t, "Go", result.Name)
+	assert.Equal(t, "Priv", result.Name)
+}
+
+func TestGetCourse_Private_NoPermission(t *testing.T) {
+	svc, cRepo, rRepo := setupService()
+	userID := uuid.New()
+	course := &models.Course{ID: uuid.New(), Name: "Priv", Type: models.CourseTypePrivate}
+
+	cRepo.On("GetCourseByID", mock.Anything, "priv").Return(course, nil)
+	rRepo.On("GetRoleIDByUserAndCourse", mock.Anything, userID, course.ID).Return(uuid.Nil, gorm.ErrRecordNotFound)
+	rRepo.On("GetRoleIDByUserAndCourse", mock.Anything, userID, uuid.Nil).Return(uuid.Nil, gorm.ErrRecordNotFound)
+
+	_, err := svc.GetCourse(context.Background(), userID, "priv")
+	svcErr := err.(*Error)
+	assert.Equal(t, "forbidden", svcErr.Code)
 }
 
 func TestGetCourseBoard_Success(t *testing.T) {
@@ -387,16 +414,66 @@ func TestGetCourseBoard_NotFound(t *testing.T) {
 	assert.Equal(t, "not_found", svcErr.Code)
 }
 
-func TestGetCourse_Forbidden(t *testing.T) {
+func TestGetLeaderboard_Success(t *testing.T) {
 	svc, cRepo, rRepo := setupService()
 	userID := uuid.New()
-	course := &models.Course{ID: uuid.New(), Type: models.CourseTypePrivate}
+	roleID := uuid.New()
+	courseID := uuid.New()
+	course := &models.Course{ID: courseID, Name: "Go", Type: models.CourseTypePrivate}
 
-	cRepo.On("GetCourseByID", mock.Anything, "priv").Return(course, nil)
-	rRepo.On("GetRoleIDByUserAndCourse", mock.Anything, userID, course.ID).Return(uuid.Nil, gorm.ErrRecordNotFound)
+	task1 := uuid.New()
+	task2 := uuid.New()
+	entries := []models.LeaderboardEntry{
+		{Username: "alice", TotalScore: 30, Tasks: map[uuid.UUID]int{task1: 10, task2: 20}, Rank: 1},
+		{Username: "bob", TotalScore: 20, Tasks: map[uuid.UUID]int{task1: 20}, Rank: 2},
+	}
+
+	cRepo.On("GetCourseByID", mock.Anything, courseID.String()).Return(course, nil)
+	rRepo.On("GetRoleIDByUserAndCourse", mock.Anything, userID, courseID).Return(roleID, nil)
+	rRepo.On("HasPermission", mock.Anything, roleID, PermissionCourseRead).Return(true, nil)
+	rRepo.On("HasPermission", mock.Anything, roleID, PermissionLeaderboardRead).Return(true, nil)
+	cRepo.On("GetLeaderboard", mock.Anything, courseID).Return(entries, nil)
+
+	result, err := svc.GetLeaderboard(context.Background(), userID, courseID.String())
+
+	assert.NoError(t, err)
+	assert.Len(t, result, 2)
+	assert.Equal(t, "alice", result[0].Username)
+	assert.Equal(t, 30, result[0].TotalScore)
+	assert.Equal(t, 1, result[0].Rank)
+}
+
+func TestGetLeaderboard_Empty(t *testing.T) {
+	svc, cRepo, rRepo := setupService()
+	userID := uuid.New()
+	roleID := uuid.New()
+	courseID := uuid.New()
+	course := &models.Course{ID: courseID, Type: models.CourseTypePrivate}
+
+	cRepo.On("GetCourseByID", mock.Anything, courseID.String()).Return(course, nil)
+	rRepo.On("GetRoleIDByUserAndCourse", mock.Anything, userID, courseID).Return(roleID, nil)
+	rRepo.On("HasPermission", mock.Anything, roleID, PermissionCourseRead).Return(true, nil)
+	rRepo.On("HasPermission", mock.Anything, roleID, PermissionLeaderboardRead).Return(true, nil)
+	cRepo.On("GetLeaderboard", mock.Anything, courseID).Return([]models.LeaderboardEntry{}, nil)
+
+	result, err := svc.GetLeaderboard(context.Background(), userID, courseID.String())
+
+	assert.NoError(t, err)
+	assert.Empty(t, result)
+}
+
+func TestGetLeaderboard_Forbidden(t *testing.T) {
+	svc, cRepo, rRepo := setupService()
+	userID := uuid.New()
+	courseID := uuid.New()
+	course := &models.Course{ID: courseID, Type: models.CourseTypePrivate}
+
+	cRepo.On("GetCourseByID", mock.Anything, courseID.String()).Return(course, nil)
+	rRepo.On("GetRoleIDByUserAndCourse", mock.Anything, userID, courseID).Return(uuid.Nil, gorm.ErrRecordNotFound)
 	rRepo.On("GetRoleIDByUserAndCourse", mock.Anything, userID, uuid.Nil).Return(uuid.Nil, gorm.ErrRecordNotFound)
 
-	_, err := svc.GetCourse(context.Background(), userID, "priv")
+	_, err := svc.GetLeaderboard(context.Background(), userID, courseID.String())
+
 	svcErr := err.(*Error)
 	assert.Equal(t, "forbidden", svcErr.Code)
 }

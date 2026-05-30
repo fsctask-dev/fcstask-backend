@@ -3,6 +3,7 @@ package repo
 import (
 	"context"
 	"errors"
+	"sort"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -116,31 +117,65 @@ func (r *CourseRepository) GetCourseBoard(ctx context.Context, courseID string, 
 }
 
 func (r *CourseRepository) GetLeaderboard(ctx context.Context, courseID uuid.UUID) ([]models.LeaderboardEntry, error) {
-	type result struct {
-		Username   string
-		TotalScore int
+	type taskScoreRow struct {
+		UserID   uuid.UUID
+		Username string
+		TaskID   uuid.UUID
+		Score    int
 	}
-	var results []result
+	var rows []taskScoreRow
 	err := r.rw.ReadDB().WithContext(ctx).
 		Model(&models.UserRole{}).
-		Select("u.username, COALESCE(SUM(sts.score), 0) AS total_score").
+		Select("u.id AS user_id, u.username, sts.task_id, COALESCE(sts.score, 0) AS score").
 		Joins("JOIN users u ON u.id = user_roles.user_id").
 		Joins("JOIN course_admin_permissions cap ON cap.role_id = user_roles.role_id AND cap.permission = ?", "task.submit").
 		Joins("LEFT JOIN student_task_scores sts ON sts.student_id = user_roles.user_id AND sts.course_id = user_roles.course_id").
 		Where("user_roles.course_id = ?", courseID).
-		Group("user_roles.user_id, u.username").
-		Order("total_score DESC").
-		Scan(&results).Error
+		Order("u.username ASC, sts.task_id ASC").
+		Scan(&rows).Error
 	if err != nil {
 		return nil, err
 	}
-	entries := make([]models.LeaderboardEntry, len(results))
-	for i, r := range results {
-		entries[i] = models.LeaderboardEntry{
-			Username:   r.Username,
-			TotalScore: r.TotalScore,
-			Rank:       i + 1,
+
+	type userScores struct {
+		Username   string
+		TotalScore int
+		Tasks      map[uuid.UUID]int
+	}
+	userMap := make(map[uuid.UUID]*userScores)
+	var userOrder []uuid.UUID
+
+	for _, row := range rows {
+		us, ok := userMap[row.UserID]
+		if !ok {
+			us = &userScores{
+				Username: row.Username,
+				Tasks:    make(map[uuid.UUID]int),
+			}
+			userMap[row.UserID] = us
+			userOrder = append(userOrder, row.UserID)
+		}
+		if row.TaskID != uuid.Nil {
+			us.Tasks[row.TaskID] = row.Score
+			us.TotalScore += row.Score
 		}
 	}
+
+	entries := make([]models.LeaderboardEntry, 0, len(userOrder))
+	for _, userID := range userOrder {
+		us := userMap[userID]
+		entries = append(entries, models.LeaderboardEntry{
+			Username:   us.Username,
+			TotalScore: us.TotalScore,
+			Tasks:      us.Tasks,
+		})
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].TotalScore > entries[j].TotalScore
+	})
+	for i := range entries {
+		entries[i].Rank = i + 1
+	}
+
 	return entries, nil
 }

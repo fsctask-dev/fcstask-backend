@@ -4,6 +4,7 @@ import (
 	"fcstask-backend/internal/db/model"
 	"net/http"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 
 	"fcstask-backend/internal/service"
@@ -49,25 +50,15 @@ func (h *CourseHandler) GetCourses(ctx echo.Context) error {
 
 // GET /course/:courseId
 func (h *CourseHandler) GetCourse(ctx echo.Context) error {
-	user := ctx.Get(UserContextKey).(*model.User)
-	if user == nil {
-		return unauthorized(ctx, "User not found in context")
-	}
 	courseID := ctx.Param("courseId")
-	course, err := h.courseService.GetCourse(ctx.Request().Context(), user.ID, courseID)
-	if err != nil {
-		return serviceError(ctx, err)
-	}
-	if course.Type == model.CourseTypePublic {
-		return ctx.JSON(http.StatusOK, course)
+
+	user, _ := ctx.Get(UserContextKey).(*model.User)
+	var userID uuid.UUID
+	if user != nil {
+		userID = user.ID
 	}
 
-	user, ok := ctx.Get(UserContextKey).(*model.User)
-	if !ok || user == nil {
-		return unauthorized(ctx, "User not found in context")
-	}
-
-	_, err = h.courseService.GetCourse(ctx.Request().Context(), user.ID, courseID)
+	course, err := h.courseService.GetCourse(ctx.Request().Context(), userID, courseID)
 	if err != nil {
 		return serviceError(ctx, err)
 	}

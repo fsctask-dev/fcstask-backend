@@ -51,6 +51,10 @@ func (s *CourseService) GetCourse(ctx context.Context, userID uuid.UUID, courseI
 		return nil, NotFound("course not found")
 	}
 
+	if course.Type == models.CourseTypePublic {
+		return course, nil
+	}
+
 	if err := RequireScopedPermission(ctx, s.RoleRepo, userID, course.ID, PermissionCourseRead); err != nil {
 		return nil, err
 	}
