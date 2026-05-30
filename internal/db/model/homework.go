@@ -32,6 +32,8 @@ type Homework struct {
 	UpdatedAt time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
 }
 
+func (Homework) TableName() string { return "homework" }
+
 func (h *Homework) BeforeCreate(tx *gorm.DB) error {
 	if h.HwID == uuid.Nil {
 		h.HwID = uuid.New()

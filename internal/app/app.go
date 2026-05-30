@@ -68,6 +68,7 @@ func New(cfg *config.Config) (*App, error) {
 		handler.NewUserHandler(userService),
 		handler.NewSessionHandler(sessionService, userService),
 		handler.NewCourseHandler(courseService),
+		adminHomeworkHandler,
 	)
 
 	e.Use(metrics.EchoMiddleware(m.HTTP))
@@ -98,10 +99,12 @@ func New(cfg *config.Config) (*App, error) {
 		"/admin/courses/:courseId/roles/:roleId/permissions",
 		"/admin/courses/:courseId/roles/:roleId/permissions/:permission",
 		"/admin/super-admins",
+		"/admin/homework/:hwId/deadline",
 	}))
-
+	
 	api.RegisterHandlers(e, apiController)
 	apiController.RegisterCourseRoutes(e)
+	apiController.RegisterHomeworkRoutes(e)
 	apiController.RegisterAdminRoutes(e, adminHomeworkHandler, adminTaskHandler, adminRoleHandler)
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)

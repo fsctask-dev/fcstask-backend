@@ -16,6 +16,7 @@ type Deadline struct {
 	DueDate     time.Time      `gorm:"type:timestamp;not null" json:"due_date"`
 	AssignedBy  *uuid.UUID     `gorm:"type:uuid;index" json:"assigned_by,omitempty"`
 	Assignee    *User          `gorm:"foreignKey:AssignedBy;constraint:OnDelete:SET NULL" json:"assignee,omitempty"`
+	HomeworkID  *uuid.UUID     `gorm:"type:uuid;index" json:"homework_id,omitempty"`
 	CreatedAt   time.Time      `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt   time.Time      `gorm:"autoUpdateTime" json:"updated_at"`
 	DeletedAt   gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
