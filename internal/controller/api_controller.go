@@ -85,10 +85,10 @@ func (c *APIController) RegisterCourseRoutes(e *echo.Echo) {
 }
 
 func (c *APIController) RegisterHomeworkRoutes(e *echo.Echo) {
-	e.GET("/api/homework/:hwId/deadline", c.adminHomeworkHandler.GetDeadlineByHomeworkID)
-	e.PUT("/api/homework/:hwId/deadline", c.adminHomeworkHandler.SetDeadline)
-	e.PATCH("/api/deadlines/:deadlineId", c.adminHomeworkHandler.UpdateDeadline)
-	e.DELETE("/api/deadlines/:deadlineId", c.adminHomeworkHandler.DeleteDeadline)
+	e.GET("/admin/homework/:hwId/deadline", c.adminHomeworkHandler.GetDeadlineByHomeworkID)
+	e.PUT("/admin/homework/:hwId/deadline", c.adminHomeworkHandler.SetDeadline)
+	e.PATCH("/admin/deadlines/:deadlineId", c.adminHomeworkHandler.UpdateDeadline)
+	e.DELETE("/admin/deadlines/:deadlineId", c.adminHomeworkHandler.DeleteDeadline)
 }
 
 func (c *APIController) RegisterAdminRoutes(

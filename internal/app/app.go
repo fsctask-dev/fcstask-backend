@@ -88,8 +88,7 @@ func New(cfg *config.Config) (*App, error) {
 		"/admin/courses/:courseId/roles/:roleId/permissions",
 		"/admin/courses/:courseId/roles/:roleId/permissions/:permission",
 		"/admin/super-admins",
-		"/api/homework/:hwId/deadline",
-		"/api/deadlines/:deadlineId",
+		"/admin/homework/:hwId/deadline",
 	}))
 	
 	api.RegisterHandlers(e, apiController)
