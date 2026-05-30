@@ -13,19 +13,23 @@ import (
 	"fcstask-backend/internal/server"
 	"fcstask-backend/internal/service"
 	"fmt"
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
 	"log"
 	"time"
+
+	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 )
 
 type App struct {
-	echo            *echo.Echo
-	db              *db.Client
-	sessionRepo     repo.SessionRepositoryInterface
-	httpServer      server.HTTPServer
-	shutdownTimeout time.Duration
-	sessionCfg      config.SessionConfig
+	echo             *echo.Echo
+	db               *db.Client
+	sessionRepo      repo.SessionRepositoryInterface
+	httpServer       server.HTTPServer
+	metrics          *metrics.Metrics
+	metricsServer    *metrics.Server
+	shutdownTimeout  time.Duration
+	sessionCfg       config.SessionConfig
+	observabilityCfg config.ObservabilityConfig
 }
 
 func New(cfg *config.Config) (*App, error) {
@@ -35,6 +39,8 @@ func New(cfg *config.Config) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to init database: %w", err)
 	}
+
+	m := metrics.New()
 
 	userRepo := repo.NewUserRepository(dbClient)
 	sessionRepo := repo.NewSessionRepository(dbClient)
@@ -46,12 +52,12 @@ func New(cfg *config.Config) (*App, error) {
 	studentScoreRepo := repo.NewStudentTaskScoreRepository(dbClient.DB())
 
 	userService := service.NewUserService(userRepo)
-	authService := service.NewAuthService(userRepo, sessionRepo)
+	authService := service.NewAuthService(userRepo, sessionRepo).WithMetrics(m.Auth, m.Session)
 	sessionService := service.NewSessionService(sessionRepo)
-	courseService := service.NewCourseService(courseRepo, roleRepo, studentScoreRepo)
-	adminHomeworkService := service.NewAdminHomeworkService(homeworkRepo, deadlineRepo, roleRepo)
-	adminTaskService := service.NewAdminTaskService(taskRepo, homeworkRepo, roleRepo)
-	adminRoleService := service.NewAdminRoleService(roleRepo, userRepo)
+	courseService := service.NewCourseService(courseRepo, roleRepo, studentScoreRepo).WithMetrics(m.Course)
+	adminHomeworkService := service.NewAdminHomeworkService(homeworkRepo, deadlineRepo, roleRepo).WithMetrics(m.Admin)
+	adminTaskService := service.NewAdminTaskService(taskRepo, homeworkRepo, roleRepo).WithMetrics(m.Admin)
+	adminRoleService := service.NewAdminRoleService(roleRepo, userRepo).WithMetrics(m.Admin)
 
 	adminHomeworkHandler := handler.NewAdminHomeworkHandler(adminHomeworkService)
 	adminTaskHandler := handler.NewAdminTaskHandler(adminTaskService)
@@ -62,7 +68,10 @@ func New(cfg *config.Config) (*App, error) {
 		handler.NewUserHandler(userService),
 		handler.NewSessionHandler(sessionService, userService),
 		handler.NewCourseHandler(courseService),
+		adminHomeworkHandler,
 	)
+
+	e.Use(metrics.EchoMiddleware(m.HTTP))
 
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
 		AllowOrigins: []string{"http://localhost:5173", "http://localhost:3000"},
@@ -91,35 +100,45 @@ func New(cfg *config.Config) (*App, error) {
 		"/admin/courses/:courseId/roles/:roleId/permissions",
 		"/admin/courses/:courseId/roles/:roleId/permissions/:permission",
 		"/admin/super-admins",
+		"/admin/homework/:hwId/deadline",
 	}))
-
+	
 	api.RegisterHandlers(e, apiController)
 	apiController.RegisterCourseRoutes(e)
+	apiController.RegisterHomeworkRoutes(e)
 	apiController.RegisterAdminRoutes(e, adminHomeworkHandler, adminTaskHandler, adminRoleHandler)
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
-	metrics.EchoPrometheus(e)
-
 	httpServer := server.NewHTTPServer(addr, e)
 
+	metricsServer := metrics.NewServer(cfg.Observability.MetricsAddr, m.Registry)
+
 	return &App{
-		echo:            e,
-		db:              dbClient,
-		sessionRepo:     sessionRepo,
-		httpServer:      httpServer,
-		shutdownTimeout: cfg.Server.ShutdownTimeout,
-		sessionCfg:      cfg.Session,
+		echo:             e,
+		db:               dbClient,
+		sessionRepo:      sessionRepo,
+		httpServer:       httpServer,
+		metrics:          m,
+		metricsServer:    metricsServer,
+		shutdownTimeout:  cfg.Server.ShutdownTimeout,
+		sessionCfg:       cfg.Session,
+		observabilityCfg: cfg.Observability,
 	}, nil
 }
 
 func (a *App) Run(ctx context.Context) error {
-	errCh := make(chan error, 1)
+	errCh := make(chan error, 2)
 
 	go func() {
 		errCh <- a.httpServer.Start(ctx)
 	}()
 
+	go func() {
+		errCh <- a.metricsServer.Start(ctx)
+	}()
+
 	go a.runSessionCleanup(ctx)
+	go a.db.RunStatsCollector(ctx, a.metrics.DB, a.observabilityCfg.DBStatsInterval)
 
 	select {
 	case err := <-errCh:
@@ -154,8 +173,10 @@ func (a *App) runSessionCleanup(ctx context.Context) {
 		case <-ticker.C:
 			deleted, err := a.sessionRepo.CleanOutdatedSessions(ctx, a.sessionCfg.TTL)
 			if err != nil {
+				a.metrics.Session.IncCleanupError()
 				log.Printf("Session cleanup error: %v", err)
 			} else if deleted > 0 {
+				a.metrics.Session.AddCleanupDeleted(deleted)
 				log.Printf("Session cleanup: removed %d expired sessions", deleted)
 			}
 		}

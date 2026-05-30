@@ -9,10 +9,11 @@ import (
 )
 
 type APIController struct {
-	authHandler    *handler.AuthHandler
-	userHandler    *handler.UserHandler
-	sessionHandler *handler.SessionHandler
-	courseHandler  *handler.CourseHandler
+	authHandler          *handler.AuthHandler
+	userHandler          *handler.UserHandler
+	sessionHandler       *handler.SessionHandler
+	courseHandler        *handler.CourseHandler
+	adminHomeworkHandler *handler.AdminHomeworkHandler
 }
 
 func NewAPIController(
@@ -20,12 +21,14 @@ func NewAPIController(
 	userHandler *handler.UserHandler,
 	sessionHandler *handler.SessionHandler,
 	courseHandler *handler.CourseHandler,
+	adminHomeworkHandler *handler.AdminHomeworkHandler,
 ) *APIController {
 	return &APIController{
-		authHandler:    authHandler,
-		userHandler:    userHandler,
-		sessionHandler: sessionHandler,
-		courseHandler:  courseHandler,
+		authHandler:          authHandler,
+		userHandler:          userHandler,
+		sessionHandler:       sessionHandler,
+		courseHandler:        courseHandler,
+		adminHomeworkHandler: adminHomeworkHandler,
 	}
 }
 
@@ -81,6 +84,13 @@ func (c *APIController) RegisterCourseRoutes(e *echo.Echo) {
 	e.GET("/api/courses/:courseId/board", c.courseHandler.GetCourseBoard)
 	e.GET("/api/courses/:courseId/scores", c.courseHandler.GetScores)
 	e.POST("/api/courses/:courseId/join", c.courseHandler.JoinCourse)
+}
+
+func (c *APIController) RegisterHomeworkRoutes(e *echo.Echo) {
+	e.GET("/admin/homework/:hwId/deadline", c.adminHomeworkHandler.GetDeadlineByHomeworkID)
+	e.PUT("/admin/homework/:hwId/deadline", c.adminHomeworkHandler.SetDeadline)
+	e.PATCH("/admin/deadlines/:deadlineId", c.adminHomeworkHandler.UpdateDeadline)
+	e.DELETE("/admin/deadlines/:deadlineId", c.adminHomeworkHandler.DeleteDeadline)
 }
 
 func (c *APIController) RegisterAdminRoutes(

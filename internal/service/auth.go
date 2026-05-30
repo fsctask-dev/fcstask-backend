@@ -12,15 +12,25 @@ import (
 
 	models "fcstask-backend/internal/db/model"
 	"fcstask-backend/internal/db/repo"
+	"fcstask-backend/internal/metrics"
 )
 
 type AuthService struct {
 	userRepo    repo.IUserRepo
 	sessionRepo repo.SessionRepositoryInterface
+
+	authMetrics    *metrics.AuthMetrics
+	sessionMetrics *metrics.SessionMetrics
 }
 
 func NewAuthService(userRepo repo.IUserRepo, sessionRepo repo.SessionRepositoryInterface) *AuthService {
 	return &AuthService{userRepo: userRepo, sessionRepo: sessionRepo}
+}
+
+func (s *AuthService) WithMetrics(auth *metrics.AuthMetrics, session *metrics.SessionMetrics) *AuthService {
+	s.authMetrics = auth
+	s.sessionMetrics = session
+	return s
 }
 
 type SignUpInput struct {
@@ -45,7 +55,9 @@ type AuthResult struct {
 	Session *models.Session
 }
 
-func (s *AuthService) SignUp(ctx context.Context, input SignUpInput) (*AuthResult, error) {
+func (s *AuthService) SignUp(ctx context.Context, input SignUpInput) (result *AuthResult, err error) {
+	defer func() { s.authMetrics.IncSignup(authOutcomeFromError(err)) }()
+
 	if input.Username == "" || input.Password == "" || input.Email == "" {
 		return nil, BadRequest("Username, password and email are required")
 	}
@@ -90,7 +102,9 @@ func (s *AuthService) SignUp(ctx context.Context, input SignUpInput) (*AuthResul
 	return &AuthResult{User: user, Session: session}, nil
 }
 
-func (s *AuthService) SignIn(ctx context.Context, input SignInInput) (*AuthResult, error) {
+func (s *AuthService) SignIn(ctx context.Context, input SignInInput) (result *AuthResult, err error) {
+	defer func() { s.authMetrics.IncSignIn(authOutcomeFromError(err)) }()
+
 	if input.Password == "" {
 		return nil, BadRequest("Password is required")
 	}
@@ -100,7 +114,6 @@ func (s *AuthService) SignIn(ctx context.Context, input SignInInput) (*AuthResul
 	}
 
 	var user *models.User
-	var err error
 	if input.Email != nil {
 		user, err = s.userRepo.GetUserByEmail(ctx, *input.Email)
 	} else {
@@ -140,6 +153,8 @@ func (s *AuthService) SignOut(ctx context.Context, session *models.Session) erro
 	if err := s.sessionRepo.DeleteSession(ctx, session.ID); err != nil {
 		return Internal("Failed to delete session", err)
 	}
+	s.authMetrics.IncSignOut()
+	s.sessionMetrics.IncRevoked(metrics.SessionRevokeReasonSignOut)
 	return nil
 }
 
@@ -152,7 +167,26 @@ func (s *AuthService) createSession(ctx context.Context, userID uuid.UUID, ip, u
 	if err := s.sessionRepo.CreateSession(ctx, session); err != nil {
 		return nil, Internal("Failed to create session", err)
 	}
+	s.sessionMetrics.IncCreated()
 	return session, nil
+}
+
+func authOutcomeFromError(err error) metrics.AuthOutcome {
+	if err == nil {
+		return metrics.AuthOutcomeSuccess
+	}
+	var se *Error
+	if errors.As(err, &se) {
+		switch se.Code {
+		case "bad_request":
+			return metrics.AuthOutcomeInvalidInput
+		case "unauthorized":
+			return metrics.AuthOutcomeInvalidCreds
+		case "conflict":
+			return metrics.AuthOutcomeUserAlreadyExist
+		}
+	}
+	return metrics.AuthOutcomeInternalError
 }
 
 func buildInitials(user *models.User) string {
