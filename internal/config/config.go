@@ -8,9 +8,10 @@ import (
 )
 
 type Config struct {
-	Server   ServerConfig   `yaml:"server"`
-	Database DatabaseConfig `yaml:"database"`
-	Session  SessionConfig  `yaml:"session"`
+	Server        ServerConfig        `yaml:"server"`
+	Database      DatabaseConfig      `yaml:"database"`
+	Session       SessionConfig       `yaml:"session"`
+	Observability ObservabilityConfig `yaml:"observability"`
 }
 
 type SessionConfig struct {
@@ -59,6 +60,13 @@ func Load(path string) (*Config, error) {
 
 	if cfg.Session.CleanupInterval == 0 {
 		cfg.Session.CleanupInterval = 5 * time.Second
+	}
+
+	if cfg.Observability.MetricsAddr == "" {
+		cfg.Observability.MetricsAddr = ":8081"
+	}
+	if cfg.Observability.DBStatsInterval <= 0 {
+		cfg.Observability.DBStatsInterval = 15 * time.Second
 	}
 
 	return &cfg, nil

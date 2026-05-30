@@ -18,6 +18,7 @@ const (
 	PermissionHomeworkDelete  = "homework.delete"
 	PermissionHomeworkPublish = "homework.publish"
 
+	PermissionDeadlineRead   = "deadline.read"
 	PermissionDeadlineCreate = "deadline.create"
 	PermissionDeadlineUpdate = "deadline.update"
 	PermissionDeadlineDelete = "deadline.delete"
@@ -101,6 +102,7 @@ func RequireScopedPermission(ctx context.Context, roleRepo repo.IRoleRepo, userI
 func CourseStudentPermissions() []string {
 	return []string{
 		PermissionHomeworkRead,
+		PermissionDeadlineRead,
 		PermissionTaskRead,
 		PermissionTaskSubmit,
 		PermissionLeaderboardRead,

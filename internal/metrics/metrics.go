@@ -1,20 +1,35 @@
 package metrics
 
 import (
-	"net/http"
-
-	"github.com/labstack/echo-contrib/echoprometheus"
-	"github.com/labstack/echo/v4"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
-func EchoPrometheus(e *echo.Echo) {
-	e.Use(echoprometheus.NewMiddleware("echo"))
+type Metrics struct {
+	Registry prometheus.Gatherer
+	reg      *prometheus.Registry
 
-	e.GET("/metrics", echoprometheus.NewHandler())
-	e.GET("/test/200", func(c echo.Context) error {
-		return c.String(http.StatusOK, "OK") // 200
-	})
-	e.GET("/test/500", func(c echo.Context) error {
-		return c.String(http.StatusInternalServerError, "Internal Server Error") // 500
-	})
+	HTTP    *HTTPMetrics
+	Auth    *AuthMetrics
+	Session *SessionMetrics
+	Course  *CourseMetrics
+	Admin   *AdminMetrics
+	DB      *DBMetrics
 }
+
+func New() *Metrics {
+	reg := NewRegistry()
+
+	return &Metrics{
+		Registry: reg,
+		reg:      reg,
+
+		HTTP:    newHTTPMetrics(reg),
+		Auth:    newAuthMetrics(reg),
+		Session: newSessionMetrics(reg),
+		Course:  newCourseMetrics(reg),
+		Admin:   newAdminMetrics(reg),
+		DB:      newDBMetrics(reg),
+	}
+}
+
+func (m *Metrics) Registerer() prometheus.Registerer { return m.reg }

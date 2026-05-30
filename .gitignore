@@ -34,6 +34,7 @@ Thumbs.db
 bin/
 dist/
 build/
+junk/
 
 *.cover
 coverage.txt
