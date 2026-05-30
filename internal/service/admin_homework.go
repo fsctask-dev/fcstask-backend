@@ -280,7 +280,6 @@ func (s *AdminHomeworkService) GetDeadlineByHomeworkID(ctx context.Context, user
 	return deadline, nil
 }
 
-func (s *AdminHomeworkService) UpdateDeadline(ctx context.Context, userID, deadlineID uuid.UUID, input UpdateDeadlineInput) (*model.Deadline, error) {
 func (s *AdminHomeworkService) UpdateDeadline(ctx context.Context, userID, deadlineID uuid.UUID, input UpdateDeadlineInput) (deadline *model.Deadline, err error) {
 	defer func() { s.adminMetrics.IncAction(metrics.AdminActionSetDeadline, adminOutcome(err)) }()
 
