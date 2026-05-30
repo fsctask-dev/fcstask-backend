@@ -1,8 +1,5 @@
 GO ?= go
-GOPATH ?= $(HOME)/go
-export PATH := $(PATH):$(GOPATH)/bin
-OAPI_CODEGEN := $(GOPATH)/bin/oapi-codegen
-MOCKGEN := $(GOPATH)/bin/mockgen
+MOCKGEN := $(shell go env GOPATH)/bin/mockgen
 MODULE_NAME := fcstask-backend
 BINARY_NAME := fcstask-api
 DOCKER_IMAGE_NAME ?= miruken/$(MODULE_NAME)-backend
@@ -117,26 +114,14 @@ run-api:
 	@$(GO) run ./internal/cmd/
 
 install-tools: check-go
-	@echo "📦 Installing tools..."
-	@test -x "$(OAPI_CODEGEN)" || $(GO) install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest
+	@echo "📦 Checking tools..."
 	@test -x "$(MOCKGEN)" || $(GO) install github.com/golang/mock/mockgen@latest
-	@echo "✅ Tools installed"
+	@echo "✅ Tools ready"
 
-gen: install-tools
+gen: check-go
 	@echo "Generating API code from OpenAPI..."
-	@if test -x "$(OAPI_CODEGEN)"; then \
-		echo "oapi-codegen is already installed"; \
-	else \
-		echo "Installing oapi-codegen..."; \
-		$(GO) install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest; \
-	fi
-	@echo "Generating types..."
-	$(OAPI_CODEGEN) -generate types,skip-prune -package api -o internal/api/types.gen.go api/openapi.yaml
-	@echo "Generating server..."
-	$(OAPI_CODEGEN) -generate server -package api -o internal/api/server.gen.go api/openapi.yaml
-	@echo "Code generation completed!"
-	@echo "🔄 Generating code..."
-	@go generate ./...
+	$(GO) tool oapi-codegen -generate types,skip-prune -package api -o internal/api/types.gen.go api/openapi.yaml
+	$(GO) tool oapi-codegen -generate server -package api -o internal/api/server.gen.go api/openapi.yaml
 	@echo "✅ Code generation completed"
 
 test: gen
@@ -149,36 +134,3 @@ postgreplication-up: db-up
 
 test-integration-db:
 	$(GO) test -tags=integration -count=1 -v ./internal/db/...
-
-docker-build:
-	@echo "🐳 Building Docker image..."
-	@docker build -t $(DOCKER_IMAGE_NAME):$(DOCKER_IMAGE_TAG) .
-	@echo "✅ Docker image built"
-
-docker-run: docker-build
-	@echo "🚀 Running container on http://localhost:8080"
-	@docker run --rm -p 8080:8080 $(DOCKER_IMAGE_NAME):$(DOCKER_IMAGE_TAG)
-
-docker-test:
-	@echo "🧪 Running tests inside container..."
-	docker run --rm \
-		-v "$(PWD):/app" \
-		-w /app \
-		golang:1.25-alpine \
-		go test ./... -v
-
-docker-push:
-	@if [ -z "$$CI" ] && [ -z "$$FORCE_PUSH" ]; then \
-		echo "🛑 ERROR: Refusing to push from local machine."; \
-		echo "💡 Run with FORCE_PUSH=1 to override (not recommended)."; \
-		exit 1; \
-	fi
-	@echo "📤 Pushing image to registry..."
-	@docker push $(DOCKER_IMAGE_NAME):$(DOCKER_IMAGE_TAG)
-	@echo "✅ Pushed: $(DOCKER_IMAGE_NAME):$(DOCKER_IMAGE_TAG)"
-
-ci-local: init tidy test docker-build
-	@echo "✅ Local CI check passed!"
-
-ci: ci-local docker-push
-	@echo "✅ Full CI pipeline completed!"
