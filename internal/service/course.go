@@ -4,21 +4,31 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
 
 	models "fcstask-backend/internal/db/model"
 	"fcstask-backend/internal/db/repo"
+	"fcstask-backend/internal/metrics"
 )
 
 type CourseService struct {
-	CourseRepo repo.CourseRepositoryInterface
-	RoleRepo   repo.IRoleRepo
+	CourseRepo       repo.CourseRepositoryInterface
+	RoleRepo         repo.IRoleRepo
+	StudentScoreRepo repo.IStudentTaskScoreRepo
+
+	courseMetrics *metrics.CourseMetrics
 }
 
-func NewCourseService(courseRepo repo.CourseRepositoryInterface, roleRepo repo.IRoleRepo) *CourseService {
-	return &CourseService{CourseRepo: courseRepo, RoleRepo: roleRepo}
+func NewCourseService(courseRepo repo.CourseRepositoryInterface, roleRepo repo.IRoleRepo, studentScoreRepo repo.IStudentTaskScoreRepo) *CourseService {
+	return &CourseService{CourseRepo: courseRepo, RoleRepo: roleRepo, StudentScoreRepo: studentScoreRepo}
+}
+
+func (s *CourseService) WithMetrics(course *metrics.CourseMetrics) *CourseService {
+	s.courseMetrics = course
+	return s
 }
 
 type CourseInput struct {
@@ -180,7 +190,9 @@ func (s *CourseService) GetCourseBoard(ctx context.Context, courseID string) (*m
 	}, nil
 }
 
-func (s *CourseService) JoinCourse(ctx context.Context, userID uuid.UUID, courseID string, code string) error {
+func (s *CourseService) JoinCourse(ctx context.Context, userID uuid.UUID, courseID string, code string) (err error) {
+	defer func() { s.courseMetrics.IncJoin(joinOutcomeFromError(err)) }()
+
 	course, err := s.CourseRepo.GetCourseByID(ctx, courseID)
 	if err != nil {
 		return Internal("Failed to get course by ID", err)
@@ -198,7 +210,7 @@ func (s *CourseService) JoinCourse(ctx context.Context, userID uuid.UUID, course
 	}
 
 	if course.Type == models.CourseTypePublic {
-		_, err := EnsureUserRoleWithPermissions(ctx, s.RoleRepo, userID, course.ID, CourseStudentPermissions())
+		_, err = EnsureUserRoleWithPermissions(ctx, s.RoleRepo, userID, course.ID, CourseStudentPermissions())
 		if err != nil {
 			return Internal("Failed to join course", err)
 		}
@@ -217,6 +229,43 @@ func (s *CourseService) JoinCourse(ctx context.Context, userID uuid.UUID, course
 	}
 
 	return nil
+}
+
+func joinOutcomeFromError(err error) metrics.JoinOutcome {
+	if err == nil {
+		return metrics.JoinOutcomeSuccess
+	}
+	var se *Error
+	if errors.As(err, &se) {
+		switch se.Code {
+		case "not_found":
+			return metrics.JoinOutcomeCourseNotFound
+		case "conflict":
+			return metrics.JoinOutcomeAlreadyMember
+		case "forbidden", "bad_request":
+			return metrics.JoinOutcomeForbidden
+		}
+	}
+	return metrics.JoinOutcomeForbidden
+}
+
+func (s *CourseService) GetLeaderboard(ctx context.Context, userID uuid.UUID, courseID string) ([]models.LeaderboardEntry, error) {
+    if courseID == "" {
+        return nil, BadRequest("course_id is required")
+    }
+    course, err := s.GetCourse(ctx, courseID)
+    if err != nil {
+        return nil, err
+    }
+    // Проверяем, что у пользователя есть права на чтение leaderboard
+    if err := RequireScopedPermission(ctx, s.RoleRepo, userID, course.ID, PermissionLeaderboardRead); err != nil {
+        return nil, err
+    }
+    entries, err := s.CourseRepo.GetLeaderboard(ctx, course.ID)
+    if err != nil {
+        return nil, Internal("Failed to get leaderboard", err)
+    }
+    return entries, nil
 }
 
 func generateInviteCode() string {

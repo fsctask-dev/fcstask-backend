@@ -19,6 +19,7 @@ type CourseRepositoryInterface interface {
 	UpdateCourse(ctx context.Context, courseID string, course models.Course) (*models.Course, error)
 	DeleteCourse(ctx context.Context, courseID string) error
 	GetCourseBoard(ctx context.Context, courseID string) (*models.TaskBoardSummary, bool, error)
+	GetLeaderboard(ctx context.Context, courseID uuid.UUID) ([]models.LeaderboardEntry, error)
 }
 
 type CourseRepository struct {
@@ -112,4 +113,33 @@ func (r *CourseRepository) DeleteCourse(ctx context.Context, courseID string) er
 
 func (r *CourseRepository) GetCourseBoard(ctx context.Context, courseID string) (*models.TaskBoardSummary, bool, error) {
 	return nil, false, nil
+}
+
+func (r *CourseRepository) GetLeaderboard(ctx context.Context, courseID uuid.UUID) ([]models.LeaderboardEntry, error) {
+    type result struct {
+        Username   string
+        TotalScore int
+    }
+    var results []result
+    err := r.rw.ReadDB().WithContext(ctx).
+        Model(&models.UserRole{}).
+        Select("u.username, COALESCE(SUM(sts.score), 0) AS total_score").
+        Joins("JOIN users u ON u.id = user_roles.user_id").
+        Joins("LEFT JOIN student_task_scores sts ON sts.student_id = user_roles.user_id AND sts.course_id = user_roles.course_id").
+        Where("user_roles.course_id = ?", courseID).
+        Group("user_roles.user_id, u.username").
+        Order("total_score DESC").
+        Scan(&results).Error
+    if err != nil {
+        return nil, err
+    }
+    entries := make([]models.LeaderboardEntry, len(results))
+    for i, r := range results {
+        entries[i] = models.LeaderboardEntry{
+            Username:   r.Username,
+            TotalScore: r.TotalScore,
+            Rank:       i + 1,
+        }
+    }
+    return entries, nil
 }
