@@ -83,6 +83,13 @@ func (c *APIController) RegisterCourseRoutes(e *echo.Echo) {
 	e.POST("/api/courses/:courseId/join", c.courseHandler.JoinCourse)
 }
 
+func (c *APIController) RegisterNamespaceRoutes(e *echo.Echo, namespaceHandler *handler.NamespaceHandler) {
+	e.GET("/admin/namespaces", namespaceHandler.GetNamespaces)
+	e.GET("/admin/namespaces/:id", namespaceHandler.GetNamespace)
+	e.GET("/admin/namespaces/:id/users", namespaceHandler.GetNamespaceUsers)
+	e.GET("/admin/namespaces/:id/courses", namespaceHandler.GetNamespaceCourses)
+}
+
 func (c *APIController) RegisterAdminRoutes(
 	e *echo.Echo,
 	adminHomeworkHandler *handler.AdminHomeworkHandler,

@@ -50,6 +50,7 @@ func New(cfg *config.Config) (*App, error) {
 	taskRepo := repo.NewTaskRepository(dbClient.DB())
 	deadlineRepo := repo.NewDeadlineRepository(dbClient.DB())
 	studentScoreRepo := repo.NewStudentTaskScoreRepository(dbClient.DB())
+	namespaceRepo := repo.NewNamespaceRepository(dbClient.DB())
 
 	userService := service.NewUserService(userRepo)
 	authService := service.NewAuthService(userRepo, sessionRepo).WithMetrics(m.Auth, m.Session)
@@ -58,10 +59,12 @@ func New(cfg *config.Config) (*App, error) {
 	adminHomeworkService := service.NewAdminHomeworkService(homeworkRepo, deadlineRepo, roleRepo).WithMetrics(m.Admin)
 	adminTaskService := service.NewAdminTaskService(taskRepo, homeworkRepo, roleRepo).WithMetrics(m.Admin)
 	adminRoleService := service.NewAdminRoleService(roleRepo, userRepo).WithMetrics(m.Admin)
+	namespaceService := service.NewNamespaceService(namespaceRepo)
 
 	adminHomeworkHandler := handler.NewAdminHomeworkHandler(adminHomeworkService)
 	adminTaskHandler := handler.NewAdminTaskHandler(adminTaskService)
 	adminRoleHandler := handler.NewAdminRoleHandler(adminRoleService)
+	namespaceHandler := handler.NewNamespaceHandler(namespaceService)
 
 	apiController := controller.NewAPIController(
 		handler.NewAuthHandler(authService),
@@ -98,10 +101,15 @@ func New(cfg *config.Config) (*App, error) {
 		"/admin/courses/:courseId/roles/:roleId/permissions",
 		"/admin/courses/:courseId/roles/:roleId/permissions/:permission",
 		"/admin/super-admins",
+		"/admin/namespaces",
+		"/admin/namespaces/:id",
+		"/admin/namespaces/:id/users",
+		"/admin/namespaces/:id/courses",
 	}))
 
 	api.RegisterHandlers(e, apiController)
 	apiController.RegisterCourseRoutes(e)
+	apiController.RegisterNamespaceRoutes(e, namespaceHandler)
 	apiController.RegisterAdminRoutes(e, adminHomeworkHandler, adminTaskHandler, adminRoleHandler)
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
