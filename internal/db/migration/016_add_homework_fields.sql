@@ -1,5 +1,5 @@
 -- +goose Up
-ALTER TABLE homework ADD COLUMN title VARCHAR(255) NOT NULL DEFAULT '';
+ALTER TABLE homework ADD COLUMN title VARCHAR(255);
 ALTER TABLE homework ADD COLUMN description TEXT;
 ALTER TABLE homework ADD COLUMN position INT NOT NULL DEFAULT 0;
 
