@@ -21,6 +21,7 @@ type CourseRepositoryInterface interface {
 	GetCourseBoard(ctx context.Context, courseID string) (*models.TaskBoardSummary, bool, error)
 	GetLeaderboard(ctx context.Context, courseID uuid.UUID) ([]models.LeaderboardEntry, error)
 	UpdateInviteCode(ctx context.Context, courseID uuid.UUID, code *string) error
+	GetPublicCourses(ctx context.Context) ([]models.Course, error)
 }
 
 type CourseRepository struct {
@@ -37,6 +38,16 @@ func (r *CourseRepository) GetCourses(ctx context.Context) ([]models.Course, err
 		return nil, err
 	}
 	return courses, nil
+}
+
+func (r *CourseRepository) GetPublicCourses(ctx context.Context) ([]models.Course, error) {
+    var courses []models.Course
+    if err := r.rw.ReadDB().WithContext(ctx).
+        Where("type = ?", models.CourseTypePublic).
+        Find(&courses).Error; err != nil {
+        return nil, err
+    }
+    return courses, nil
 }
 
 func (r *CourseRepository) GetCoursesByUserID(ctx context.Context, userID uuid.UUID, status string) ([]models.Course, error) {

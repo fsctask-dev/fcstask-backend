@@ -67,6 +67,11 @@ func (m *mockCourseRepo) UpdateInviteCode(ctx context.Context, courseID uuid.UUI
     return args.Error(0)
 }
 
+func (m *mockCourseRepo) GetPublicCourses(ctx context.Context) ([]models.Course, error) {
+    args := m.Called(ctx)
+    return args.Get(0).([]models.Course), args.Error(1)
+}
+
 type mockRoleRepo struct {
 	mock.Mock
 }

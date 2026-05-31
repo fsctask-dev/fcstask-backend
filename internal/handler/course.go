@@ -47,6 +47,15 @@ func (h *CourseHandler) GetCourses(ctx echo.Context) error {
 	return ctx.JSON(http.StatusOK, courses)
 }
 
+// GET /api/courses/public
+func (h *CourseHandler) GetPublicCourses(ctx echo.Context) error {
+    courses, err := h.courseService.GetPublicCourses(ctx.Request().Context())
+    if err != nil {
+        return serviceError(ctx, err)
+    }
+    return ctx.JSON(http.StatusOK, courses)
+}
+
 // GET /course/:courseId
 func (h *CourseHandler) GetCourse(ctx echo.Context) error {
 	courseID := ctx.Param("courseId")

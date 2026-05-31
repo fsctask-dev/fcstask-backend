@@ -42,6 +42,14 @@ func (s *CourseService) GetCourses(ctx context.Context, userID uuid.UUID, status
 	return courses, nil
 }
 
+func (s *CourseService) GetPublicCourses(ctx context.Context) ([]models.Course, error) {
+    courses, err := s.CourseRepo.GetPublicCourses(ctx)
+    if err != nil {
+        return nil, Internal("Failed to get public courses", err)
+    }
+    return courses, nil
+}
+
 func (s *CourseService) GetCourse(ctx context.Context, courseID string) (*models.Course, error) {
 	course, err := s.CourseRepo.GetCourseByID(ctx, courseID)
 	if err != nil {

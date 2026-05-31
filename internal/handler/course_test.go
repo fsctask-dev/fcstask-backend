@@ -65,6 +65,10 @@ func (m *mockCourseRepo) UpdateInviteCode(ctx context.Context, courseID uuid.UUI
     return args.Error(0)
 }
 
+func (m *mockCourseRepo) GetPublicCourses(ctx context.Context) ([]model.Course, error) {
+    return nil, nil
+}
+
 type mockRoleRepo struct {
 	mock.Mock
 }
