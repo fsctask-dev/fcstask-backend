@@ -50,7 +50,7 @@ func (m *mockCourseRepo) UpdateCourse(ctx context.Context, courseID string, cour
 func (m *mockCourseRepo) DeleteCourse(ctx context.Context, courseID string) error { return nil }
 func (m *mockCourseRepo) GetCourses(ctx context.Context) ([]models.Course, error) { return nil, nil }
 func (m *mockCourseRepo) GetCourseBoard(ctx context.Context, courseID string, userID uuid.UUID) (*models.TaskBoardSummary, bool, error) {
-	args := m.Called(ctx, courseID)
+	args := m.Called(ctx, courseID, userID)
 	if args.Get(0) == nil {
 		return nil, args.Bool(1), args.Error(2)
 	}
