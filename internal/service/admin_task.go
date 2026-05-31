@@ -46,6 +46,11 @@ type UpdateTaskInput struct {
 	Score   int
 }
 
+type PublishTaskInput struct {
+	TaskID   uuid.UUID
+	IsPublic bool
+}
+
 type SetTaskScoreInput struct {
 	TaskID uuid.UUID
 	Score  int
@@ -169,6 +174,34 @@ func (s *AdminTaskService) UpdateTask(ctx context.Context, userID, taskID uuid.U
 
 	if err = s.taskRepo.Update(ctx, task); err != nil {
 		return nil, Internal("Failed to update task", err)
+	}
+
+	return task, nil
+}
+
+func (s *AdminTaskService) PublishTask(ctx context.Context, userID uuid.UUID, input PublishTaskInput) (*model.Task, error) {
+	if input.TaskID == uuid.Nil {
+		return nil, BadRequest("task_id is required")
+	}
+
+	task, err := s.GetTask(ctx, userID, input.TaskID)
+	if err != nil {
+		return nil, err
+	}
+
+	hw, err := s.homeworkRepo.GetByID(ctx, task.HwID)
+	if err != nil {
+		return nil, NotFound("Homework not found")
+	}
+
+	if err := RequireScopedPermission(ctx, s.roleRepo, userID, hw.CourseID, PermissionTaskPublish); err != nil {
+		return nil, err
+	}
+
+	task.IsPublic = &input.IsPublic
+
+	if err := s.taskRepo.Update(ctx, task); err != nil {
+		return nil, Internal("Failed to update task visibility", err)
 	}
 
 	return task, nil

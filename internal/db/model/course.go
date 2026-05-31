@@ -77,7 +77,8 @@ type TaskBoardSummary struct {
 }
 
 type LeaderboardEntry struct {
-    Username   string `json:"username"`
-    TotalScore int    `json:"totalScore"`
-    Rank       int    `json:"rank"`
+	Username   string            `json:"username"`
+	TotalScore int               `json:"totalScore"`
+	Rank       int               `json:"rank"`
+	Tasks      map[uuid.UUID]int `json:"tasks"`
 }

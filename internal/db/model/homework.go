@@ -11,9 +11,10 @@ type Task struct {
 	TaskID  uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"task_id"`
 	HwID    uuid.UUID `gorm:"type:uuid;not null;index" json:"hw_id"`
 	Title   string    `gorm:"type:varchar(255);not null" json:"title"`
-	RepoURL *string   `gorm:"type:varchar(500)" json:"repo_url,omitempty"`
-	TaskURL *string   `gorm:"type:varchar(255);uniqueIndex" json:"task_url,omitempty"`
-	Score   *int      `gorm:"type:int;default:null" json:"score,omitempty"`
+	IsPublic *bool     `gorm:"type:bool;default:false" json:"is_public,omitempty"`
+	RepoURL  *string   `gorm:"type:varchar(500)" json:"repo_url,omitempty"`
+	TaskURL  *string   `gorm:"type:varchar(255);uniqueIndex" json:"task_url,omitempty"`
+	Score    *int      `gorm:"type:int;default:null" json:"score,omitempty"`
 }
 
 func (t *Task) BeforeCreate(tx *gorm.DB) error {

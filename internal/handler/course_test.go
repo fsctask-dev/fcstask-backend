@@ -3,6 +3,7 @@ package handler
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -156,32 +157,25 @@ func jsonContext(e *echo.Echo, method string, user *model.User, body []byte) ech
 
 // Тесты
 
-func TestGetCourses_Unauthorized(t *testing.T) {
-	handler, e, _, _ := setupTest()
+func TestGetCourse_Public_NoAuth(t *testing.T) {
+	handler, e, courseRepo, _ := setupTest()
+	course := &model.Course{ID: uuid.New(), Name: "Pub", Type: model.CourseTypePublic}
+
+	courseRepo.On("GetCourseByID", mock.Anything, "pub").Return(course, nil)
+
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
+	c.SetParamNames("courseId")
+	c.SetParamValues("pub")
 
-	err := handler.GetCourses(c)
-	assert.NoError(t, err)
-	assert.Equal(t, http.StatusUnauthorized, rec.Code)
-}
-
-func TestGetCourses_Success(t *testing.T) {
-	handler, e, courseRepo, _ := setupTest()
-	user := newTestUser()
-	courses := []model.Course{{ID: uuid.New(), Name: "Go", Slug: "go"}}
-
-	courseRepo.On("GetCoursesByUserID", mock.Anything, user.ID, "").Return(courses, nil)
-
-	c := makeContext(e, user, nil)
-	err := handler.GetCourses(c)
+	err := handler.GetCourse(c)
 
 	assert.NoError(t, err)
-	assert.Equal(t, http.StatusOK, c.Response().Status)
+	assert.Equal(t, http.StatusOK, rec.Code)
 }
 
-func TestGetCourse_Public(t *testing.T) {
+func TestGetCourse_Public_WithAuth(t *testing.T) {
 	handler, e, courseRepo, _ := setupTest()
 	user := newTestUser()
 	course := &model.Course{ID: uuid.New(), Name: "Pub", Type: model.CourseTypePublic}
@@ -189,6 +183,42 @@ func TestGetCourse_Public(t *testing.T) {
 	courseRepo.On("GetCourseByID", mock.Anything, "pub").Return(course, nil)
 
 	c := makeContext(e, user, map[string]string{"courseId": "pub"})
+	err := handler.GetCourse(c)
+
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, c.Response().Status)
+}
+
+func TestGetCourse_Private_NoAuth(t *testing.T) {
+	handler, e, courseRepo, _ := setupTest()
+	course := &model.Course{ID: uuid.New(), Name: "Priv", Type: model.CourseTypePrivate}
+
+	courseRepo.On("GetCourseByID", mock.Anything, "priv").Return(course, nil)
+
+	// Без пользователя
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("courseId")
+	c.SetParamValues("priv")
+
+	err := handler.GetCourse(c)
+
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusForbidden, rec.Code)
+}
+
+func TestGetCourse_Private_HasPermission(t *testing.T) {
+	handler, e, courseRepo, roleRepo := setupTest()
+	user := newTestUser()
+	roleID := uuid.New()
+	course := &model.Course{ID: uuid.New(), Name: "Priv", Type: model.CourseTypePrivate}
+
+	courseRepo.On("GetCourseByID", mock.Anything, "priv").Return(course, nil)
+	roleRepo.On("GetRoleIDByUserAndCourse", mock.Anything, user.ID, course.ID).Return(roleID, nil)
+	roleRepo.On("HasPermission", mock.Anything, roleID, service.PermissionCourseRead).Return(true, nil)
+
+	c := makeContext(e, user, map[string]string{"courseId": "priv"})
 	err := handler.GetCourse(c)
 
 	assert.NoError(t, err)
@@ -280,12 +310,12 @@ func TestUpdateCourse_Success(t *testing.T) {
 
 	courseRepo.On("GetCourseByID", mock.Anything, "old").Return(course, nil)
 	roleRepo.On("GetRoleIDByUserAndCourse", mock.Anything, user.ID, course.ID).Return(roleID, nil)
-	roleRepo.On("HasPermission", mock.Anything, roleID, service.PermissionHomeworkUpdate).Return(true, nil)
+	roleRepo.On("HasPermission", mock.Anything, roleID, service.PermissionCourseRead).Return(true, nil)   // ← GetCourse
+	roleRepo.On("HasPermission", mock.Anything, roleID, service.PermissionCourseUpdate).Return(true, nil) // ← UpdateCourse
 	courseRepo.On("UpdateCourse", mock.Anything, "old", mock.Anything).Return(course, nil)
 
 	body := `{"name":"Updated"}`
-	c := makeContext(e, user, map[string]string{"courseId": "old"})
-	c = jsonContextWithParams(e, http.MethodPut, user, []byte(body), "old")
+	c := jsonContextWithParams(e, http.MethodPut, user, []byte(body), "old")
 
 	err := handler.UpdateCourse(c)
 	assert.NoError(t, err)
@@ -361,11 +391,84 @@ func TestGetCourseBoard_Public(t *testing.T) {
 	roleRepo.On("HasPermission", mock.Anything, roleID, service.PermissionCourseRead).Return(true, nil)
 	courseRepo.On("GetCourseBoard", mock.Anything, "pub", user.ID).Return(nil, false, nil)
 
+
 	c := makeContext(e, user, map[string]string{"courseId": "pub"})
 	err := handler.GetCourseBoard(c)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, c.Response().Status)
+}
+func TestGetScores_Success(t *testing.T) {
+	handler, e, courseRepo, roleRepo := setupTest()
+	user := newTestUser()
+	roleID := uuid.New()
+	courseID := uuid.New()
+	course := &model.Course{ID: courseID, Name: "Go", Type: model.CourseTypePrivate}
+
+	entries := []model.LeaderboardEntry{
+		{Username: "alice", TotalScore: 30, Tasks: map[uuid.UUID]int{uuid.New(): 10, uuid.New(): 20}, Rank: 1},
+		{Username: "bob", TotalScore: 20, Tasks: map[uuid.UUID]int{uuid.New(): 20}, Rank: 2},
+	}
+
+	courseRepo.On("GetCourseByID", mock.Anything, courseID.String()).Return(course, nil)
+	roleRepo.On("GetRoleIDByUserAndCourse", mock.Anything, user.ID, courseID).Return(roleID, nil)
+	roleRepo.On("HasPermission", mock.Anything, roleID, service.PermissionCourseRead).Return(true, nil)      // GetCourse
+	roleRepo.On("HasPermission", mock.Anything, roleID, service.PermissionLeaderboardRead).Return(true, nil) // GetLeaderboard
+	courseRepo.On("GetLeaderboard", mock.Anything, courseID).Return(entries, nil)
+
+	c := makeContext(e, user, map[string]string{"courseId": courseID.String()})
+	err := handler.GetScores(c)
+
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, c.Response().Status)
+
+	var resp []model.LeaderboardEntry
+	json.Unmarshal(c.Response().Writer.(*httptest.ResponseRecorder).Body.Bytes(), &resp)
+	assert.Len(t, resp, 2)
+	assert.Equal(t, "alice", resp[0].Username)
+	assert.Equal(t, 30, resp[0].TotalScore)
+	assert.Equal(t, 1, resp[0].Rank)
+}
+
+func TestGetScores_Forbidden(t *testing.T) {
+	handler, e, courseRepo, roleRepo := setupTest()
+	user := newTestUser()
+	courseID := uuid.New()
+	course := &model.Course{ID: courseID, Type: model.CourseTypePrivate}
+
+	courseRepo.On("GetCourseByID", mock.Anything, courseID.String()).Return(course, nil)
+	roleRepo.On("GetRoleIDByUserAndCourse", mock.Anything, user.ID, courseID).Return(uuid.Nil, gorm.ErrRecordNotFound)
+	roleRepo.On("GetRoleIDByUserAndCourse", mock.Anything, user.ID, uuid.Nil).Return(uuid.Nil, gorm.ErrRecordNotFound)
+
+	c := makeContext(e, user, map[string]string{"courseId": courseID.String()})
+	err := handler.GetScores(c)
+
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusForbidden, c.Response().Status)
+}
+
+func TestGetScores_Empty(t *testing.T) {
+	handler, e, courseRepo, roleRepo := setupTest()
+	user := newTestUser()
+	roleID := uuid.New()
+	courseID := uuid.New()
+	course := &model.Course{ID: courseID, Type: model.CourseTypePrivate}
+
+	courseRepo.On("GetCourseByID", mock.Anything, courseID.String()).Return(course, nil)
+	roleRepo.On("GetRoleIDByUserAndCourse", mock.Anything, user.ID, courseID).Return(roleID, nil)
+	roleRepo.On("HasPermission", mock.Anything, roleID, service.PermissionCourseRead).Return(true, nil)
+	roleRepo.On("HasPermission", mock.Anything, roleID, service.PermissionLeaderboardRead).Return(true, nil)
+	courseRepo.On("GetLeaderboard", mock.Anything, courseID).Return([]model.LeaderboardEntry{}, nil)
+
+	c := makeContext(e, user, map[string]string{"courseId": courseID.String()})
+	err := handler.GetScores(c)
+
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, c.Response().Status)
+
+	var resp []model.LeaderboardEntry
+	json.Unmarshal(c.Response().Writer.(*httptest.ResponseRecorder).Body.Bytes(), &resp)
+	assert.Empty(t, resp)
 }
 
 func TestGetCourseBoard_Private_Forbidden(t *testing.T) {

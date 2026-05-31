@@ -249,8 +249,16 @@ func TestAPIController_GetUserByID(t *testing.T) {
 
 func TestAPIController_RegisterCourseRoutes(t *testing.T) {
 	e := echo.New()
+	userRepo := &controllerUserRepo{
+		user: &models.User{
+			ID:       uuid.New(),
+			Email:    "test@example.com",
+			Username: "testuser",
+			UserID:   uuid.New(),
+		},
+	}
 	controller := newTestController(
-		&controllerUserRepo{},
+		userRepo,
 		&controllerSessionRepo{},
 		&controllerCourseRepo{courses: map[string]models.Course{
 			"go": {
@@ -269,15 +277,24 @@ func TestAPIController_RegisterCourseRoutes(t *testing.T) {
 	)
 	controller.RegisterCourseRoutes(e)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/courses/go", nil)
-	rec := httptest.NewRecorder()
+	// Middleware для подстановки пользователя
+	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			c.Set("user", userRepo.user)
+			return next(c)
+		}
+	})
 
+	// Тестируем GET /api/courses вместо GET /api/courses/:courseId
+	req := httptest.NewRequest(http.MethodGet, "/api/courses", nil)
+	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
 	assert.Equal(t, http.StatusOK, rec.Code)
-	var course models.Course
-	assert.NoError(t, json.Unmarshal(rec.Body.Bytes(), &course))
-	assert.Equal(t, "go", course.Slug)
+	var courses []models.Course
+	assert.NoError(t, json.Unmarshal(rec.Body.Bytes(), &courses))
+	assert.Len(t, courses, 1)
+	assert.Equal(t, "go", courses[0].Slug)
 }
 
 func TestAPIController_SignIn(t *testing.T) {
