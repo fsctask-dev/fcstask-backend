@@ -247,7 +247,7 @@ func (s *CourseService) RegenerateInviteCode(ctx context.Context, userID uuid.UU
     if err != nil {
         return nil, err
     }
-    if err := RequireScopedPermission(ctx, s.RoleRepo, userID, course.ID, PermissionHomeworkUpdate); err != nil {
+    if err := RequireScopedPermission(ctx, s.RoleRepo, userID, course.ID, PermissionCourseInviteRegenerate); err != nil {
         return nil, err
     }
     if course.Type != models.CourseTypePrivate {
