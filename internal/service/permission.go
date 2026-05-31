@@ -26,11 +26,13 @@ const (
 	PermissionTaskCreate      = "task.create"
 	PermissionTaskRead        = "task.read"
 	PermissionTaskUpdate      = "task.update"
+	PermissionTaskPublish     = "task.publish"
 	PermissionTaskDelete      = "task.delete"
 	PermissionTaskScoreUpdate = "task.score.update"
 	PermissionTaskSubmit      = "task.submit"
 
 	PermissionLeaderboardRead = "leaderboard.read"
+	PermissionCourseRead      = "course.read"
 
 	PermissionCourseRoleAssign = "course.roles.assign"
 	PermissionCourseRoleRevoke = "course.roles.revoke"
@@ -41,6 +43,7 @@ const (
 	PermissionCoursePermissionList   = "course.permissions.list"
 
 	PermissionCourseCreate     = "course.create"
+	PermissionCourseUpdate     = "course.update"
 	PermissionSuperAdminCreate = "super_admin.create"
 	PermissionIsSuperAdmin     = "is_super_admin"
 )
@@ -106,6 +109,7 @@ func CourseStudentPermissions() []string {
 		PermissionTaskRead,
 		PermissionTaskSubmit,
 		PermissionLeaderboardRead,
+		PermissionCourseRead,
 	}
 }
 
@@ -121,8 +125,11 @@ func CourseAdminPermissions() []string {
 		PermissionDeadlineDelete,
 		PermissionTaskCreate,
 		PermissionTaskUpdate,
+		PermissionTaskPublish,
 		PermissionTaskDelete,
 		PermissionTaskScoreUpdate,
+		PermissionCourseRead,
+		PermissionCourseUpdate,
 	}
 }
 
