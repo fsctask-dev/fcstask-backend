@@ -302,7 +302,7 @@ func TestHandlerUpdateHomework_WithPositionZero(t *testing.T) {
 	)
 	zeroPos := 0
 	svc.On("UpdateHomework", mock.Anything, mock.Anything, hwID, service.UpdateHomeworkInput{
-		Title:    newTitle,
+		Title:    &newTitle,
 		Position: &zeroPos,
 	}).Return(expected, nil)
 

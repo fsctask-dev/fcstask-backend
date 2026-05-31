@@ -25,7 +25,7 @@ func (t *Task) BeforeCreate(tx *gorm.DB) error {
 type Homework struct {
 	HwID        uuid.UUID  `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"hw_id"`
 	CourseID    uuid.UUID  `gorm:"type:uuid;not null;index" json:"course_id"`
-	Title       *string    `gorm:"type:varchar(255)" json:"title,omitempty"`
+	Title       string     `gorm:"type:varchar(255);not null" json:"title"`
 	Description *string    `gorm:"type:text" json:"description,omitempty"`
 	Position    int        `gorm:"type:int;not null;default:0" json:"position"`
 	IsPublic    *bool      `gorm:"type:bool;default:false" json:"is_public,omitempty"`

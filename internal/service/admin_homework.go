@@ -34,8 +34,8 @@ type CreateHomeworkInput struct {
 }
 
 type UpdateHomeworkInput struct {
-	Title       string
-	Description string
+	Title       *string // nil=not provided, ""=error, non-empty=update
+	Description *string // nil=not provided, ""=clear, non-empty=update
 	Position    *int
 	StartDate   string
 	EndDate     string
@@ -91,7 +91,7 @@ func (s *AdminHomeworkService) CreateHomework(ctx context.Context, userID uuid.U
 	}
 	hw := &model.Homework{
 		CourseID:  input.CourseID,
-		Title:     stringPtr(input.Title),
+		Title:     input.Title,
 		Position:  input.Position,
 		StartDate: startDate,
 		EndDate:   endDate,
@@ -171,11 +171,18 @@ func (s *AdminHomeworkService) UpdateHomework(ctx context.Context, userID, hwID 
 		return nil, BadRequest("end date must be after start_date")
 	}
 
-	if input.Title != "" {
-		hw.Title = stringPtr(input.Title)
+	if input.Title != nil {
+		if *input.Title == "" {
+			return nil, BadRequest("title cannot be empty")
+		}
+		hw.Title = *input.Title
 	}
-	if input.Description != "" {
-		hw.Description = stringPtr(input.Description)
+	if input.Description != nil {
+		if *input.Description == "" {
+			hw.Description = nil
+		} else {
+			hw.Description = stringPtr(*input.Description)
+		}
 	}
 	if input.Position != nil {
 		hw.Position = *input.Position

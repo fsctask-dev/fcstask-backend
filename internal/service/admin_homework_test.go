@@ -109,7 +109,7 @@ func TestCreateHomework_Success(t *testing.T) {
 
 	hwRepo.On("Create", ctx, mock.MatchedBy(func(hw *model.Homework) bool {
 		return hw.CourseID == courseID &&
-			hw.Title != nil && *hw.Title == "Week 1" &&
+			hw.Title == "Week 1" &&
 			hw.StartDate != nil &&
 			hw.EndDate != nil
 	})).Return(nil)
@@ -118,8 +118,7 @@ func TestCreateHomework_Success(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, result)
 	assert.Equal(t, courseID, result.CourseID)
-	assert.NotNil(t, result.Title)
-	assert.Equal(t, "Week 1", *result.Title)
+	assert.Equal(t, "Week 1", result.Title)
 	assert.NotNil(t, result.StartDate)
 	assert.NotNil(t, result.EndDate)
 	hwRepo.AssertExpectations(t)
@@ -159,7 +158,7 @@ func TestCreateHomework_WithDescriptionAndPosition(t *testing.T) {
 
 	hwRepo.On("Create", ctx, mock.MatchedBy(func(hw *model.Homework) bool {
 		return hw.CourseID == courseID &&
-			hw.Title != nil && *hw.Title == "Week 2" &&
+			hw.Title == "Week 2" &&
 			hw.Description != nil && *hw.Description == "Arrays and sorting" &&
 			hw.Position == 3
 	})).Return(nil)
@@ -328,12 +327,13 @@ func TestUpdateHomework_WithPositionZero(t *testing.T) {
 	existing := &model.Homework{HwID: hwID, CourseID: uuid.New()}
 	hwRepo.On("GetByID", ctx, hwID).Return(existing, nil)
 	hwRepo.On("Update", ctx, mock.MatchedBy(func(hw *model.Homework) bool {
-		return hw.Position == 0 && hw.Title != nil && *hw.Title == "First HW"
+		return hw.Position == 0 && hw.Title == "First HW"
 	})).Return(nil)
 
 	pos := 0
+	firstHW := "First HW"
 	input := service.UpdateHomeworkInput{
-		Title:    "First HW",
+		Title:    &firstHW,
 		Position: &pos,
 	}
 
@@ -344,7 +344,7 @@ func TestUpdateHomework_WithPositionZero(t *testing.T) {
 	hwRepo.AssertExpectations(t)
 }
 
-func TestUpdateHomework_DescriptionNotChangedIfEmpty(t *testing.T) {
+func TestUpdateHomework_DescriptionNotChangedIfNil(t *testing.T) {
 	svc, hwRepo, _ := setupService()
 	ctx := context.Background()
 	userID := uuid.New()
@@ -357,8 +357,9 @@ func TestUpdateHomework_DescriptionNotChangedIfEmpty(t *testing.T) {
 		return hw.Description != nil && *hw.Description == "Original description"
 	})).Return(nil)
 
+	updatedTitle := "Updated Title"
 	input := service.UpdateHomeworkInput{
-		Title: "Updated Title",
+		Title: &updatedTitle,
 	}
 
 	result, err := svc.UpdateHomework(ctx, userID, hwID, input)
@@ -366,6 +367,52 @@ func TestUpdateHomework_DescriptionNotChangedIfEmpty(t *testing.T) {
 	assert.NotNil(t, result)
 	assert.NotNil(t, result.Description)
 	assert.Equal(t, "Original description", *result.Description)
+	hwRepo.AssertExpectations(t)
+}
+
+func TestUpdateHomework_ClearDescription(t *testing.T) {
+	svc, hwRepo, _ := setupService()
+	ctx := context.Background()
+	userID := uuid.New()
+	hwID := uuid.New()
+	desc := "Old description"
+	emptyDesc := ""
+
+	existing := &model.Homework{HwID: hwID, CourseID: uuid.New(), Description: &desc}
+	hwRepo.On("GetByID", ctx, hwID).Return(existing, nil)
+	hwRepo.On("Update", ctx, mock.MatchedBy(func(hw *model.Homework) bool {
+		return hw.Description == nil
+	})).Return(nil)
+
+	input := service.UpdateHomeworkInput{
+		Description: &emptyDesc,
+	}
+
+	result, err := svc.UpdateHomework(ctx, userID, hwID, input)
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
+	assert.Nil(t, result.Description)
+	hwRepo.AssertExpectations(t)
+}
+
+func TestUpdateHomework_EmptyTitleError(t *testing.T) {
+	svc, hwRepo, _ := setupService()
+	ctx := context.Background()
+	userID := uuid.New()
+	hwID := uuid.New()
+	emptyTitle := ""
+
+	existing := &model.Homework{HwID: hwID, CourseID: uuid.New()}
+	hwRepo.On("GetByID", ctx, hwID).Return(existing, nil)
+
+	input := service.UpdateHomeworkInput{
+		Title: &emptyTitle,
+	}
+
+	result, err := svc.UpdateHomework(ctx, userID, hwID, input)
+	assert.Error(t, err)
+	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), "title cannot be empty")
 	hwRepo.AssertExpectations(t)
 }
 

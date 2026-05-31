@@ -150,12 +150,8 @@ func (h *AdminHomeworkHandler) UpdateHomework(c echo.Context) error {
 	}
 
 	input := service.UpdateHomeworkInput{}
-	if req.Title != nil {
-		input.Title = *req.Title
-	}
-	if req.Description != nil {
-		input.Description = *req.Description
-	}
+	input.Title = req.Title
+	input.Description = req.Description
 	input.Position = req.Position
 	if req.StartDate != nil {
 		input.StartDate = *req.StartDate
