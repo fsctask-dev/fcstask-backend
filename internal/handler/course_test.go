@@ -51,15 +51,15 @@ func (m *mockCourseRepo) UpdateCourse(ctx context.Context, courseID string, cour
 func (m *mockCourseRepo) DeleteCourse(ctx context.Context, courseID string) error {
 	return nil
 }
-func (m *mockCourseRepo) GetCourseBoard(ctx context.Context, courseID string) (*model.TaskBoardSummary, bool, error) {
+func (m *mockCourseRepo) GetCourseBoard(ctx context.Context, courseID string, userID uuid.UUID) (*model.TaskBoardSummary, bool, error) {
 	return nil, false, nil
 }
 func (m *mockCourseRepo) GetCourses(ctx context.Context) ([]model.Course, error) {
 	return nil, nil
 }
 func (m *mockCourseRepo) GetLeaderboard(ctx context.Context, courseID uuid.UUID) ([]model.LeaderboardEntry, error) {
-    args := m.Called(ctx, courseID)
-    return args.Get(0).([]model.LeaderboardEntry), args.Error(1)
+	args := m.Called(ctx, courseID)
+	return args.Get(0).([]model.LeaderboardEntry), args.Error(1)
 }
 
 type mockRoleRepo struct {
@@ -351,12 +351,15 @@ func TestJoinCourse_Unauthorized(t *testing.T) {
 }
 
 func TestGetCourseBoard_Public(t *testing.T) {
-	handler, e, courseRepo, _ := setupTest()
+	handler, e, courseRepo, roleRepo := setupTest()
 	user := newTestUser()
+	roleID := uuid.New()
 	course := &model.Course{ID: uuid.New(), Name: "Pub", Type: model.CourseTypePublic}
 
 	courseRepo.On("GetCourseByID", mock.Anything, "pub").Return(course, nil)
-	courseRepo.On("GetCourseBoard", mock.Anything, "pub").Return(nil, false, nil)
+	roleRepo.On("GetRoleIDByUserAndCourse", mock.Anything, user.ID, course.ID).Return(roleID, nil)
+	roleRepo.On("HasPermission", mock.Anything, roleID, service.PermissionCourseRead).Return(true, nil)
+	courseRepo.On("GetCourseBoard", mock.Anything, "pub", user.ID).Return(nil, false, nil)
 
 	c := makeContext(e, user, map[string]string{"courseId": "pub"})
 	err := handler.GetCourseBoard(c)
@@ -365,6 +368,21 @@ func TestGetCourseBoard_Public(t *testing.T) {
 	assert.Equal(t, http.StatusOK, c.Response().Status)
 }
 
+func TestGetCourseBoard_Private_Forbidden(t *testing.T) {
+	handler, e, courseRepo, roleRepo := setupTest()
+	user := newTestUser()
+	course := &model.Course{ID: uuid.New(), Name: "Priv", Type: model.CourseTypePrivate}
+
+	courseRepo.On("GetCourseByID", mock.Anything, "priv").Return(course, nil)
+	roleRepo.On("GetRoleIDByUserAndCourse", mock.Anything, user.ID, course.ID).Return(uuid.Nil, gorm.ErrRecordNotFound)
+	roleRepo.On("GetRoleIDByUserAndCourse", mock.Anything, user.ID, uuid.Nil).Return(uuid.Nil, gorm.ErrRecordNotFound)
+
+	c := makeContext(e, user, map[string]string{"courseId": "priv"})
+	err := handler.GetCourseBoard(c)
+
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusForbidden, c.Response().Status)
+}
 func parseDate(s string) *time.Time {
 	t, _ := time.Parse("2006-01-02", s)
 	return &t

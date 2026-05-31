@@ -179,12 +179,12 @@ func (r *controllerCourseRepo) DeleteCourse(ctx context.Context, courseID string
 	return nil
 }
 
-func (r *controllerCourseRepo) GetCourseBoard(ctx context.Context, courseID string) (*models.TaskBoardSummary, bool, error) {
+func (r *controllerCourseRepo) GetCourseBoard(ctx context.Context, courseID string, userID uuid.UUID) (*models.TaskBoardSummary, bool, error) {
 	return nil, false, nil
 }
 
 func (r *controllerCourseRepo) GetLeaderboard(ctx context.Context, courseID uuid.UUID) ([]models.LeaderboardEntry, error) {
-    return nil, nil
+	return nil, nil
 }
 
 func newTestController(userRepo *controllerUserRepo, sessionRepo *controllerSessionRepo, courseRepo *controllerCourseRepo) *APIController {

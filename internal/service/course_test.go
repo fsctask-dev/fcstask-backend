@@ -49,7 +49,7 @@ func (m *mockCourseRepo) UpdateCourse(ctx context.Context, courseID string, cour
 
 func (m *mockCourseRepo) DeleteCourse(ctx context.Context, courseID string) error { return nil }
 func (m *mockCourseRepo) GetCourses(ctx context.Context) ([]models.Course, error) { return nil, nil }
-func (m *mockCourseRepo) GetCourseBoard(ctx context.Context, courseID string) (*models.TaskBoardSummary, bool, error) {
+func (m *mockCourseRepo) GetCourseBoard(ctx context.Context, courseID string, userID uuid.UUID) (*models.TaskBoardSummary, bool, error) {
 	args := m.Called(ctx, courseID)
 	if args.Get(0) == nil {
 		return nil, args.Bool(1), args.Error(2)
@@ -58,8 +58,8 @@ func (m *mockCourseRepo) GetCourseBoard(ctx context.Context, courseID string) (*
 }
 
 func (m *mockCourseRepo) GetLeaderboard(ctx context.Context, courseID uuid.UUID) ([]models.LeaderboardEntry, error) {
-    args := m.Called(ctx, courseID)
-    return args.Get(0).([]models.LeaderboardEntry), args.Error(1)
+	args := m.Called(ctx, courseID)
+	return args.Get(0).([]models.LeaderboardEntry), args.Error(1)
 }
 
 type mockRoleRepo struct {
@@ -365,14 +365,18 @@ func TestJoinCourse_AlreadyParticipant(t *testing.T) {
 }
 
 func TestGetCourseBoard_Success(t *testing.T) {
-	svc, cRepo, _ := setupService()
+	svc, cRepo, rRepo := setupService()
+	userID := uuid.New()
+	roleID := uuid.New()
 	courseID := uuid.New().String()
 	course := &models.Course{ID: uuid.MustParse(courseID), Name: "Go", Status: "created"}
 
 	cRepo.On("GetCourseByID", mock.Anything, courseID).Return(course, nil)
-	cRepo.On("GetCourseBoard", mock.Anything, courseID).Return(nil, false, nil)
+	rRepo.On("GetRoleIDByUserAndCourse", mock.Anything, userID, course.ID).Return(roleID, nil)
+	rRepo.On("HasPermission", mock.Anything, roleID, PermissionCourseRead).Return(true, nil)
+	cRepo.On("GetCourseBoard", mock.Anything, courseID, userID).Return(nil, false, nil)
 
-	board, err := svc.GetCourseBoard(context.Background(), courseID)
+	board, err := svc.GetCourseBoard(context.Background(), userID, courseID)
 
 	assert.NoError(t, err)
 	assert.Equal(t, "Go", board.CourseName)
@@ -381,13 +385,30 @@ func TestGetCourseBoard_Success(t *testing.T) {
 
 func TestGetCourseBoard_NotFound(t *testing.T) {
 	svc, cRepo, _ := setupService()
+	userID := uuid.New()
 
 	cRepo.On("GetCourseByID", mock.Anything, "unknown").Return(nil, nil)
 
-	_, err := svc.GetCourseBoard(context.Background(), "unknown")
+	_, err := svc.GetCourseBoard(context.Background(), userID, "unknown")
 
 	svcErr := err.(*Error)
 	assert.Equal(t, "not_found", svcErr.Code)
+}
+
+func TestGetCourseBoard_Forbidden(t *testing.T) {
+	svc, cRepo, rRepo := setupService()
+	userID := uuid.New()
+	courseID := uuid.New().String()
+	course := &models.Course{ID: uuid.MustParse(courseID), Type: models.CourseTypePrivate}
+
+	cRepo.On("GetCourseByID", mock.Anything, courseID).Return(course, nil)
+	rRepo.On("GetRoleIDByUserAndCourse", mock.Anything, userID, course.ID).Return(uuid.Nil, gorm.ErrRecordNotFound)
+	rRepo.On("GetRoleIDByUserAndCourse", mock.Anything, userID, uuid.Nil).Return(uuid.Nil, gorm.ErrRecordNotFound)
+
+	_, err := svc.GetCourseBoard(context.Background(), userID, courseID)
+
+	svcErr := err.(*Error)
+	assert.Equal(t, "forbidden", svcErr.Code)
 }
 
 func TestIsValidCourseStatus(t *testing.T) {
