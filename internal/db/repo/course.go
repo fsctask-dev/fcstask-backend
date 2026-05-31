@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 	"sort"
+	"time"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -253,18 +253,20 @@ func (r *CourseRepository) GetCourseBoard(ctx context.Context, courseID string, 
 
 func (r *CourseRepository) GetLeaderboard(ctx context.Context, courseID uuid.UUID) ([]models.LeaderboardEntry, error) {
 	type taskScoreRow struct {
-		UserID   uuid.UUID
-		Username string
-		TaskID   uuid.UUID
-		Score    int
+		UserID    uuid.UUID
+		Username  string
+		TaskID    uuid.UUID
+		TaskTitle string
+		Score     int
 	}
 	var rows []taskScoreRow
 	err := r.rw.ReadDB().WithContext(ctx).
 		Model(&models.UserRole{}).
-		Select("u.id AS user_id, u.username, sts.task_id, COALESCE(sts.score, 0) AS score").
+		Select("u.id AS user_id, u.username, sts.task_id, t.title AS task_title, COALESCE(sts.score, 0) AS score").
 		Joins("JOIN users u ON u.id = user_roles.user_id").
 		Joins("JOIN course_admin_permissions cap ON cap.role_id = user_roles.role_id AND cap.permission = ?", "task.submit").
 		Joins("LEFT JOIN student_task_scores sts ON sts.student_id = user_roles.user_id AND sts.course_id = user_roles.course_id").
+		Joins("LEFT JOIN tasks t ON t.task_id = sts.task_id").
 		Where("user_roles.course_id = ?", courseID).
 		Order("u.username ASC, sts.task_id ASC").
 		Scan(&rows).Error
@@ -275,7 +277,7 @@ func (r *CourseRepository) GetLeaderboard(ctx context.Context, courseID uuid.UUI
 	type userScores struct {
 		Username   string
 		TotalScore int
-		Tasks      map[uuid.UUID]int
+		Tasks      []models.TaskScore
 	}
 	userMap := make(map[uuid.UUID]*userScores)
 	var userOrder []uuid.UUID
@@ -285,13 +287,17 @@ func (r *CourseRepository) GetLeaderboard(ctx context.Context, courseID uuid.UUI
 		if !ok {
 			us = &userScores{
 				Username: row.Username,
-				Tasks:    make(map[uuid.UUID]int),
+				Tasks:    make([]models.TaskScore, 0),
 			}
 			userMap[row.UserID] = us
 			userOrder = append(userOrder, row.UserID)
 		}
 		if row.TaskID != uuid.Nil {
-			us.Tasks[row.TaskID] = row.Score
+			us.Tasks = append(us.Tasks, models.TaskScore{
+				TaskID: row.TaskID,
+				Title:  row.TaskTitle,
+				Score:  row.Score,
+			})
 			us.TotalScore += row.Score
 		}
 	}
@@ -327,3 +333,15 @@ func stringPtrValue(s *string) string {
 		return ""
 	}
 	return *s
+}
+
+func deadlineStatus(dueDate time.Time) string {
+	now := time.Now()
+	if dueDate.Before(now) {
+		return "expired"
+	}
+	if dueDate.Before(now.Add(24 * time.Hour)) {
+		return "urgent"
+	}
+	return "active"
+}

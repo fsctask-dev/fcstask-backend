@@ -48,7 +48,7 @@ func (h *CourseHandler) GetCourses(ctx echo.Context) error {
 	return ctx.JSON(http.StatusOK, courses)
 }
 
-// GET /course/:courseId
+// GET /api/courses/:courseId
 func (h *CourseHandler) GetCourse(ctx echo.Context) error {
 	courseID := ctx.Param("courseId")
 
@@ -103,7 +103,7 @@ func (h *CourseHandler) UpdateCourse(ctx echo.Context) error {
 	return ctx.JSON(http.StatusOK, course)
 }
 
-// GET /course/board
+// GET /api/courses/:courseId/board
 func (h *CourseHandler) GetCourseBoard(ctx echo.Context) error {
 	user := ctx.Get(UserContextKey).(*model.User)
 	if user == nil {
@@ -119,7 +119,7 @@ func (h *CourseHandler) GetCourseBoard(ctx echo.Context) error {
 	return ctx.JSON(http.StatusOK, board)
 }
 
-// POST /courses/:courseId/join
+// POST /api/courses/:courseId/join
 func (h *CourseHandler) JoinCourse(ctx echo.Context) error {
 	user, ok := ctx.Get(UserContextKey).(*model.User)
 	if !ok || user == nil {

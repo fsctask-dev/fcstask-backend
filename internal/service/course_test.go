@@ -397,7 +397,6 @@ func TestGetCourseBoard_Success(t *testing.T) {
 	rRepo.On("HasPermission", mock.Anything, roleID, PermissionCourseRead).Return(true, nil)
 	cRepo.On("GetCourseBoard", mock.Anything, courseID, userID).Return(nil, false, nil)
 
-
 	board, err := svc.GetCourseBoard(context.Background(), userID, courseID)
 
 	assert.NoError(t, err)
@@ -427,7 +426,7 @@ func TestGetCourseBoard_Forbidden(t *testing.T) {
 	rRepo.On("GetRoleIDByUserAndCourse", mock.Anything, userID, uuid.Nil).Return(uuid.Nil, gorm.ErrRecordNotFound)
 
 	_, err := svc.GetCourseBoard(context.Background(), userID, courseID)
-  svcErr := err.(*Error)
+	svcErr := err.(*Error)
 	assert.Equal(t, "forbidden", svcErr.Code)
 }
 
@@ -441,8 +440,23 @@ func TestGetLeaderboard_Success(t *testing.T) {
 	task1 := uuid.New()
 	task2 := uuid.New()
 	entries := []models.LeaderboardEntry{
-		{Username: "alice", TotalScore: 30, Tasks: map[uuid.UUID]int{task1: 10, task2: 20}, Rank: 1},
-		{Username: "bob", TotalScore: 20, Tasks: map[uuid.UUID]int{task1: 20}, Rank: 2},
+		{
+			Username:   "alice",
+			TotalScore: 30,
+			Tasks: []models.TaskScore{
+				{TaskID: task1, Title: "Task 1", Score: 10},
+				{TaskID: task2, Title: "Task 2", Score: 20},
+			},
+			Rank: 1,
+		},
+		{
+			Username:   "bob",
+			TotalScore: 20,
+			Tasks: []models.TaskScore{
+				{TaskID: task1, Title: "Task 1", Score: 20},
+			},
+			Rank: 2,
+		},
 	}
 
 	cRepo.On("GetCourseByID", mock.Anything, courseID.String()).Return(course, nil)
@@ -458,6 +472,9 @@ func TestGetLeaderboard_Success(t *testing.T) {
 	assert.Equal(t, "alice", result[0].Username)
 	assert.Equal(t, 30, result[0].TotalScore)
 	assert.Equal(t, 1, result[0].Rank)
+	assert.Len(t, result[0].Tasks, 2)
+	assert.Equal(t, "Task 1", result[0].Tasks[0].Title)
+	assert.Equal(t, 10, result[0].Tasks[0].Score)
 }
 
 func TestGetLeaderboard_Empty(t *testing.T) {

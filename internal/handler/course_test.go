@@ -391,7 +391,6 @@ func TestGetCourseBoard_Public(t *testing.T) {
 	roleRepo.On("HasPermission", mock.Anything, roleID, service.PermissionCourseRead).Return(true, nil)
 	courseRepo.On("GetCourseBoard", mock.Anything, "pub", user.ID).Return(nil, false, nil)
 
-
 	c := makeContext(e, user, map[string]string{"courseId": "pub"})
 	err := handler.GetCourseBoard(c)
 
@@ -405,15 +404,32 @@ func TestGetScores_Success(t *testing.T) {
 	courseID := uuid.New()
 	course := &model.Course{ID: courseID, Name: "Go", Type: model.CourseTypePrivate}
 
+	task1 := uuid.New()
+	task2 := uuid.New()
 	entries := []model.LeaderboardEntry{
-		{Username: "alice", TotalScore: 30, Tasks: map[uuid.UUID]int{uuid.New(): 10, uuid.New(): 20}, Rank: 1},
-		{Username: "bob", TotalScore: 20, Tasks: map[uuid.UUID]int{uuid.New(): 20}, Rank: 2},
+		{
+			Username:   "alice",
+			TotalScore: 30,
+			Tasks: []model.TaskScore{
+				{TaskID: task1, Title: "Task 1", Score: 10},
+				{TaskID: task2, Title: "Task 2", Score: 20},
+			},
+			Rank: 1,
+		},
+		{
+			Username:   "bob",
+			TotalScore: 20,
+			Tasks: []model.TaskScore{
+				{TaskID: task1, Title: "Task 1", Score: 20},
+			},
+			Rank: 2,
+		},
 	}
 
 	courseRepo.On("GetCourseByID", mock.Anything, courseID.String()).Return(course, nil)
 	roleRepo.On("GetRoleIDByUserAndCourse", mock.Anything, user.ID, courseID).Return(roleID, nil)
-	roleRepo.On("HasPermission", mock.Anything, roleID, service.PermissionCourseRead).Return(true, nil)      // GetCourse
-	roleRepo.On("HasPermission", mock.Anything, roleID, service.PermissionLeaderboardRead).Return(true, nil) // GetLeaderboard
+	roleRepo.On("HasPermission", mock.Anything, roleID, service.PermissionCourseRead).Return(true, nil)
+	roleRepo.On("HasPermission", mock.Anything, roleID, service.PermissionLeaderboardRead).Return(true, nil)
 	courseRepo.On("GetLeaderboard", mock.Anything, courseID).Return(entries, nil)
 
 	c := makeContext(e, user, map[string]string{"courseId": courseID.String()})
@@ -428,6 +444,8 @@ func TestGetScores_Success(t *testing.T) {
 	assert.Equal(t, "alice", resp[0].Username)
 	assert.Equal(t, 30, resp[0].TotalScore)
 	assert.Equal(t, 1, resp[0].Rank)
+	assert.Len(t, resp[0].Tasks, 2)
+	assert.Equal(t, "Task 1", resp[0].Tasks[0].Title)
 }
 
 func TestGetScores_Forbidden(t *testing.T) {

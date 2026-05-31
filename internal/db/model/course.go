@@ -76,9 +76,15 @@ type TaskBoardSummary struct {
 	Groups        []BoardGroup `json:"groups"`
 }
 
+type TaskScore struct {
+	TaskID uuid.UUID `json:"task_id"`
+	Title  string    `json:"title"`
+	Score  int       `json:"score"`
+}
+
 type LeaderboardEntry struct {
-	Username   string            `json:"username"`
-	TotalScore int               `json:"totalScore"`
-	Rank       int               `json:"rank"`
-	Tasks      map[uuid.UUID]int `json:"tasks"`
+	Username   string      `json:"username"`
+	TotalScore int         `json:"totalScore"`
+	Tasks      []TaskScore `json:"tasks"`
+	Rank       int         `json:"rank"`
 }
