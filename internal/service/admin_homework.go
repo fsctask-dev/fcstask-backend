@@ -33,14 +33,20 @@ func (s *AdminHomeworkService) WithMetrics(m *metrics.AdminMetrics) *AdminHomewo
 }
 
 type CreateHomeworkInput struct {
-	CourseID  uuid.UUID
-	StartDate string
-	EndDate   string
+	CourseID    uuid.UUID
+	Title       string
+	Description string
+	Position    int
+	StartDate   string
+	EndDate     string
 }
 
 type UpdateHomeworkInput struct {
-	StartDate string
-	EndDate   string
+	Title       *string // nil=not provided, ""=error, non-empty=update
+	Description *string // nil=not provided, ""=clear, non-empty=update
+	Position    *int
+	StartDate   string
+	EndDate     string
 }
 
 type SetDeadlineInput struct {
@@ -65,6 +71,9 @@ func (s *AdminHomeworkService) CreateHomework(ctx context.Context, userID uuid.U
 	}
 	if err := RequireScopedPermission(ctx, s.roleRepo, userID, input.CourseID, PermissionHomeworkCreate); err != nil {
 		return nil, err
+	}
+	if input.Title == "" {
+		return nil, BadRequest("title is required")
 	}
 	if input.StartDate == "" {
 		return nil, BadRequest("start date is required")
@@ -91,8 +100,13 @@ func (s *AdminHomeworkService) CreateHomework(ctx context.Context, userID uuid.U
 	}
 	hw = &model.Homework{
 		CourseID:  input.CourseID,
+		Title:     input.Title,
+		Position:  input.Position,
 		StartDate: startDate,
 		EndDate:   endDate,
+	}
+	if input.Description != "" {
+		hw.Description = stringPtr(input.Description)
 	}
 
 	if err := s.homeworkRepo.Create(ctx, hw); err != nil {
@@ -165,6 +179,23 @@ func (s *AdminHomeworkService) UpdateHomework(ctx context.Context, userID, hwID 
 
 	if hw.StartDate != nil && hw.EndDate != nil && !hw.EndDate.After(*hw.StartDate) {
 		return nil, BadRequest("end date must be after start_date")
+	}
+
+	if input.Title != nil {
+		if *input.Title == "" {
+			return nil, BadRequest("title cannot be empty")
+		}
+		hw.Title = *input.Title
+	}
+	if input.Description != nil {
+		if *input.Description == "" {
+			hw.Description = nil
+		} else {
+			hw.Description = stringPtr(*input.Description)
+		}
+	}
+	if input.Position != nil {
+		hw.Position = *input.Position
 	}
 
 	if err := s.homeworkRepo.Update(ctx, hw); err != nil {

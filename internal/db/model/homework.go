@@ -25,13 +25,16 @@ func (t *Task) BeforeCreate(tx *gorm.DB) error {
 }
 
 type Homework struct {
-	HwID      uuid.UUID  `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"hw_id"`
-	CourseID  uuid.UUID  `gorm:"type:uuid;not null;index" json:"course_id"`
-	IsPublic  *bool      `gorm:"type:bool;default:false" json:"is_public,omitempty"`
-	StartDate *time.Time `gorm:"type:timestamp with time zone" json:"start_date,omitempty"`
-	EndDate   *time.Time `gorm:"type:timestamp with time zone" json:"end_date,omitempty"`
-	CreatedAt time.Time  `gorm:"autoCreateTime" json:"created_at"`
-	UpdatedAt time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
+	HwID        uuid.UUID  `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"hw_id"`
+	CourseID    uuid.UUID  `gorm:"type:uuid;not null;index" json:"course_id"`
+	Title       string     `gorm:"type:varchar(255);not null" json:"title"`
+	Description *string    `gorm:"type:text" json:"description,omitempty"`
+	Position    int        `gorm:"type:int;not null;default:0" json:"position"`
+	IsPublic    *bool      `gorm:"type:bool;default:false" json:"is_public,omitempty"`
+	StartDate   *time.Time `gorm:"type:timestamp with time zone" json:"start_date,omitempty"`
+	EndDate     *time.Time `gorm:"type:timestamp with time zone" json:"end_date,omitempty"`
+	CreatedAt   time.Time  `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt   time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
 }
 
 func (Homework) TableName() string { return "homework" }
