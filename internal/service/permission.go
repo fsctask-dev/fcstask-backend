@@ -41,6 +41,7 @@ const (
 	PermissionCoursePermissionAdd    = "course.permissions.add"
 	PermissionCoursePermissionRemove = "course.permissions.remove"
 	PermissionCoursePermissionList   = "course.permissions.list"
+	PermissionCourseInviteRegenerate = "course.invite.regenerate"
 
 	PermissionCourseCreate     = "course.create"
 	PermissionCourseUpdate     = "course.update"
@@ -142,6 +143,7 @@ func CourseOwnerPermissions() []string {
 		PermissionCoursePermissionAdd,
 		PermissionCoursePermissionRemove,
 		PermissionCoursePermissionList,
+		PermissionCourseInviteRegenerate,
 	)
 }
 
