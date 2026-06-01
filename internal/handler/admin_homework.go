@@ -19,13 +19,19 @@ func NewAdminHomeworkHandler(homeworkService IAdminHomeworkService) *AdminHomewo
 }
 
 type CreateHomeworkRequest struct {
-	StartDate *string `json:"start_date"`
-	EndDate   *string `json:"end_date"`
+	Title       *string `json:"title"`
+	Description *string `json:"description"`
+	Position    *int    `json:"position"`
+	StartDate   *string `json:"start_date"`
+	EndDate     *string `json:"end_date"`
 }
 
 type UpdateHomeworkRequest struct {
-	StartDate *string `json:"start_date"`
-	EndDate   *string `json:"end_date"`
+	Title       *string `json:"title"`
+	Description *string `json:"description"`
+	Position    *int    `json:"position"`
+	StartDate   *string `json:"start_date"`
+	EndDate     *string `json:"end_date"`
 }
 
 type PublishHomeworkRequest struct {
@@ -33,6 +39,7 @@ type PublishHomeworkRequest struct {
 }
 
 type SetDeadlineRequest struct {
+	CourseID    string  `json:"course_id"`
 	Title       string  `json:"title"`
 	Description *string `json:"description"`
 	DueDate     string  `json:"due_date"`
@@ -63,6 +70,15 @@ func (h *AdminHomeworkHandler) CreateHomework(c echo.Context) error {
 
 	input := service.CreateHomeworkInput{
 		CourseID: courseID,
+	}
+	if req.Title != nil {
+		input.Title = *req.Title
+	}
+	if req.Description != nil {
+		input.Description = *req.Description
+	}
+	if req.Position != nil {
+		input.Position = *req.Position
 	}
 	if req.StartDate != nil {
 		input.StartDate = *req.StartDate
@@ -135,6 +151,9 @@ func (h *AdminHomeworkHandler) UpdateHomework(c echo.Context) error {
 	}
 
 	input := service.UpdateHomeworkInput{}
+	input.Title = req.Title
+	input.Description = req.Description
+	input.Position = req.Position
 	if req.StartDate != nil {
 		input.StartDate = *req.StartDate
 	}
@@ -193,16 +212,41 @@ func (h *AdminHomeworkHandler) PublishHomework(c echo.Context) error {
 	return c.JSON(http.StatusOK, hw)
 }
 
+// GET /api/homework/:hwId/deadline
+func (h *AdminHomeworkHandler) GetDeadlineByHomeworkID(c echo.Context) error {
+	user, ok := c.Get(UserContextKey).(*model.User)
+	if !ok || user == nil {
+		return unauthorized(c, "User not found")
+	}
+
+	hwID, err := uuid.Parse(c.Param("hwId"))
+	if err != nil {
+		return badRequest(c, "Invalid homework ID")
+	}
+
+	deadline, err := h.homeworkService.GetDeadlineByHomeworkID(c.Request().Context(), user.ID, hwID)
+	if err != nil {
+		return serviceError(c, err)
+	}
+
+	return c.JSON(http.StatusOK, deadline.DueDate.Format("2006-01-02"))
+}
+
 // PUT /admin/courses/:courseId/homework/:hwId/deadline
+// PUT /api/homework/:hwId/deadline
 func (h *AdminHomeworkHandler) SetDeadline(c echo.Context) error {
 	user, ok := c.Get(UserContextKey).(*model.User)
 	if !ok || user == nil {
 		return unauthorized(c, "User not found")
 	}
 
-	courseID, err := uuid.Parse(c.Param("courseId"))
-	if err != nil {
-		return badRequest(c, "Invalid course ID")
+	var courseID uuid.UUID
+	if c.Param("courseId") != "" {
+		var err error
+		courseID, err = uuid.Parse(c.Param("courseId"))
+		if err != nil {
+			return badRequest(c, "Invalid course ID")
+		}
 	}
 
 	hwID, err := uuid.Parse(c.Param("hwId"))
@@ -213,6 +257,13 @@ func (h *AdminHomeworkHandler) SetDeadline(c echo.Context) error {
 	var req SetDeadlineRequest
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "Invalid request body")
+	}
+
+	if courseID == uuid.Nil {
+		courseID, err = uuid.Parse(req.CourseID)
+		if err != nil {
+			return badRequest(c, "course_id is required")
+		}
 	}
 
 	var assignedBy *uuid.UUID

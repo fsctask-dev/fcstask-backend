@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test (just run + show coverage)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: true
+
+      - name: Download modules
+        run: go mod download
+
+      - name: Generate code
+        run: |
+          go tool oapi-codegen -generate types,skip-prune -package api -o internal/api/types.gen.go api/openapi.yaml
+          go tool oapi-codegen -generate server -package api -o internal/api/server.gen.go api/openapi.yaml
+
+      - name: Run tests
+        run: go test ./... -race -coverprofile=coverage.out -covermode=atomic || true
+
+      - name: Show coverage percentage
+        run: |
+          if [ -f coverage.out ]; then
+            COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
+            echo "========================================"
+            echo "📊 Test coverage: $COVERAGE%"
+            echo "========================================"
+          else
+            echo "⚠️  No coverage.out file generated"
+          fi
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: true
+
+      - name: Download modules
+        run: go mod download
+
+      - name: Generate code
+        run: |
+          go tool oapi-codegen -generate types,skip-prune -package api -o internal/api/types.gen.go api/openapi.yaml
+          go tool oapi-codegen -generate server -package api -o internal/api/server.gen.go api/openapi.yaml
+
+      - name: Build all packages
+        run: go build -v ./...

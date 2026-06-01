@@ -88,6 +88,14 @@ func (m *MockAdminHomeworkService) DeleteDeadline(ctx context.Context, userID, d
 	return args.Error(0)
 }
 
+func (m *MockAdminHomeworkService) GetDeadlineByHomeworkID(ctx context.Context, userID, hwID uuid.UUID) (*model.Deadline, error) {
+	args := m.Called(ctx, userID, hwID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*model.Deadline), args.Error(1)
+}
+
 func newEchoContext(method, path string, body interface{}, params map[string]string) (echo.Context, *httptest.ResponseRecorder) {
 	e := echo.New()
 	var req *http.Request
@@ -132,21 +140,30 @@ func TestHandlerCreateHomework_Success(t *testing.T) {
 
 	courseID := uuid.New()
 	hwID := uuid.New()
+	title := "Week 1"
+	desc := "Intro tasks"
+	pos := 1
 	startDate := "2025-01-01"
 	endDate := "2025-06-01"
 
 	body := map[string]interface{}{
-		"start_date": startDate,
-		"end_date":   endDate,
+		"title":       title,
+		"description": desc,
+		"position":    pos,
+		"start_date":  startDate,
+		"end_date":    endDate,
 	}
 
 	expected := &model.Homework{HwID: hwID, CourseID: courseID}
 
 	c, rec := newEchoContext(http.MethodPost, "/", body, map[string]string{"courseId": courseID.String()})
 	svc.On("CreateHomework", mock.Anything, mock.Anything, service.CreateHomeworkInput{
-		CourseID:  courseID,
-		StartDate: startDate,
-		EndDate:   endDate,
+		CourseID:    courseID,
+		Title:       title,
+		Description: desc,
+		Position:    pos,
+		StartDate:   startDate,
+		EndDate:     endDate,
 	}).Return(expected, nil)
 
 	err := h.CreateHomework(c)
@@ -270,6 +287,32 @@ func TestHandlerUpdateHomework_Success(t *testing.T) {
 		[]string{uuid.New().String(), hwID.String()},
 	)
 	svc.On("UpdateHomework", mock.Anything, mock.Anything, hwID, service.UpdateHomeworkInput{EndDate: newEnd}).Return(expected, nil)
+
+	err := h.UpdateHomework(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	svc.AssertExpectations(t)
+}
+
+func TestHandlerUpdateHomework_WithPositionZero(t *testing.T) {
+	svc := new(MockAdminHomeworkService)
+	h := handler.NewAdminHomeworkHandler(svc)
+
+	hwID := uuid.New()
+	pos := 0
+	newTitle := "Week 0"
+	body := map[string]interface{}{"title": newTitle, "position": pos}
+	expected := &model.Homework{HwID: hwID}
+
+	c, rec := newEchoContextMultiParam(http.MethodPatch, "/", body,
+		[]string{"courseId", "hwId"},
+		[]string{uuid.New().String(), hwID.String()},
+	)
+	zeroPos := 0
+	svc.On("UpdateHomework", mock.Anything, mock.Anything, hwID, service.UpdateHomeworkInput{
+		Title:    &newTitle,
+		Position: &zeroPos,
+	}).Return(expected, nil)
 
 	err := h.UpdateHomework(c)
 	assert.NoError(t, err)

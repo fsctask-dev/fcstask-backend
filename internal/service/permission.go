@@ -18,6 +18,7 @@ const (
 	PermissionHomeworkDelete  = "homework.delete"
 	PermissionHomeworkPublish = "homework.publish"
 
+	PermissionDeadlineRead   = "deadline.read"
 	PermissionDeadlineCreate = "deadline.create"
 	PermissionDeadlineUpdate = "deadline.update"
 	PermissionDeadlineDelete = "deadline.delete"
@@ -25,11 +26,13 @@ const (
 	PermissionTaskCreate      = "task.create"
 	PermissionTaskRead        = "task.read"
 	PermissionTaskUpdate      = "task.update"
+	PermissionTaskPublish     = "task.publish"
 	PermissionTaskDelete      = "task.delete"
 	PermissionTaskScoreUpdate = "task.score.update"
 	PermissionTaskSubmit      = "task.submit"
 
 	PermissionLeaderboardRead = "leaderboard.read"
+	PermissionCourseRead      = "course.read"
 
 	PermissionCourseRoleAssign = "course.roles.assign"
 	PermissionCourseRoleRevoke = "course.roles.revoke"
@@ -41,6 +44,7 @@ const (
 	PermissionCourseInviteRegenerate = "course.invite.regenerate"
 
 	PermissionCourseCreate     = "course.create"
+	PermissionCourseUpdate     = "course.update"
 	PermissionSuperAdminCreate = "super_admin.create"
 	PermissionIsSuperAdmin     = "is_super_admin"
 )
@@ -102,9 +106,11 @@ func RequireScopedPermission(ctx context.Context, roleRepo repo.IRoleRepo, userI
 func CourseStudentPermissions() []string {
 	return []string{
 		PermissionHomeworkRead,
+		PermissionDeadlineRead,
 		PermissionTaskRead,
 		PermissionTaskSubmit,
 		PermissionLeaderboardRead,
+		PermissionCourseRead,
 	}
 }
 
@@ -120,8 +126,11 @@ func CourseAdminPermissions() []string {
 		PermissionDeadlineDelete,
 		PermissionTaskCreate,
 		PermissionTaskUpdate,
+		PermissionTaskPublish,
 		PermissionTaskDelete,
 		PermissionTaskScoreUpdate,
+		PermissionCourseRead,
+		PermissionCourseUpdate,
 	}
 }
 

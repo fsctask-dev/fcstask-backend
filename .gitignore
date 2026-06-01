@@ -34,6 +34,7 @@ Thumbs.db
 bin/
 dist/
 build/
+junk/
 
 *.cover
 coverage.txt
@@ -45,3 +46,5 @@ internal/api/types.gen.go
 internal/cmd/cmd
 script.sh
 res.txt
+
+monitoring/bot/.env

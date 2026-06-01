@@ -438,6 +438,113 @@ func TestUpdateTask_UpdateError(t *testing.T) {
 	taskRepo.AssertExpectations(t)
 }
 
+func TestPublishTask_Success(t *testing.T) {
+	svc, taskRepo, hwRepo := setupTaskService()
+	ctx := context.Background()
+	userID := uuid.New()
+
+	taskID := uuid.New()
+	hwID := uuid.New()
+	existingTask := &model.Task{TaskID: taskID, HwID: hwID, IsPublic: boolPtr(false)}
+
+	taskRepo.On("GetByID", ctx, taskID).Return(existingTask, nil)
+	hwRepo.On("GetByID", ctx, hwID).Return(&model.Homework{HwID: hwID, CourseID: uuid.New()}, nil)
+	taskRepo.On("Update", ctx, mock.MatchedBy(func(task *model.Task) bool {
+		return *task.IsPublic == true
+	})).Return(nil)
+
+	result, err := svc.PublishTask(ctx, userID, service.PublishTaskInput{
+		TaskID:   taskID,
+		IsPublic: true,
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
+	assert.True(t, *result.IsPublic)
+	taskRepo.AssertExpectations(t)
+}
+
+func TestPublishTask_Unpublish(t *testing.T) {
+	svc, taskRepo, hwRepo := setupTaskService()
+	ctx := context.Background()
+	userID := uuid.New()
+
+	taskID := uuid.New()
+	hwID := uuid.New()
+	existingTask := &model.Task{TaskID: taskID, HwID: hwID, IsPublic: boolPtr(true)}
+
+	taskRepo.On("GetByID", ctx, taskID).Return(existingTask, nil)
+	hwRepo.On("GetByID", ctx, hwID).Return(&model.Homework{HwID: hwID, CourseID: uuid.New()}, nil)
+	taskRepo.On("Update", ctx, mock.MatchedBy(func(task *model.Task) bool {
+		return *task.IsPublic == false
+	})).Return(nil)
+
+	result, err := svc.PublishTask(ctx, userID, service.PublishTaskInput{
+		TaskID:   taskID,
+		IsPublic: false,
+	})
+
+	assert.NoError(t, err)
+	assert.False(t, *result.IsPublic)
+	taskRepo.AssertExpectations(t)
+}
+
+func TestPublishTask_EmptyID(t *testing.T) {
+	svc, _, _ := setupTaskService()
+	ctx := context.Background()
+
+	result, err := svc.PublishTask(ctx, uuid.New(), service.PublishTaskInput{
+		TaskID:   uuid.Nil,
+		IsPublic: true,
+	})
+
+	assert.Error(t, err)
+	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), "task_id is required")
+}
+
+func TestPublishTask_NotFound(t *testing.T) {
+	svc, taskRepo, _ := setupTaskService()
+	ctx := context.Background()
+
+	taskID := uuid.New()
+	taskRepo.On("GetByID", ctx, taskID).Return(nil, assert.AnError)
+
+	result, err := svc.PublishTask(ctx, uuid.New(), service.PublishTaskInput{
+		TaskID:   taskID,
+		IsPublic: true,
+	})
+
+	assert.Error(t, err)
+	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), "Task not found")
+	taskRepo.AssertExpectations(t)
+}
+
+func TestPublishTask_UpdateError(t *testing.T) {
+	svc, taskRepo, hwRepo := setupTaskService()
+	ctx := context.Background()
+	userID := uuid.New()
+
+	taskID := uuid.New()
+	hwID := uuid.New()
+	existingTask := &model.Task{TaskID: taskID, HwID: hwID}
+
+	taskRepo.On("GetByID", ctx, taskID).Return(existingTask, nil)
+	hwRepo.On("GetByID", ctx, hwID).Return(&model.Homework{HwID: hwID, CourseID: uuid.New()}, nil)
+	taskRepo.On("Update", ctx, mock.AnythingOfType("*model.Task")).Return(assert.AnError)
+
+	result, err := svc.PublishTask(ctx, userID, service.PublishTaskInput{
+		TaskID:   taskID,
+		IsPublic: true,
+	})
+
+	assert.Error(t, err)
+	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), "Failed to update task visibility")
+	taskRepo.AssertExpectations(t)
+}
+
 func TestDeleteTask_Success(t *testing.T) {
 	svc, taskRepo, hwRepo := setupTaskService()
 	ctx := context.Background()
@@ -584,3 +691,5 @@ func TestSetScore_SetScoreError(t *testing.T) {
 	assert.Contains(t, err.Error(), "Failed to set score")
 	taskRepo.AssertExpectations(t)
 }
+
+func boolPtr(b bool) *bool { return &b }

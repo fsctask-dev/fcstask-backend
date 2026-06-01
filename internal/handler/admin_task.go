@@ -30,6 +30,10 @@ type UpdateTaskRequest struct {
 	Score   *int    `json:"score"`
 }
 
+type PublishTaskRequest struct {
+	IsPublic bool `json:"is_public"`
+}
+
 type SetTaskScoreRequest struct {
 	Score int `json:"score"`
 }
@@ -139,6 +143,34 @@ func (h *AdminTaskHandler) UpdateTask(c echo.Context) error {
 	}
 
 	task, err := h.taskService.UpdateTask(c.Request().Context(), user.ID, taskID, input)
+	if err != nil {
+		return serviceError(c, err)
+	}
+
+	return c.JSON(http.StatusOK, task)
+}
+
+// PATCH /admin/courses/:courseId/homework/:hwId/tasks/:taskId/publish
+func (h *AdminTaskHandler) PublishTask(c echo.Context) error {
+	user, ok := c.Get(UserContextKey).(*model.User)
+	if !ok || user == nil {
+		return unauthorized(c, "User not found")
+	}
+
+	taskID, err := uuid.Parse(c.Param("taskId"))
+	if err != nil {
+		return badRequest(c, "Invalid task ID")
+	}
+
+	var req PublishTaskRequest
+	if err := c.Bind(&req); err != nil {
+		return badRequest(c, "Invalid request body")
+	}
+
+	task, err := h.taskService.PublishTask(c.Request().Context(), user.ID, service.PublishTaskInput{
+		TaskID:   taskID,
+		IsPublic: req.IsPublic,
+	})
 	if err != nil {
 		return serviceError(c, err)
 	}

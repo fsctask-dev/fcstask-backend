@@ -9,10 +9,11 @@ import (
 )
 
 type APIController struct {
-	authHandler    *handler.AuthHandler
-	userHandler    *handler.UserHandler
-	sessionHandler *handler.SessionHandler
-	courseHandler  *handler.CourseHandler
+	authHandler          *handler.AuthHandler
+	userHandler          *handler.UserHandler
+	sessionHandler       *handler.SessionHandler
+	courseHandler        *handler.CourseHandler
+	adminHomeworkHandler *handler.AdminHomeworkHandler
 }
 
 func NewAPIController(
@@ -20,12 +21,14 @@ func NewAPIController(
 	userHandler *handler.UserHandler,
 	sessionHandler *handler.SessionHandler,
 	courseHandler *handler.CourseHandler,
+	adminHomeworkHandler *handler.AdminHomeworkHandler,
 ) *APIController {
 	return &APIController{
-		authHandler:    authHandler,
-		userHandler:    userHandler,
-		sessionHandler: sessionHandler,
-		courseHandler:  courseHandler,
+		authHandler:          authHandler,
+		userHandler:          userHandler,
+		sessionHandler:       sessionHandler,
+		courseHandler:        courseHandler,
+		adminHomeworkHandler: adminHomeworkHandler,
 	}
 }
 
@@ -85,6 +88,13 @@ func (c *APIController) RegisterCourseRoutes(e *echo.Echo) {
 	e.POST("/api/courses/:courseId/invite", c.courseHandler.RegenerateInviteCode)
 }
 
+func (c *APIController) RegisterHomeworkRoutes(e *echo.Echo) {
+	e.GET("/admin/homework/:hwId/deadline", c.adminHomeworkHandler.GetDeadlineByHomeworkID)
+	e.PUT("/admin/homework/:hwId/deadline", c.adminHomeworkHandler.SetDeadline)
+	e.PATCH("/admin/deadlines/:deadlineId", c.adminHomeworkHandler.UpdateDeadline)
+	e.DELETE("/admin/deadlines/:deadlineId", c.adminHomeworkHandler.DeleteDeadline)
+}
+
 func (c *APIController) RegisterAdminRoutes(
 	e *echo.Echo,
 	adminHomeworkHandler *handler.AdminHomeworkHandler,
@@ -106,6 +116,7 @@ func (c *APIController) RegisterAdminRoutes(
 	e.GET("/admin/courses/:courseId/homework/:hwId/tasks/:taskId", adminTaskHandler.GetTask)
 	e.PATCH("/admin/courses/:courseId/homework/:hwId/tasks/:taskId", adminTaskHandler.UpdateTask)
 	e.DELETE("/admin/courses/:courseId/homework/:hwId/tasks/:taskId", adminTaskHandler.DeleteTask)
+	e.PATCH("/admin/courses/:courseId/homework/:hwId/tasks/:taskId/publish", adminTaskHandler.PublishTask)
 	e.PATCH("/admin/courses/:courseId/homework/:hwId/tasks/:taskId/score", adminTaskHandler.SetScore)
 
 	e.POST("/admin/courses/:courseId/roles", adminRoleHandler.AssignCourseAdmin)

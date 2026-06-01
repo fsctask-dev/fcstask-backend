@@ -1,8 +1,5 @@
 GO ?= go
-GOPATH ?= $(HOME)/go
-export PATH := $(PATH):$(GOPATH)/bin
-OAPI_CODEGEN := $(GOPATH)/bin/oapi-codegen
-MOCKGEN := $(GOPATH)/bin/mockgen
+MOCKGEN := $(shell go env GOPATH)/bin/mockgen
 MODULE_NAME := fcstask-backend
 BINARY_NAME := fcstask-api
 DOCKER_IMAGE_NAME ?= miruken/$(MODULE_NAME)-backend
@@ -12,6 +9,7 @@ GO_MIN_VERSION := 1.26
 
 .PHONY: check-go check-docker init tidy migrate install-tools gen test test-integration-db postgreplication-up \
 	deps db-up db-down db-wait up down stop-api run-api \
+	monitoring-up monitoring-down monitoring-logs load-test \
 	docker-build docker-run docker-test docker-push ci-local ci
 
 check-go:
@@ -69,11 +67,11 @@ deps: check-go init tidy install-tools
 	@$(GO) mod download
 	@echo "Go dependencies ready"
 
-# Поднять всё с нуля: deps → Postgres (docker) → codegen → миграции → API (foreground)
-up: check-go check-docker deps db-up db-wait gen migrate run-api
+# Поднять всё с нуля: deps → Postgres (docker) → monitoring stack → codegen → миграции → API (foreground)
+up: check-go check-docker deps db-up db-wait monitoring-up gen migrate run-api
 
-# Остановить API и контейнеры Postgres
-down: stop-api db-down
+# Остановить API, monitoring и контейнеры Postgres
+down: stop-api monitoring-down db-down
 	@echo "Development stack stopped"
 
 stop-api:
@@ -117,26 +115,14 @@ run-api:
 	@$(GO) run ./internal/cmd/
 
 install-tools: check-go
-	@echo "📦 Installing tools..."
-	@test -x "$(OAPI_CODEGEN)" || $(GO) install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest
+	@echo "📦 Checking tools..."
 	@test -x "$(MOCKGEN)" || $(GO) install github.com/golang/mock/mockgen@latest
-	@echo "✅ Tools installed"
+	@echo "✅ Tools ready"
 
-gen: install-tools
+gen: check-go
 	@echo "Generating API code from OpenAPI..."
-	@if test -x "$(OAPI_CODEGEN)"; then \
-		echo "oapi-codegen is already installed"; \
-	else \
-		echo "Installing oapi-codegen..."; \
-		$(GO) install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest; \
-	fi
-	@echo "Generating types..."
-	$(OAPI_CODEGEN) -generate types,skip-prune -package api -o internal/api/types.gen.go api/openapi.yaml
-	@echo "Generating server..."
-	$(OAPI_CODEGEN) -generate server -package api -o internal/api/server.gen.go api/openapi.yaml
-	@echo "Code generation completed!"
-	@echo "🔄 Generating code..."
-	@go generate ./...
+	$(GO) tool oapi-codegen -generate types,skip-prune -package api -o internal/api/types.gen.go api/openapi.yaml
+	$(GO) tool oapi-codegen -generate server -package api -o internal/api/server.gen.go api/openapi.yaml
 	@echo "✅ Code generation completed"
 
 test: gen
@@ -149,6 +135,27 @@ postgreplication-up: db-up
 
 test-integration-db:
 	$(GO) test -tags=integration -count=1 -v ./internal/db/...
+
+COMPOSE_MONITORING ?= docker compose -f docker-compose.yaml --profile monitoring
+
+monitoring-up: check-docker
+	@echo "Starting monitoring stack (prometheus, alertmanager, exporters)..."
+	@$(COMPOSE_MONITORING) up -d
+	@echo "Stack is up. UIs:"
+	@echo "  Prometheus:        http://localhost:9090"
+	@echo "  Alertmanager:      http://localhost:9093"
+	@echo "  Postgres exporter: http://localhost:9187/metrics"
+	@echo "  SQL exporter:      http://localhost:9399/metrics"
+	@echo "Make sure the app is running on host:8081/metrics (run: make run-api)"
+
+monitoring-down:
+	@echo "Stopping monitoring stack..."
+	@$(COMPOSE_MONITORING) stop prometheus alertmanager postgres-exporter sql-exporter
+	@$(COMPOSE_MONITORING) rm -f prometheus alertmanager postgres-exporter sql-exporter
+	@echo "Monitoring stack stopped (Postgres primary/replica left running)"
+
+monitoring-logs:
+	@$(COMPOSE_MONITORING) logs -f prometheus alertmanager postgres-exporter sql-exporter
 
 docker-build:
 	@echo "🐳 Building Docker image..."

@@ -4,6 +4,7 @@ import (
 	"fcstask-backend/internal/db/model"
 	"net/http"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 
 	"fcstask-backend/internal/service"
@@ -47,7 +48,7 @@ func (h *CourseHandler) GetCourses(ctx echo.Context) error {
 	return ctx.JSON(http.StatusOK, courses)
 }
 
-// GET /api/courses/public
+// GET /courses/public
 func (h *CourseHandler) GetPublicCourses(ctx echo.Context) error {
     courses, err := h.courseService.GetPublicCourses(ctx.Request().Context())
     if err != nil {
@@ -59,26 +60,16 @@ func (h *CourseHandler) GetPublicCourses(ctx echo.Context) error {
 // GET /course/:courseId
 func (h *CourseHandler) GetCourse(ctx echo.Context) error {
 	courseID := ctx.Param("courseId")
-	course, err := h.courseService.GetCourse(ctx.Request().Context(), courseID)
-	if err != nil {
-		return serviceError(ctx, err)
-	}
-	if course.Type == model.CourseTypePublic {
-		return ctx.JSON(http.StatusOK, course)
+
+	user, _ := ctx.Get(UserContextKey).(*model.User)
+	var userID uuid.UUID
+	if user != nil {
+		userID = user.ID
 	}
 
-	user, ok := ctx.Get(UserContextKey).(*model.User)
-	if !ok || user == nil {
-		return unauthorized(ctx, "User not found in context")
-	}
-
-	courseUUID := course.ID
-	allowed, err := service.HasScopedPermission(ctx.Request().Context(), h.courseService.RoleRepo, user.ID, courseUUID, service.PermissionHomeworkRead)
+	course, err := h.courseService.GetCourse(ctx.Request().Context(), userID, courseID)
 	if err != nil {
 		return serviceError(ctx, err)
-	}
-	if !allowed {
-		return forbidden(ctx, "You are not a participant of this course")
 	}
 
 	return ctx.JSON(http.StatusOK, course)
@@ -126,28 +117,14 @@ func (h *CourseHandler) UpdateCourse(ctx echo.Context) error {
 
 // GET /course/board
 func (h *CourseHandler) GetCourseBoard(ctx echo.Context) error {
-	user, ok := ctx.Get(UserContextKey).(*model.User)
-	if !ok || user == nil {
-    	return unauthorized(ctx, "User not found in context")
+	user := ctx.Get(UserContextKey).(*model.User)
+	if user == nil {
+		return unauthorized(ctx, "User not found in context")
 	}
 
 	courseID := ctx.Param("courseId")
-	course, err := h.courseService.GetCourse(ctx.Request().Context(), courseID)
-	if err != nil {
-		return serviceError(ctx, err)
-	}
 
-	if course.Type == model.CourseTypePrivate {
-		allowed, err := service.HasScopedPermission(ctx.Request().Context(), h.courseService.RoleRepo, user.ID, course.ID, service.PermissionHomeworkRead)
-		if err != nil {
-			return serviceError(ctx, err)
-		}
-		if !allowed {
-			return forbidden(ctx, "You are not a participant of this course")
-		}
-	}
-
-	board, err := h.courseService.GetCourseBoard(ctx.Request().Context(), courseID)
+	board, err := h.courseService.GetCourseBoard(ctx.Request().Context(), user.ID, courseID)
 	if err != nil {
 		return serviceError(ctx, err)
 	}
@@ -176,16 +153,16 @@ func (h *CourseHandler) JoinCourse(ctx echo.Context) error {
 
 // GET /api/courses/:courseId/scores
 func (h *CourseHandler) GetScores(ctx echo.Context) error {
-    user, ok := ctx.Get(UserContextKey).(*model.User)
-    if !ok || user == nil {
-        return unauthorized(ctx, "User not found in context")
-    }
-    courseID := ctx.Param("courseId")
-    entries, err := h.courseService.GetLeaderboard(ctx.Request().Context(), user.ID, courseID)
-    if err != nil {
-        return serviceError(ctx, err)
-    }
-    return ctx.JSON(http.StatusOK, entries)
+	user, ok := ctx.Get(UserContextKey).(*model.User)
+	if !ok || user == nil {
+		return unauthorized(ctx, "User not found in context")
+	}
+	courseID := ctx.Param("courseId")
+	entries, err := h.courseService.GetLeaderboard(ctx.Request().Context(), user.ID, courseID)
+	if err != nil {
+		return serviceError(ctx, err)
+	}
+	return ctx.JSON(http.StatusOK, entries)
 }
 
 // POST /api/courses/:courseId/invite
