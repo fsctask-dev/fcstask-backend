@@ -301,6 +301,32 @@ func TestHandlerUpdateHomework_Success(t *testing.T) {
 	svc.AssertExpectations(t)
 }
 
+func TestHandlerUpdateHomework_WithPositionZero(t *testing.T) {
+	svc := new(MockAdminHomeworkService)
+	h := handler.NewAdminHomeworkHandler(svc)
+
+	hwID := uuid.New()
+	pos := 0
+	newTitle := "Week 0"
+	body := map[string]interface{}{"title": newTitle, "position": pos}
+	expected := &model.Homework{HwID: hwID}
+
+	c, rec := newEchoContextMultiParam(http.MethodPatch, "/", body,
+		[]string{"courseId", "hwId"},
+		[]string{uuid.New().String(), hwID.String()},
+	)
+	zeroPos := 0
+	svc.On("UpdateHomework", mock.Anything, mock.Anything, hwID, service.UpdateHomeworkInput{
+		Title:    &newTitle,
+		Position: &zeroPos,
+	}).Return(expected, nil)
+
+	err := h.UpdateHomework(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	svc.AssertExpectations(t)
+}
+
 func TestHandlerUpdateHomework_InvalidID(t *testing.T) {
 	svc := new(MockAdminHomeworkService)
 	h := handler.NewAdminHomeworkHandler(svc)
