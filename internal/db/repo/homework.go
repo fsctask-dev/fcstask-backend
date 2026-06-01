@@ -44,7 +44,7 @@ func (r *HomeworkRepository) GetByCourseID(ctx context.Context, courseID uuid.UU
 	var hws []model.Homework
 	err := r.db.WithContext(ctx).
 		Where("course_id = ?", courseID).
-		Order("created_at ASC").
+		Order("position ASC, created_at ASC").
 		Find(&hws).Error
 	if err != nil {
 		return nil, err

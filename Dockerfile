@@ -6,14 +6,12 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY ./ ./
 
-RUN go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest
-
-RUN oapi-codegen -generate types,skip-prune \
+RUN go tool oapi-codegen -generate types,skip-prune \
     -package api \
     -o internal/api/types.gen.go \
     api/openapi.yaml
 
-RUN oapi-codegen -generate server \
+RUN go tool oapi-codegen -generate server \
     -package api \
     -o internal/api/server.gen.go \
     api/openapi.yaml
