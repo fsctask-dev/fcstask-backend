@@ -248,3 +248,30 @@ func TestSubmitGrade_CoefficientPolicy(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 80, result.Score)
 }
+
+func TestSubmitGrade_LinearPolicy_WithSoftPenalty(t *testing.T) {
+	svc, taskRepo, hwRepo, scoreRepo, hwDlRepo, lateRepo := setupCheckerService()
+	ctx := context.Background()
+	taskID, hwID, courseID, studentID := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	score := 100
+	now := time.Now()
+	soft := now.Add(-2 * time.Hour)
+	hard := now.Add(2 * time.Hour)
+
+	taskRepo.On("GetByID", ctx, taskID).Return(&model.Task{TaskID: taskID, HwID: hwID, Score: &score}, nil)
+	hwRepo.On("GetByID", ctx, hwID).Return(&model.Homework{HwID: hwID, CourseID: courseID}, nil)
+	hwDlRepo.On("GetByHwID", ctx, hwID).Return(&model.HomeworkDeadline{SoftDeadline: soft, HardDeadline: hard}, nil)
+	lateRepo.On("GetByCourseID", ctx, courseID).Return(&model.CourseLatePolicy{
+		PolicyType:        model.PolicyTypeLinear,
+		SoftPenalty:       0.1,
+		HardDeadlineScore: 0.3,
+	}, nil)
+	scoreRepo.On("Upsert", ctx, mock.Anything).Return(nil)
+
+	result, err := svc.SubmitGrade(ctx, service.SubmitGradeInput{
+		StudentID: studentID, TaskID: taskID, CourseID: courseID,
+		Status: "passed", SubmittedAt: now,
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, 60, result.Score)
+}

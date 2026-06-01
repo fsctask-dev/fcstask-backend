@@ -134,7 +134,7 @@ func (s *CheckerService) applyLatePolicy(ctx context.Context, taskID uuid.UUID, 
 		total := hard.Sub(soft).Seconds()
 		elapsed := submittedAt.Sub(soft).Seconds()
 		ratio := elapsed / total
-		factor := 1.0 - ratio*(1.0-policy.HardDeadlineScore)
+		factor := (1 - policy.SoftPenalty) - ratio*((1-policy.SoftPenalty)-policy.HardDeadlineScore)
 		return int(float64(baseScore) * factor)
 
 	case model.PolicyTypeStep:
