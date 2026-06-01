@@ -127,7 +127,7 @@ func (r *CourseRepository) GetCourseInfo(ctx context.Context, courseID uuid.UUID
 	}
 
 	var homeworks []models.Homework
-	if err := r.rw.ReadDB().WithContext(ctx).Where("course_id = ?", courseID).Order("position ASC, created_at ASC").Find(&homeworks).Error; err != nil {
+	if err := r.rw.ReadDB().WithContext(ctx).Where("course_id = ? AND is_public = ?", courseID, true).Order("position ASC, created_at ASC").Find(&homeworks).Error; err != nil {
 		return nil, err
 	}
 
@@ -138,13 +138,13 @@ func (r *CourseRepository) GetCourseInfo(ctx context.Context, courseID uuid.UUID
 
 	var allTasks []models.Task
 	if len(hwIDs) > 0 {
-		if err := r.rw.ReadDB().WithContext(ctx).Where("hw_id IN ?", hwIDs).Find(&allTasks).Error; err != nil {
+		if err := r.rw.ReadDB().WithContext(ctx).Where("hw_id IN ? AND is_public = ?", hwIDs, true).Find(&allTasks).Error; err != nil {
 			return nil, err
 		}
 	}
 
 	var allDeadlines []models.Deadline
-	if err := r.rw.ReadDB().WithContext(ctx).Where("course_id = ?", courseID).Order("due_date ASC").Find(&allDeadlines).Error; err != nil {
+	if err := r.rw.ReadDB().WithContext(ctx).Joins("JOIN homework h ON h.hw_id = deadlines.homework_id").Where("deadlines.course_id = ? AND h.is_public = ?", courseID, true).Order("due_date ASC").Find(&allDeadlines).Error; err != nil {
 		return nil, err
 	}
 
