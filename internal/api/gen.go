@@ -1,5 +1,3 @@
-//go:generate oapi-codegen -generate types,server -package api -o api.gen.go ../../api/openapi.yaml
-//go:generate mockgen -source=api.gen.go -destination=server.gen.go -package=api
-
+//go:generate go tool oapi-codegen -generate types,skip-prune -package api -o types.gen.go ../../api/openapi.yaml
+//go:generate go tool oapi-codegen -generate server -package api -o server.gen.go ../../api/openapi.yaml
 package api
-

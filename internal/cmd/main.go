@@ -7,8 +7,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"fcstask/internal/app"
-	"fcstask/internal/config"
+	"fcstask-backend/internal/app"
+	"fcstask-backend/internal/config"
 )
 
 func main() {
@@ -24,11 +24,10 @@ func main() {
 	)
 	defer stop()
 
-	app := app.New(
-		cfg.Server.Host,
-		cfg.Server.Port,
-		cfg.Server.ShutdownTimeout,
-	)
+	app, err := app.New(cfg)
+	if err != nil {
+		log.Fatal("Failed to create app:", err)
+	}
 
 	if err := app.Run(ctx); err != nil {
 		log.Fatal(err)

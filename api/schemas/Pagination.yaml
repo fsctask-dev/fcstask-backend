@@ -1,0 +1,14 @@
+type: object
+required:
+  - total
+  - limit
+  - offset
+properties:
+  total:
+    type: integer
+    format: int64
+  limit:
+    type: integer
+  offset:
+    type: integer
+

@@ -1,0 +1,13 @@
+type: object
+required:
+  - username
+  - initials
+  - role
+properties:
+  username:
+    type: string
+  initials:
+    type: string
+  role:
+    type: string
+

@@ -1,0 +1,12 @@
+type: object
+required:
+  - user
+  - sessions
+properties:
+  user:
+    $ref: "./User.yaml"
+  sessions:
+    type: array
+    items:
+      $ref: "./Session.yaml"
+

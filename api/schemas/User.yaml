@@ -1,0 +1,26 @@
+allOf:
+  - $ref: "./UserCore.yaml"
+  - type: object
+    required:
+      - id
+      - created_at
+      - updated_at
+    properties:
+      id:
+        type: string
+        format: uuid
+        description: Unique identifier
+      created_at:
+        type: string
+        format: date-time
+        description: Creation timestamp
+      updated_at:
+        type: string
+        format: date-time
+        description: Update timestamp
+      deleted_at:
+        type: string
+        format: date-time
+        nullable: true
+        description: Soft delete timestamp
+

@@ -1,7 +1,12 @@
 openapi: 3.0.3
 info:
-  title: Echo API
+  title: FCS Task API
   version: "1.0"
+  description: API for FCS Task with user management
+
+servers:
+  - url: /v1
+    description: API v1
 
 paths:
   /v1/echo:
@@ -10,3 +15,386 @@ paths:
       responses:
         "200":
           description: ok
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+
+  /v1/users:
+    post:
+      operationId: CreateUser
+      summary: Create a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUserRequest"
+      responses:
+        "201":
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: User already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/users/{id}:
+    get:
+      operationId: GetUserByID
+      summary: Get user by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: User found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/users/username/{username}:
+    get:
+      operationId: GetUserByUsername
+      summary: Get user by username
+      parameters:
+        - name: username
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: User found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/users/email/{email}:
+    get:
+      operationId: GetUserByEmail
+      summary: Get user by email
+      parameters:
+        - name: email
+          in: path
+          required: true
+          schema:
+            type: string
+            format: email
+      responses:
+        "200":
+          description: User found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/sessions:
+    get:
+      operationId: GetSessions
+      summary: Get all active sessions with user data (paginated)
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+          description: Number of items per page
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+          description: Number of items to skip
+      responses:
+        "200":
+          description: Paginated list of sessions with user data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedSessionsResponse"
+        "400":
+          description: Invalid pagination parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/users/sessions:
+    get:
+      operationId: GetUsersWithSessions
+      summary: Get all users with their active sessions (paginated by user)
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+          description: Number of users per page
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+          description: Number of users to skip
+      responses:
+        "200":
+          description: Paginated list of users with their sessions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedUsersWithSessionsResponse"
+        "400":
+          description: Invalid pagination parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/signup:
+    post:
+      operationId: SignUp
+      summary: Register a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SignUpRequest"
+      responses:
+        "201":
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: User already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/signin:
+    post:
+      operationId: SignIn
+      summary: Sign in with email or username and password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SignInRequest"
+      responses:
+        "200":
+          description: Successfully signed in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/signout:
+    post:
+      operationId: SignOut
+      summary: Sign out and delete current session
+      responses:
+        "204":
+          description: Successfully signed out
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/api/me:
+    get:
+      operationId: GetMe
+      summary: Get current authenticated user
+      responses:
+        "200":
+          description: Current user info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+security:
+  - BearerAuth: []
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: uuid
+      description: Session token obtained from /api/signup or /api/signin
+
+  schemas:
+    User:
+      $ref: "./schemas/User.yaml"
+    CreateUserRequest:
+      $ref: "./schemas/CreateUserRequest.yaml"
+    Error:
+      $ref: "./schemas/Error.yaml"
+    SignUpRequest:
+      $ref: "./schemas/SignUpRequest.yaml"
+    SignInRequest:
+      $ref: "./schemas/SignInRequest.yaml"
+    AuthResponse:
+      $ref: "./schemas/AuthResponse.yaml"
+    MeResponse:
+      $ref: "./schemas/MeResponse.yaml"
+    SessionWithUser:
+      allOf:
+        - $ref: "#/components/schemas/Session"
+        - type: object
+          required:
+            - user
+          properties:
+            user:
+              $ref: "#/components/schemas/User"
+    Pagination:
+      $ref: "./schemas/Pagination.yaml"
+    PaginatedSessionsResponse:
+      allOf:
+        - $ref: "#/components/schemas/Pagination"
+        - type: object
+          required:
+            - items
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/SessionWithUser"
+    Session:
+      $ref: "./schemas/Session.yaml"
+    UserWithSessions:
+      type: object
+      required:
+        - user
+        - sessions
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+        sessions:
+          type: array
+          items:
+            $ref: "#/components/schemas/Session"
+    PaginatedUsersWithSessionsResponse:
+      allOf:
+        - $ref: "#/components/schemas/Pagination"
+        - type: object
+          required:
+            - items
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/UserWithSessions"

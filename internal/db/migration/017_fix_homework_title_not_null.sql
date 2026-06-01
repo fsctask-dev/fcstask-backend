@@ -1,0 +1,7 @@
+-- +goose Up
+ALTER TABLE homework ALTER COLUMN title SET NOT NULL;
+ALTER TABLE homework ALTER COLUMN title SET DEFAULT '';
+
+-- +goose Down
+ALTER TABLE homework ALTER COLUMN title DROP DEFAULT;
+ALTER TABLE homework ALTER COLUMN title DROP NOT NULL;

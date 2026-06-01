@@ -3,6 +3,29 @@ server:
   port: 8080
   shutdown_timeout: 5s
 
+database:
+  host: "localhost"
+  port: 6432
+  username: "postgres"
+  password: "postgres"
+  database: "fcstask"
+  ssl_mode: "disable"
+  max_open_conns: 25
+  max_idle_conns: 25
+  conn_max_lifetime: 5m
+  ping_timeout: 5s
+  replicas:
+    - host: "localhost"
+      port: 6433
+      username: "postgres"
+      password: "postgres"
+      database: "fcstask"
+      ssl_mode: "disable"
+
+session:
+  ttl: 24h
+  cleanup_interval: 5s
+
 kafka:
   # Список адресов брокеров Kafka для подключения
   brokers:

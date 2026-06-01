@@ -1,0 +1,17 @@
+target:
+  host: "localhost"
+  port: 5432
+  user: "postgres"
+  password: "password"
+  database: "mydatabase_restored"
+  ssl_mode: "disable"
+
+backup_root: "/var/backups/postgres"
+
+drop_database: true
+
+jobs: 4
+
+wal_destination_dir: "/var/lib/postgresql/wal_archive"
+
+log_file: "/var/log/postgres-restore.log"
