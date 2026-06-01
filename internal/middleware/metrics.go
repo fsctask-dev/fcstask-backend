@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"time"
 
-	"fcstask/internal/metrics"
+	"fcstask-backend/internal/metrics"
 )
 
 type MetricsMiddleware struct {

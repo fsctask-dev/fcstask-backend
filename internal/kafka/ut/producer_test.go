@@ -9,7 +9,7 @@ import (
 
 	kafkago "github.com/segmentio/kafka-go"
 
-	"fcstask/internal/kafka"
+	"fcstask-backend/internal/kafka"
 )
 
 type mockWriter struct {

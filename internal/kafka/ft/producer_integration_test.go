@@ -12,8 +12,8 @@ import (
 	kafkago "github.com/segmentio/kafka-go"
 	tcKafka "github.com/testcontainers/testcontainers-go/modules/kafka"
 
-	"fcstask/internal/config"
-	"fcstask/internal/kafka"
+	"fcstask-backend/internal/config"
+	"fcstask-backend/internal/kafka"
 )
 
 func TestProducerPublishMetricIntegration(t *testing.T) {

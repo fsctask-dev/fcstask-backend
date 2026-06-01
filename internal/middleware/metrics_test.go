@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"fcstask/internal/middleware"
+	"fcstask-backend/internal/middleware"
 )
 
 type mockMetricsClient struct {

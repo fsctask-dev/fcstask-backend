@@ -3,7 +3,7 @@ package middleware
 import (
 	"net/http"
 
-	"fcstask/internal/metrics"
+	"fcstask-backend/internal/metrics"
 )
 
 type InflightMetricsMiddleware struct {

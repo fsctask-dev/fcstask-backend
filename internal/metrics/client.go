@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"fcstask/internal/kafka"
+	"fcstask-backend/internal/kafka"
 )
 
 type Producer interface {

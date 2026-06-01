@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"fcstask/internal/kafka"
-	"fcstask/internal/metrics"
+	"fcstask-backend/internal/kafka"
+	"fcstask-backend/internal/metrics"
 )
 
 type mockProducer struct {

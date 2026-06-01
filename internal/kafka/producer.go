@@ -10,7 +10,7 @@ import (
 
 	kafkago "github.com/segmentio/kafka-go"
 
-	"fcstask/internal/config"
+	"fcstask-backend/internal/config"
 )
 
 // Producer publishes messages to Kafka.
