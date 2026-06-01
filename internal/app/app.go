@@ -85,6 +85,7 @@ func New(cfg *config.Config) (*App, error) {
 		"/v1/users/sessions",
 		"/api/signout",
 		"/api/courses/:courseId/scores",
+		"/api/courses/:courseId/board",
 		"/api/courses/:courseId/join",
 		"/admin/courses/:courseId/homework",
 		"/admin/courses/:courseId/homework/:hwId",
@@ -102,7 +103,7 @@ func New(cfg *config.Config) (*App, error) {
 		"/admin/super-admins",
 		"/admin/homework/:hwId/deadline",
 	}))
-	
+
 	api.RegisterHandlers(e, apiController)
 	apiController.RegisterCourseRoutes(e)
 	apiController.RegisterHomeworkRoutes(e)

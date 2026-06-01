@@ -62,6 +62,9 @@ func (s *AdminTaskService) CreateTask(ctx context.Context, userID uuid.UUID, inp
 	if input.HwID == uuid.Nil {
 		return nil, BadRequest("homework_id is required")
 	}
+	if input.Title == nil || *input.Title == "" {
+		return nil, BadRequest("title is required")
+	}
 
 	hw, err := s.homeworkRepo.GetByID(ctx, input.HwID)
 	if err != nil {
@@ -78,12 +81,7 @@ func (s *AdminTaskService) CreateTask(ctx context.Context, userID uuid.UUID, inp
 	task = &model.Task{
 		HwID:  input.HwID,
 		Score: &input.Score,
-	}
-	if input.Title != nil {
-		if *input.Title == "" {
-			return nil, BadRequest("title cannot be empty")
-		}
-		task.Title = *input.Title
+		Title: *input.Title,
 	}
 
 	if input.RepoURL != "" {

@@ -58,7 +58,7 @@ func (m *mockCourseRepo) GetCourseBoard(ctx context.Context, courseID string, us
 func (m *mockCourseRepo) GetCourses(ctx context.Context) ([]model.Course, error) {
 	return nil, nil
 }
-func (m *mockCourseRepo) GetLeaderboard(ctx context.Context, courseID uuid.UUID) ([]model.LeaderboardEntry, error) {
+func (m *mockCourseRepo) GetLeaderboard(ctx context.Context, courseID string) ([]model.LeaderboardEntry, error) {
 	args := m.Called(ctx, courseID)
 	return args.Get(0).([]model.LeaderboardEntry), args.Error(1)
 }
@@ -404,23 +404,38 @@ func TestGetScores_Success(t *testing.T) {
 	courseID := uuid.New()
 	course := &model.Course{ID: courseID, Name: "Go", Type: model.CourseTypePrivate}
 
+	hwID := uuid.New()
 	task1 := uuid.New()
 	task2 := uuid.New()
 	entries := []model.LeaderboardEntry{
 		{
 			Username:   "alice",
 			TotalScore: 30,
-			Tasks: []model.TaskScore{
-				{TaskID: task1, Title: "Task 1", Score: 10},
-				{TaskID: task2, Title: "Task 2", Score: 20},
+			Homeworks: []model.HomeworkScore{
+				{
+					HomeworkID:    hwID,
+					HomeworkTitle: "Week 1",
+					TotalScore:    30,
+					Tasks: []model.TaskScore{
+						{TaskID: task1, Title: "Task 1", Score: 10},
+						{TaskID: task2, Title: "Task 2", Score: 20},
+					},
+				},
 			},
 			Rank: 1,
 		},
 		{
 			Username:   "bob",
 			TotalScore: 20,
-			Tasks: []model.TaskScore{
-				{TaskID: task1, Title: "Task 1", Score: 20},
+			Homeworks: []model.HomeworkScore{
+				{
+					HomeworkID:    hwID,
+					HomeworkTitle: "Week 1",
+					TotalScore:    20,
+					Tasks: []model.TaskScore{
+						{TaskID: task1, Title: "Task 1", Score: 20},
+					},
+				},
 			},
 			Rank: 2,
 		},
@@ -444,8 +459,12 @@ func TestGetScores_Success(t *testing.T) {
 	assert.Equal(t, "alice", resp[0].Username)
 	assert.Equal(t, 30, resp[0].TotalScore)
 	assert.Equal(t, 1, resp[0].Rank)
-	assert.Len(t, resp[0].Tasks, 2)
-	assert.Equal(t, "Task 1", resp[0].Tasks[0].Title)
+	assert.Len(t, resp[0].Homeworks, 1)
+	assert.Equal(t, "Week 1", resp[0].Homeworks[0].HomeworkTitle)
+	assert.Equal(t, 30, resp[0].Homeworks[0].TotalScore)
+	assert.Len(t, resp[0].Homeworks[0].Tasks, 2)
+	assert.Equal(t, "Task 1", resp[0].Homeworks[0].Tasks[0].Title)
+	assert.Equal(t, 10, resp[0].Homeworks[0].Tasks[0].Score)
 }
 
 func TestGetScores_Forbidden(t *testing.T) {

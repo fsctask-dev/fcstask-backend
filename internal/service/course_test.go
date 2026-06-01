@@ -58,7 +58,7 @@ func (m *mockCourseRepo) GetCourseBoard(ctx context.Context, courseID string, us
 	return args.Get(0).(*models.TaskBoardSummary), args.Bool(1), args.Error(2)
 }
 
-func (m *mockCourseRepo) GetLeaderboard(ctx context.Context, courseID uuid.UUID) ([]models.LeaderboardEntry, error) {
+func (m *mockCourseRepo) GetLeaderboard(ctx context.Context, courseID string) ([]models.LeaderboardEntry, error) {
 	args := m.Called(ctx, courseID)
 	return args.Get(0).([]models.LeaderboardEntry), args.Error(1)
 }
@@ -437,23 +437,38 @@ func TestGetLeaderboard_Success(t *testing.T) {
 	courseID := uuid.New()
 	course := &models.Course{ID: courseID, Name: "Go", Type: models.CourseTypePrivate}
 
+	hwID := uuid.New()
 	task1 := uuid.New()
 	task2 := uuid.New()
 	entries := []models.LeaderboardEntry{
 		{
 			Username:   "alice",
 			TotalScore: 30,
-			Tasks: []models.TaskScore{
-				{TaskID: task1, Title: "Task 1", Score: 10},
-				{TaskID: task2, Title: "Task 2", Score: 20},
+			Homeworks: []models.HomeworkScore{
+				{
+					HomeworkID:    hwID,
+					HomeworkTitle: "Week 1",
+					TotalScore:    30,
+					Tasks: []models.TaskScore{
+						{TaskID: task1, Title: "Task 1", Score: 10},
+						{TaskID: task2, Title: "Task 2", Score: 20},
+					},
+				},
 			},
 			Rank: 1,
 		},
 		{
 			Username:   "bob",
 			TotalScore: 20,
-			Tasks: []models.TaskScore{
-				{TaskID: task1, Title: "Task 1", Score: 20},
+			Homeworks: []models.HomeworkScore{
+				{
+					HomeworkID:    hwID,
+					HomeworkTitle: "Week 1",
+					TotalScore:    20,
+					Tasks: []models.TaskScore{
+						{TaskID: task1, Title: "Task 1", Score: 20},
+					},
+				},
 			},
 			Rank: 2,
 		},
@@ -472,9 +487,12 @@ func TestGetLeaderboard_Success(t *testing.T) {
 	assert.Equal(t, "alice", result[0].Username)
 	assert.Equal(t, 30, result[0].TotalScore)
 	assert.Equal(t, 1, result[0].Rank)
-	assert.Len(t, result[0].Tasks, 2)
-	assert.Equal(t, "Task 1", result[0].Tasks[0].Title)
-	assert.Equal(t, 10, result[0].Tasks[0].Score)
+	assert.Len(t, result[0].Homeworks, 1)
+	assert.Equal(t, "Week 1", result[0].Homeworks[0].HomeworkTitle)
+	assert.Equal(t, 30, result[0].Homeworks[0].TotalScore)
+	assert.Len(t, result[0].Homeworks[0].Tasks, 2)
+	assert.Equal(t, "Task 1", result[0].Homeworks[0].Tasks[0].Title)
+	assert.Equal(t, 10, result[0].Homeworks[0].Tasks[0].Score)
 }
 
 func TestGetLeaderboard_Empty(t *testing.T) {

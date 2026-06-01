@@ -82,9 +82,16 @@ type TaskScore struct {
 	Score  int       `json:"score"`
 }
 
+type HomeworkScore struct {
+	HomeworkID    uuid.UUID   `json:"homework_id"`
+	HomeworkTitle string      `json:"homework_title"`
+	TotalScore    int         `json:"total_score"`
+	Tasks         []TaskScore `json:"tasks"`
+}
+
 type LeaderboardEntry struct {
-	Username   string      `json:"username"`
-	TotalScore int         `json:"totalScore"`
-	Tasks      []TaskScore `json:"tasks"`
-	Rank       int         `json:"rank"`
+	Username   string          `json:"username"`
+	TotalScore int             `json:"totalScore"`
+	Homeworks  []HomeworkScore `json:"homeworks"`
+	Rank       int             `json:"rank"`
 }
