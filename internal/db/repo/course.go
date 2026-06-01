@@ -154,14 +154,9 @@ func (r *CourseRepository) GetCourseInfo(ctx context.Context, courseID uuid.UUID
 	}
 
 	deadlinesByHwID := make(map[uuid.UUID][]models.Deadline)
-	var courseDeadlines []models.Deadline
-	for _, d := range allDeadlines {
-		if d.HomeworkID != nil {
-			deadlinesByHwID[*d.HomeworkID] = append(deadlinesByHwID[*d.HomeworkID], d)
-		} else {
-			courseDeadlines = append(courseDeadlines, d)
+		for _, d := range allDeadlines {
+    		deadlinesByHwID[d.HomeworkID] = append(deadlinesByHwID[d.HomeworkID], d)
 		}
-	}
 
 	details := make([]models.HomeworkWithTasks, len(homeworks))
 	for i, hw := range homeworks {
@@ -175,7 +170,6 @@ func (r *CourseRepository) GetCourseInfo(ctx context.Context, courseID uuid.UUID
 	return &models.CourseInfo{
 		Course:          course,
 		Homeworks:       details,
-		CourseDeadlines: courseDeadlines,
 	}, nil
 }
 

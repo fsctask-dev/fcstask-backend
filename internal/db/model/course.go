@@ -92,5 +92,4 @@ type HomeworkWithTasks struct {
 type CourseInfo struct {
 	Course          `json:",inline"`
 	Homeworks       []HomeworkWithTasks `json:"homework"`
-	CourseDeadlines []Deadline          `json:"deadlines,omitempty"`
 }
