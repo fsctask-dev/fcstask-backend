@@ -20,6 +20,9 @@ func NewAdminHomeworkHandler(homeworkService IAdminHomeworkService) *AdminHomewo
 }
 
 type CreateHomeworkRequest struct {
+	Title        *string   `json:"title"`
+	Description  *string   `json:"description"`
+	Position     *int      `json:"position"`
 	StartDate    *string   `json:"start_date"`
 	EndDate      *string   `json:"end_date"`
 	SoftDeadline time.Time `json:"soft_deadline"`
@@ -27,8 +30,11 @@ type CreateHomeworkRequest struct {
 }
 
 type UpdateHomeworkRequest struct {
-	StartDate *string `json:"start_date"`
-	EndDate   *string `json:"end_date"`
+	Title       *string `json:"title"`
+	Description *string `json:"description"`
+	Position    *int    `json:"position"`
+	StartDate   *string `json:"start_date"`
+	EndDate     *string `json:"end_date"`
 }
 
 type PublishHomeworkRequest struct {
@@ -69,6 +75,15 @@ func (h *AdminHomeworkHandler) CreateHomework(c echo.Context) error {
 		CourseID:     courseID,
 		SoftDeadline: req.SoftDeadline,
 		HardDeadline: req.HardDeadline,
+	}
+	if req.Title != nil {
+		input.Title = *req.Title
+	}
+	if req.Description != nil {
+		input.Description = *req.Description
+	}
+	if req.Position != nil {
+		input.Position = *req.Position
 	}
 	if req.StartDate != nil {
 		input.StartDate = *req.StartDate
@@ -141,6 +156,9 @@ func (h *AdminHomeworkHandler) UpdateHomework(c echo.Context) error {
 	}
 
 	input := service.UpdateHomeworkInput{}
+	input.Title = req.Title
+	input.Description = req.Description
+	input.Position = req.Position
 	if req.StartDate != nil {
 		input.StartDate = *req.StartDate
 	}
