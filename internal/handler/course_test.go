@@ -502,7 +502,7 @@ func TestGetScores_Empty(t *testing.T) {
 	roleRepo.On("GetRoleIDByUserAndCourse", mock.Anything, user.ID, courseID).Return(roleID, nil)
 	roleRepo.On("HasPermission", mock.Anything, roleID, service.PermissionCourseRead).Return(true, nil)
 	roleRepo.On("HasPermission", mock.Anything, roleID, service.PermissionLeaderboardRead).Return(true, nil)
-	courseRepo.On("GetLeaderboard", mock.Anything, courseID).Return([]model.LeaderboardEntry{}, nil)
+	courseRepo.On("GetLeaderboard", mock.Anything, courseID.String()).Return([]model.LeaderboardEntry{}, nil)
 
 	c := makeContext(e, user, map[string]string{"courseId": courseID.String()})
 	err := handler.GetScores(c)
