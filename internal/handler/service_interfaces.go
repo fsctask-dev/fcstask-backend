@@ -42,3 +42,7 @@ type IAdminTaskService interface {
 	DeleteTask(ctx context.Context, userID, taskID uuid.UUID) error
 	SetScore(ctx context.Context, userID uuid.UUID, input service.SetTaskScoreInput) (*model.Task, error)
 }
+
+type ICheckerService interface {
+	SubmitGrade(ctx context.Context, input service.SubmitGradeInput) (*model.StudentTaskScore, error)
+}

@@ -8,12 +8,14 @@ type Metrics struct {
 	Registry prometheus.Gatherer
 	reg      *prometheus.Registry
 
-	HTTP    *HTTPMetrics
-	Auth    *AuthMetrics
-	Session *SessionMetrics
-	Course  *CourseMetrics
-	Admin   *AdminMetrics
-	DB      *DBMetrics
+	HTTP       *HTTPMetrics
+	Auth       *AuthMetrics
+	Session    *SessionMetrics
+	Course     *CourseMetrics
+	Admin      *AdminMetrics
+	DB         *DBMetrics
+	Checker    *CheckerMetrics
+	LatePolicy *LatePolicyMetrics
 }
 
 func New() *Metrics {
@@ -23,12 +25,14 @@ func New() *Metrics {
 		Registry: reg,
 		reg:      reg,
 
-		HTTP:    newHTTPMetrics(reg),
-		Auth:    newAuthMetrics(reg),
-		Session: newSessionMetrics(reg),
-		Course:  newCourseMetrics(reg),
-		Admin:   newAdminMetrics(reg),
-		DB:      newDBMetrics(reg),
+		HTTP:       newHTTPMetrics(reg),
+		Auth:       newAuthMetrics(reg),
+		Session:    newSessionMetrics(reg),
+		Course:     newCourseMetrics(reg),
+		Admin:      newAdminMetrics(reg),
+		DB:         newDBMetrics(reg),
+		Checker:    newCheckerMetrics(reg),
+		LatePolicy: newLatePolicyMetrics(reg),
 	}
 }
 

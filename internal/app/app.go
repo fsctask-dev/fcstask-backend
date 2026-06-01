@@ -50,18 +50,24 @@ func New(cfg *config.Config) (*App, error) {
 	taskRepo := repo.NewTaskRepository(dbClient.DB())
 	deadlineRepo := repo.NewDeadlineRepository(dbClient.DB())
 	studentScoreRepo := repo.NewStudentTaskScoreRepository(dbClient.DB())
+	hwDeadlineRepo := repo.NewHomeworkDeadlineRepo(dbClient.DB())
+	courseLateRepo := repo.NewCourseLatePolicy(dbClient.DB())
 
 	userService := service.NewUserService(userRepo)
 	authService := service.NewAuthService(userRepo, sessionRepo).WithMetrics(m.Auth, m.Session)
 	sessionService := service.NewSessionService(sessionRepo)
 	courseService := service.NewCourseService(courseRepo, roleRepo, studentScoreRepo).WithMetrics(m.Course)
-	adminHomeworkService := service.NewAdminHomeworkService(homeworkRepo, deadlineRepo, roleRepo).WithMetrics(m.Admin)
+	adminHomeworkService := service.NewAdminHomeworkService(homeworkRepo, deadlineRepo, roleRepo, hwDeadlineRepo).WithMetrics(m.Admin)
 	adminTaskService := service.NewAdminTaskService(taskRepo, homeworkRepo, roleRepo).WithMetrics(m.Admin)
 	adminRoleService := service.NewAdminRoleService(roleRepo, userRepo).WithMetrics(m.Admin)
+	checkerService := service.NewCheckerService(taskRepo, homeworkRepo, studentScoreRepo, hwDeadlineRepo, courseLateRepo).WithMetrics(m.Checker)
+	courseLateService := service.NewCourseLatePolicy(courseLateRepo, roleRepo).WithMetrics(m.LatePolicy)
 
 	adminHomeworkHandler := handler.NewAdminHomeworkHandler(adminHomeworkService)
 	adminTaskHandler := handler.NewAdminTaskHandler(adminTaskService)
 	adminRoleHandler := handler.NewAdminRoleHandler(adminRoleService)
+	checkerHandler := handler.NewCheckerHandler(checkerService)
+	courseLateHandler := handler.NewCourseLateHandler(courseLateService)
 
 	apiController := controller.NewAPIController(
 		handler.NewAuthHandler(authService),
@@ -102,11 +108,11 @@ func New(cfg *config.Config) (*App, error) {
 		"/admin/super-admins",
 		"/admin/homework/:hwId/deadline",
 	}))
-	
+
 	api.RegisterHandlers(e, apiController)
 	apiController.RegisterCourseRoutes(e)
 	apiController.RegisterHomeworkRoutes(e)
-	apiController.RegisterAdminRoutes(e, adminHomeworkHandler, adminTaskHandler, adminRoleHandler)
+	apiController.RegisterAdminRoutes(e, adminHomeworkHandler, adminTaskHandler, adminRoleHandler, checkerHandler, courseLateHandler)
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 	httpServer := server.NewHTTPServer(addr, e)

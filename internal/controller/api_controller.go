@@ -98,6 +98,8 @@ func (c *APIController) RegisterAdminRoutes(
 	adminHomeworkHandler *handler.AdminHomeworkHandler,
 	adminTaskHandler *handler.AdminTaskHandler,
 	adminRoleHandler *handler.AdminRoleHandler,
+	checkerHandler *handler.CheckerHandler,
+	courseLateHandler *handler.CourseLateHandler,
 ) {
 	e.POST("/admin/courses/:courseId/homework", adminHomeworkHandler.CreateHomework)
 	e.GET("/admin/courses/:courseId/homework/:hwId", adminHomeworkHandler.GetHomework)
@@ -125,4 +127,7 @@ func (c *APIController) RegisterAdminRoutes(
 	e.DELETE("/admin/courses/:courseId/roles/:roleId/permissions/:permission", adminRoleHandler.RemovePermission)
 	e.GET("/admin/courses/:courseId/roles/:roleId/permissions", adminRoleHandler.ListPermissions)
 	e.POST("/admin/super-admins", adminRoleHandler.CreateSuperAdmin)
+
+	e.PUT("/admin/courses/:courseId/late-policy", courseLateHandler.CreateOrUpdate)
+	e.POST("/api/grades", checkerHandler.SubmitGrade)
 }

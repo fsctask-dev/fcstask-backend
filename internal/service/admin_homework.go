@@ -12,18 +12,19 @@ import (
 )
 
 type AdminHomeworkService struct {
-	homeworkRepo repo.IHomeworkRepo
-	deadlineRepo repo.IDeadlineRepo
-	roleRepo     repo.IRoleRepo
-
-	adminMetrics *metrics.AdminMetrics
+	homeworkRepo   repo.IHomeworkRepo
+	deadlineRepo   repo.IDeadlineRepo
+	roleRepo       repo.IRoleRepo
+	hwDeadlineRepo repo.IHomeworkDeadlineRepo
+	adminMetrics   *metrics.AdminMetrics
 }
 
-func NewAdminHomeworkService(homeworkRepo repo.IHomeworkRepo, deadlineRepo repo.IDeadlineRepo, roleRepo repo.IRoleRepo) *AdminHomeworkService {
+func NewAdminHomeworkService(homeworkRepo repo.IHomeworkRepo, deadlineRepo repo.IDeadlineRepo, roleRepo repo.IRoleRepo, hwDeadlineRepo repo.IHomeworkDeadlineRepo) *AdminHomeworkService {
 	return &AdminHomeworkService{
-		homeworkRepo: homeworkRepo,
-		deadlineRepo: deadlineRepo,
-		roleRepo:     roleRepo,
+		homeworkRepo:   homeworkRepo,
+		deadlineRepo:   deadlineRepo,
+		roleRepo:       roleRepo,
+		hwDeadlineRepo: hwDeadlineRepo,
 	}
 }
 
@@ -33,9 +34,11 @@ func (s *AdminHomeworkService) WithMetrics(m *metrics.AdminMetrics) *AdminHomewo
 }
 
 type CreateHomeworkInput struct {
-	CourseID  uuid.UUID
-	StartDate string
-	EndDate   string
+	CourseID     uuid.UUID
+	StartDate    string
+	EndDate      string
+	SoftDeadline time.Time
+	HardDeadline time.Time
 }
 
 type UpdateHomeworkInput struct {
@@ -97,6 +100,24 @@ func (s *AdminHomeworkService) CreateHomework(ctx context.Context, userID uuid.U
 
 	if err := s.homeworkRepo.Create(ctx, hw); err != nil {
 		return nil, Internal("Failed to create homework", err)
+	}
+
+	if input.SoftDeadline.IsZero() {
+		return nil, BadRequest("soft_deadline is required")
+	}
+	if input.HardDeadline.IsZero() {
+		return nil, BadRequest("hard_deadline is required")
+	}
+	if !input.HardDeadline.After(input.SoftDeadline) {
+		return nil, BadRequest("hard_deadline must be after soft_deadline")
+	}
+	hwDeadline := &model.HomeworkDeadline{
+		HwID:         hw.HwID,
+		SoftDeadline: input.SoftDeadline,
+		HardDeadline: input.HardDeadline,
+	}
+	if err := s.hwDeadlineRepo.Create(ctx, hwDeadline); err != nil {
+		return nil, Internal("Failed to create homework deadline", err)
 	}
 
 	return hw, nil

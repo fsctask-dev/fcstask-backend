@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
@@ -19,8 +20,10 @@ func NewAdminHomeworkHandler(homeworkService IAdminHomeworkService) *AdminHomewo
 }
 
 type CreateHomeworkRequest struct {
-	StartDate *string `json:"start_date"`
-	EndDate   *string `json:"end_date"`
+	StartDate    *string   `json:"start_date"`
+	EndDate      *string   `json:"end_date"`
+	SoftDeadline time.Time `json:"soft_deadline"`
+	HardDeadline time.Time `json:"hard_deadline"`
 }
 
 type UpdateHomeworkRequest struct {
@@ -63,7 +66,9 @@ func (h *AdminHomeworkHandler) CreateHomework(c echo.Context) error {
 	}
 
 	input := service.CreateHomeworkInput{
-		CourseID: courseID,
+		CourseID:     courseID,
+		SoftDeadline: req.SoftDeadline,
+		HardDeadline: req.HardDeadline,
 	}
 	if req.StartDate != nil {
 		input.StartDate = *req.StartDate
