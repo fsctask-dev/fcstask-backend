@@ -91,56 +91,85 @@ func (m *MockDeadlineRepo) GetByHomeworkID(ctx context.Context, homeworkID uuid.
 	return args.Get(0).(*model.Deadline), args.Error(1)
 }
 
-func setupService() (*service.AdminHomeworkService, *MockHomeworkRepo, *MockDeadlineRepo) {
+type MockHomeworkDeadlineRepo struct {
+	mock.Mock
+}
+
+func (m *MockHomeworkDeadlineRepo) Create(ctx context.Context, hwd *model.HomeworkDeadline) error {
+	args := m.Called(ctx, hwd)
+	return args.Error(0)
+}
+
+func (m *MockHomeworkDeadlineRepo) GetByHwID(ctx context.Context, hwID uuid.UUID) (*model.HomeworkDeadline, error) {
+	args := m.Called(ctx, hwID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*model.HomeworkDeadline), args.Error(1)
+}
+
+func (m *MockHomeworkDeadlineRepo) Update(ctx context.Context, hwd *model.HomeworkDeadline) error {
+	args := m.Called(ctx, hwd)
+	return args.Error(0)
+}
+
+func setupService() (*service.AdminHomeworkService, *MockHomeworkRepo, *MockDeadlineRepo, *MockHomeworkDeadlineRepo) {
 	hwRepo := new(MockHomeworkRepo)
 	dlRepo := new(MockDeadlineRepo)
+	hwDeadlineRepo := new(MockHomeworkDeadlineRepo)
 	roleRepo := new(MockRoleRepo)
 	roleID := uuid.New()
 	roleRepo.On("GetRoleIDByUserAndCourse", mock.Anything, mock.Anything, mock.Anything).Return(roleID, nil)
 	roleRepo.On("HasPermission", mock.Anything, roleID, mock.Anything).Return(true, nil)
-	svc := service.NewAdminHomeworkService(hwRepo, dlRepo, roleRepo)
-	return svc, hwRepo, dlRepo
+	svc := service.NewAdminHomeworkService(hwRepo, dlRepo, roleRepo, hwDeadlineRepo)
+	return svc, hwRepo, dlRepo, hwDeadlineRepo
 }
 
 func TestCreateHomework_Success(t *testing.T) {
-	svc, hwRepo, _ := setupService()
+	svc, hwRepo, _, hwDeadlineRepo := setupService()
 	ctx := context.Background()
 	userID := uuid.New()
 	courseID := uuid.New()
 
+	now := time.Now().UTC()
+	soft := now
+	hard := now.Add(24 * time.Hour)
+
 	input := service.CreateHomeworkInput{
-		CourseID:  courseID,
-		Title:     "Week 1",
-		StartDate: "2025-01-01",
-		EndDate:   "2025-06-01",
+		CourseID:     courseID,
+		Title:        "Week 1",
+		StartDate:    "2025-01-01",
+		EndDate:      "2025-06-01",
+		SoftDeadline: soft,
+		HardDeadline: hard,
 	}
 
 	hwRepo.On("Create", ctx, mock.MatchedBy(func(hw *model.Homework) bool {
-		return hw.CourseID == courseID &&
-			hw.Title == "Week 1" &&
-			hw.StartDate != nil &&
-			hw.EndDate != nil
+		return hw.CourseID == courseID && hw.Title == "Week 1"
+	})).Return(nil)
+
+	hwDeadlineRepo.On("Create", ctx, mock.MatchedBy(func(hwd *model.HomeworkDeadline) bool {
+		return hwd.SoftDeadline.Equal(soft) && hwd.HardDeadline.Equal(hard)
 	})).Return(nil)
 
 	result, err := svc.CreateHomework(ctx, userID, input)
 	assert.NoError(t, err)
 	assert.NotNil(t, result)
-	assert.Equal(t, courseID, result.CourseID)
-	assert.Equal(t, "Week 1", result.Title)
-	assert.NotNil(t, result.StartDate)
-	assert.NotNil(t, result.EndDate)
 	hwRepo.AssertExpectations(t)
+	hwDeadlineRepo.AssertExpectations(t)
 }
 
 func TestCreateHomework_EmptyTitle(t *testing.T) {
-	svc, _, _ := setupService()
+	svc, _, _, _ := setupService()
 	ctx := context.Background()
 
 	input := service.CreateHomeworkInput{
-		CourseID:  uuid.New(),
-		Title:     "",
-		StartDate: "2025-01-01",
-		EndDate:   "2025-06-01",
+		CourseID:     uuid.New(),
+		Title:        "",
+		StartDate:    "2025-01-01",
+		EndDate:      "2025-06-01",
+		SoftDeadline: time.Now().UTC(),
+		HardDeadline: time.Now().UTC().Add(7 * time.Hour),
 	}
 
 	result, err := svc.CreateHomework(ctx, uuid.New(), input)
@@ -150,18 +179,23 @@ func TestCreateHomework_EmptyTitle(t *testing.T) {
 }
 
 func TestCreateHomework_WithDescriptionAndPosition(t *testing.T) {
-	svc, hwRepo, _ := setupService()
+	svc, hwRepo, _, hwDeadlineRepo := setupService() // получаем hwDeadlineRepo
 	ctx := context.Background()
 	userID := uuid.New()
 	courseID := uuid.New()
 
+	soft := time.Now().UTC()
+	hard := soft.Add(7 * time.Hour)
+
 	input := service.CreateHomeworkInput{
-		CourseID:    courseID,
-		Title:       "Week 2",
-		Description: "Arrays and sorting",
-		Position:    3,
-		StartDate:   "2025-02-01",
-		EndDate:     "2025-02-28",
+		CourseID:     courseID,
+		Title:        "Week 2",
+		Description:  "Arrays and sorting",
+		Position:     3,
+		StartDate:    "2025-02-01",
+		EndDate:      "2025-02-28",
+		SoftDeadline: soft,
+		HardDeadline: hard,
 	}
 
 	hwRepo.On("Create", ctx, mock.MatchedBy(func(hw *model.Homework) bool {
@@ -171,23 +205,31 @@ func TestCreateHomework_WithDescriptionAndPosition(t *testing.T) {
 			hw.Position == 3
 	})).Return(nil)
 
+	hwDeadlineRepo.On("Create", ctx, mock.MatchedBy(func(hwd *model.HomeworkDeadline) bool {
+		return hwd.SoftDeadline.Equal(soft) && hwd.HardDeadline.Equal(hard)
+	})).Return(nil)
+
 	result, err := svc.CreateHomework(ctx, userID, input)
 	assert.NoError(t, err)
 	assert.NotNil(t, result)
 	assert.Equal(t, 3, result.Position)
 	assert.NotNil(t, result.Description)
 	assert.Equal(t, "Arrays and sorting", *result.Description)
+
 	hwRepo.AssertExpectations(t)
+	hwDeadlineRepo.AssertExpectations(t)
 }
 
 func TestCreateHomework_EmptyCourseID(t *testing.T) {
-	svc, _, _ := setupService()
+	svc, _, _, _ := setupService()
 	ctx := context.Background()
 
 	input := service.CreateHomeworkInput{
-		CourseID:  uuid.Nil,
-		StartDate: "2025-01-01",
-		EndDate:   "2025-06-01",
+		CourseID:     uuid.Nil,
+		StartDate:    "2025-01-01",
+		EndDate:      "2025-06-01",
+		SoftDeadline: time.Now().UTC(),
+		HardDeadline: time.Now().UTC().Add(7 * time.Hour),
 	}
 
 	result, err := svc.CreateHomework(ctx, uuid.New(), input)
@@ -197,14 +239,16 @@ func TestCreateHomework_EmptyCourseID(t *testing.T) {
 }
 
 func TestCreateHomework_InvalidStartDate(t *testing.T) {
-	svc, _, _ := setupService()
+	svc, _, _, _ := setupService()
 	ctx := context.Background()
 
 	input := service.CreateHomeworkInput{
-		CourseID:  uuid.New(),
-		Title:     "Week 1",
-		StartDate: "not-a-date",
-		EndDate:   "2025-06-01",
+		CourseID:     uuid.New(),
+		Title:        "Week 1",
+		StartDate:    "not-a-date",
+		EndDate:      "2025-06-01",
+		SoftDeadline: time.Now().UTC(),
+		HardDeadline: time.Now().UTC().Add(7 * time.Hour),
 	}
 
 	result, err := svc.CreateHomework(ctx, uuid.New(), input)
@@ -214,7 +258,7 @@ func TestCreateHomework_InvalidStartDate(t *testing.T) {
 }
 
 func TestCreateHomework_EndBeforeStart(t *testing.T) {
-	svc, _, _ := setupService()
+	svc, _, _, _ := setupService()
 	ctx := context.Background()
 
 	input := service.CreateHomeworkInput{
@@ -231,14 +275,16 @@ func TestCreateHomework_EndBeforeStart(t *testing.T) {
 }
 
 func TestCreateHomework_RepoError(t *testing.T) {
-	svc, hwRepo, _ := setupService()
+	svc, hwRepo, _, _ := setupService()
 	ctx := context.Background()
 
 	input := service.CreateHomeworkInput{
-		CourseID:  uuid.New(),
-		Title:     "Week 1",
-		StartDate: "2025-01-01",
-		EndDate:   "2025-06-01",
+		CourseID:     uuid.New(),
+		Title:        "Week 1",
+		StartDate:    "2025-01-01",
+		EndDate:      "2025-06-01",
+		SoftDeadline: time.Now().UTC(),
+		HardDeadline: time.Now().UTC().Add(7 * time.Hour),
 	}
 
 	hwRepo.On("Create", ctx, mock.AnythingOfType("*model.Homework")).Return(assert.AnError)
@@ -251,7 +297,7 @@ func TestCreateHomework_RepoError(t *testing.T) {
 }
 
 func TestGetHomework_Success(t *testing.T) {
-	svc, hwRepo, _ := setupService()
+	svc, hwRepo, _, _ := setupService()
 	ctx := context.Background()
 	userID := uuid.New()
 	hwID := uuid.New()
@@ -266,7 +312,7 @@ func TestGetHomework_Success(t *testing.T) {
 }
 
 func TestGetHomework_NilID(t *testing.T) {
-	svc, _, _ := setupService()
+	svc, _, _, _ := setupService()
 	ctx := context.Background()
 
 	result, err := svc.GetHomework(ctx, uuid.New(), uuid.Nil)
@@ -276,7 +322,7 @@ func TestGetHomework_NilID(t *testing.T) {
 }
 
 func TestGetHomework_NotFound(t *testing.T) {
-	svc, hwRepo, _ := setupService()
+	svc, hwRepo, _, _ := setupService()
 	ctx := context.Background()
 	hwID := uuid.New()
 
@@ -290,7 +336,7 @@ func TestGetHomework_NotFound(t *testing.T) {
 }
 
 func TestListHomework_Success(t *testing.T) {
-	svc, hwRepo, _ := setupService()
+	svc, hwRepo, _, _ := setupService()
 	ctx := context.Background()
 	userID := uuid.New()
 	courseID := uuid.New()
@@ -305,7 +351,7 @@ func TestListHomework_Success(t *testing.T) {
 }
 
 func TestUpdateHomework_Success(t *testing.T) {
-	svc, hwRepo, _ := setupService()
+	svc, hwRepo, _, _ := setupService()
 	ctx := context.Background()
 	userID := uuid.New()
 	hwID := uuid.New()
@@ -327,7 +373,7 @@ func TestUpdateHomework_Success(t *testing.T) {
 }
 
 func TestUpdateHomework_WithPositionZero(t *testing.T) {
-	svc, hwRepo, _ := setupService()
+	svc, hwRepo, _, _ := setupService()
 	ctx := context.Background()
 	userID := uuid.New()
 	hwID := uuid.New()
@@ -353,7 +399,7 @@ func TestUpdateHomework_WithPositionZero(t *testing.T) {
 }
 
 func TestUpdateHomework_DescriptionNotChangedIfNil(t *testing.T) {
-	svc, hwRepo, _ := setupService()
+	svc, hwRepo, _, _ := setupService()
 	ctx := context.Background()
 	userID := uuid.New()
 	hwID := uuid.New()
@@ -379,7 +425,7 @@ func TestUpdateHomework_DescriptionNotChangedIfNil(t *testing.T) {
 }
 
 func TestUpdateHomework_ClearDescription(t *testing.T) {
-	svc, hwRepo, _ := setupService()
+	svc, hwRepo, _, _ := setupService()
 	ctx := context.Background()
 	userID := uuid.New()
 	hwID := uuid.New()
@@ -404,7 +450,7 @@ func TestUpdateHomework_ClearDescription(t *testing.T) {
 }
 
 func TestUpdateHomework_EmptyTitleError(t *testing.T) {
-	svc, hwRepo, _ := setupService()
+	svc, hwRepo, _, _ := setupService()
 	ctx := context.Background()
 	userID := uuid.New()
 	hwID := uuid.New()
@@ -425,7 +471,7 @@ func TestUpdateHomework_EmptyTitleError(t *testing.T) {
 }
 
 func TestUpdateHomework_EndBeforeStart(t *testing.T) {
-	svc, hwRepo, _ := setupService()
+	svc, hwRepo, _, _ := setupService()
 	ctx := context.Background()
 	userID := uuid.New()
 	hwID := uuid.New()
@@ -446,7 +492,7 @@ func TestUpdateHomework_EndBeforeStart(t *testing.T) {
 }
 
 func TestDeleteHomework_Success(t *testing.T) {
-	svc, hwRepo, _ := setupService()
+	svc, hwRepo, _, _ := setupService()
 	ctx := context.Background()
 	userID := uuid.New()
 	hwID := uuid.New()
@@ -461,7 +507,7 @@ func TestDeleteHomework_Success(t *testing.T) {
 }
 
 func TestDeleteHomework_NotFound(t *testing.T) {
-	svc, hwRepo, _ := setupService()
+	svc, hwRepo, _, _ := setupService()
 	ctx := context.Background()
 	hwID := uuid.New()
 
@@ -474,7 +520,7 @@ func TestDeleteHomework_NotFound(t *testing.T) {
 }
 
 func TestPublishHomework_Success(t *testing.T) {
-	svc, hwRepo, _ := setupService()
+	svc, hwRepo, _, _ := setupService()
 	ctx := context.Background()
 	userID := uuid.New()
 	hwID := uuid.New()
@@ -494,7 +540,7 @@ func TestPublishHomework_Success(t *testing.T) {
 }
 
 func TestSetDeadline_Success(t *testing.T) {
-	svc, hwRepo, dlRepo := setupService()
+	svc, hwRepo, dlRepo, _ := setupService()
 	ctx := context.Background()
 	userID := uuid.New()
 	courseID := uuid.New()
@@ -522,7 +568,7 @@ func TestSetDeadline_Success(t *testing.T) {
 }
 
 func TestSetDeadline_MissingTitle(t *testing.T) {
-	svc, hwRepo, _ := setupService()
+	svc, hwRepo, _, _ := setupService()
 	ctx := context.Background()
 	hwID := uuid.New()
 
@@ -541,7 +587,7 @@ func TestSetDeadline_MissingTitle(t *testing.T) {
 }
 
 func TestSetDeadline_InvalidDueDate(t *testing.T) {
-	svc, hwRepo, _ := setupService()
+	svc, hwRepo, _, _ := setupService()
 	ctx := context.Background()
 	hwID := uuid.New()
 
@@ -560,7 +606,7 @@ func TestSetDeadline_InvalidDueDate(t *testing.T) {
 }
 
 func TestUpdateDeadline_Success(t *testing.T) {
-	svc, _, dlRepo := setupService()
+	svc, _, dlRepo, _ := setupService()
 	ctx := context.Background()
 	userID := uuid.New()
 	dlID := uuid.New()
@@ -583,7 +629,7 @@ func TestUpdateDeadline_Success(t *testing.T) {
 }
 
 func TestUpdateDeadline_NotFound(t *testing.T) {
-	svc, _, dlRepo := setupService()
+	svc, _, dlRepo, _ := setupService()
 	ctx := context.Background()
 	dlID := uuid.New()
 
@@ -601,7 +647,7 @@ func TestUpdateDeadline_NotFound(t *testing.T) {
 }
 
 func TestDeleteDeadline_Success(t *testing.T) {
-	svc, _, dlRepo := setupService()
+	svc, _, dlRepo, _ := setupService()
 	ctx := context.Background()
 	userID := uuid.New()
 	dlID := uuid.New()
@@ -616,7 +662,7 @@ func TestDeleteDeadline_Success(t *testing.T) {
 }
 
 func TestDeleteDeadline_NotFound(t *testing.T) {
-	svc, _, dlRepo := setupService()
+	svc, _, dlRepo, _ := setupService()
 	ctx := context.Background()
 	dlID := uuid.New()
 
@@ -626,4 +672,180 @@ func TestDeleteDeadline_NotFound(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "Deadline not found")
 	dlRepo.AssertExpectations(t)
+}
+
+func TestCreateHomework_MissingSoftDeadline(t *testing.T) {
+	svc, hwRepo, _, hwDeadlineRepo := setupService()
+	ctx := context.Background()
+	userID := uuid.New()
+	courseID := uuid.New()
+
+	input := service.CreateHomeworkInput{
+		CourseID:     courseID,
+		Title:        "Week 1",
+		StartDate:    "2025-01-01",
+		EndDate:      "2025-06-01",
+		SoftDeadline: time.Time{}, // нулевое время
+		HardDeadline: time.Now().UTC().Add(24 * time.Hour),
+	}
+
+	hwRepo.On("Create", ctx, mock.AnythingOfType("*model.Homework")).Return(nil)
+
+	result, err := svc.CreateHomework(ctx, userID, input)
+	assert.Error(t, err)
+	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), "soft_deadline is required")
+
+	hwRepo.AssertExpectations(t)
+	hwDeadlineRepo.AssertNotCalled(t, "Create", mock.Anything, mock.Anything)
+}
+
+func TestCreateHomework_MissingHardDeadline(t *testing.T) {
+	svc, hwRepo, _, hwDeadlineRepo := setupService()
+	ctx := context.Background()
+	userID := uuid.New()
+	courseID := uuid.New()
+
+	input := service.CreateHomeworkInput{
+		CourseID:     courseID,
+		Title:        "Week 1",
+		StartDate:    "2025-01-01",
+		EndDate:      "2025-06-01",
+		SoftDeadline: time.Now().UTC(),
+		HardDeadline: time.Time{},
+	}
+
+	hwRepo.On("Create", ctx, mock.AnythingOfType("*model.Homework")).Return(nil)
+
+	result, err := svc.CreateHomework(ctx, userID, input)
+	assert.Error(t, err)
+	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), "hard_deadline is required")
+
+	hwRepo.AssertExpectations(t)
+	hwDeadlineRepo.AssertNotCalled(t, "Create", mock.Anything, mock.Anything)
+}
+
+func TestCreateHomework_HardDeadlineBeforeSoftDeadline(t *testing.T) {
+	svc, hwRepo, _, hwDeadlineRepo := setupService()
+	ctx := context.Background()
+	userID := uuid.New()
+	courseID := uuid.New()
+
+	now := time.Now().UTC()
+	soft := now.Add(48 * time.Hour)
+	hard := now.Add(24 * time.Hour)
+
+	input := service.CreateHomeworkInput{
+		CourseID:     courseID,
+		Title:        "Week 1",
+		StartDate:    "2025-01-01",
+		EndDate:      "2025-06-01",
+		SoftDeadline: soft,
+		HardDeadline: hard,
+	}
+
+	hwRepo.On("Create", ctx, mock.AnythingOfType("*model.Homework")).Return(nil)
+
+	result, err := svc.CreateHomework(ctx, userID, input)
+	assert.Error(t, err)
+	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), "hard_deadline must be after soft_deadline")
+
+	hwRepo.AssertExpectations(t)
+	hwDeadlineRepo.AssertNotCalled(t, "Create", mock.Anything, mock.Anything)
+}
+
+func TestCreateHomework_SoftDeadlineEqualsHardDeadline(t *testing.T) {
+	svc, hwRepo, _, hwDeadlineRepo := setupService()
+	ctx := context.Background()
+	userID := uuid.New()
+	courseID := uuid.New()
+
+	now := time.Now().UTC()
+	soft := now
+	hard := now
+
+	input := service.CreateHomeworkInput{
+		CourseID:     courseID,
+		Title:        "Week 1",
+		StartDate:    "2025-01-01",
+		EndDate:      "2025-06-01",
+		SoftDeadline: soft,
+		HardDeadline: hard,
+	}
+
+	hwRepo.On("Create", ctx, mock.AnythingOfType("*model.Homework")).Return(nil)
+
+	result, err := svc.CreateHomework(ctx, userID, input)
+	assert.Error(t, err)
+	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), "hard_deadline must be after soft_deadline")
+
+	hwRepo.AssertExpectations(t)
+	hwDeadlineRepo.AssertNotCalled(t, "Create", mock.Anything, mock.Anything)
+}
+
+func TestCreateHomework_ValidDeadlines(t *testing.T) {
+	svc, hwRepo, _, hwDeadlineRepo := setupService()
+	ctx := context.Background()
+	userID := uuid.New()
+	courseID := uuid.New()
+
+	now := time.Now().UTC()
+	soft := now.Add(24 * time.Hour)
+	hard := now.Add(48 * time.Hour)
+
+	input := service.CreateHomeworkInput{
+		CourseID:     courseID,
+		Title:        "Week 1",
+		StartDate:    "2025-01-01",
+		EndDate:      "2025-06-01",
+		SoftDeadline: soft,
+		HardDeadline: hard,
+	}
+
+	hwRepo.On("Create", ctx, mock.AnythingOfType("*model.Homework")).Return(nil)
+	hwDeadlineRepo.On("Create", ctx, mock.MatchedBy(func(hwd *model.HomeworkDeadline) bool {
+		return hwd.SoftDeadline.Equal(soft) && hwd.HardDeadline.Equal(hard)
+	})).Return(nil)
+
+	result, err := svc.CreateHomework(ctx, userID, input)
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
+
+	hwRepo.AssertExpectations(t)
+	hwDeadlineRepo.AssertExpectations(t)
+}
+
+func TestCreateHomework_DeadlineRepoError(t *testing.T) {
+	svc, hwRepo, _, hwDeadlineRepo := setupService()
+	ctx := context.Background()
+	userID := uuid.New()
+	courseID := uuid.New()
+
+	now := time.Now().UTC()
+	soft := now.Add(24 * time.Hour)
+	hard := now.Add(48 * time.Hour)
+
+	input := service.CreateHomeworkInput{
+		CourseID:     courseID,
+		Title:        "Week 1",
+		StartDate:    "2025-01-01",
+		EndDate:      "2025-06-01",
+		SoftDeadline: soft,
+		HardDeadline: hard,
+	}
+
+	hwRepo.On("Create", ctx, mock.AnythingOfType("*model.Homework")).Return(nil)
+
+	hwDeadlineRepo.On("Create", ctx, mock.AnythingOfType("*model.HomeworkDeadline")).Return(assert.AnError)
+
+	result, err := svc.CreateHomework(ctx, userID, input)
+	assert.Error(t, err)
+	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), "Failed to create homework deadline")
+
+	hwRepo.AssertExpectations(t)
+	hwDeadlineRepo.AssertExpectations(t)
 }

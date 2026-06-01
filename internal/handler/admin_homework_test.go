@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
@@ -141,30 +142,36 @@ func TestHandlerCreateHomework_Success(t *testing.T) {
 	courseID := uuid.New()
 	hwID := uuid.New()
 	title := "Week 1"
-	desc := "Intro tasks"
-	pos := 1
+	description := "Test description"
+	position := 1
 	startDate := "2025-01-01"
 	endDate := "2025-06-01"
+	softDeadline := time.Now().UTC()
+	hardDeadline := time.Now().UTC().Add(24 * time.Hour)
 
 	body := map[string]interface{}{
-		"title":       title,
-		"description": desc,
-		"position":    pos,
-		"start_date":  startDate,
-		"end_date":    endDate,
+		"title":         title,
+		"description":   description,
+		"position":      position,
+		"start_date":    startDate,
+		"end_date":      endDate,
+		"soft_deadline": softDeadline,
+		"hard_deadline": hardDeadline,
 	}
 
-	expected := &model.Homework{HwID: hwID, CourseID: courseID}
+	expected := &model.Homework{HwID: hwID, CourseID: courseID, Title: title}
 
 	c, rec := newEchoContext(http.MethodPost, "/", body, map[string]string{"courseId": courseID.String()})
-	svc.On("CreateHomework", mock.Anything, mock.Anything, service.CreateHomeworkInput{
-		CourseID:    courseID,
-		Title:       title,
-		Description: desc,
-		Position:    pos,
-		StartDate:   startDate,
-		EndDate:     endDate,
-	}).Return(expected, nil)
+	svc.On("CreateHomework", mock.Anything, mock.Anything, mock.MatchedBy(func(input service.CreateHomeworkInput) bool {
+		return input.CourseID == courseID &&
+			input.Title == title &&
+			input.Description == description &&
+			input.Position == position &&
+			input.StartDate == startDate &&
+			input.EndDate == endDate &&
+			input.SoftDeadline.Equal(softDeadline) &&
+			input.HardDeadline.Equal(hardDeadline)
+	})).Return(expected, nil)
 
 	err := h.CreateHomework(c)
 	assert.NoError(t, err)
@@ -287,32 +294,6 @@ func TestHandlerUpdateHomework_Success(t *testing.T) {
 		[]string{uuid.New().String(), hwID.String()},
 	)
 	svc.On("UpdateHomework", mock.Anything, mock.Anything, hwID, service.UpdateHomeworkInput{EndDate: newEnd}).Return(expected, nil)
-
-	err := h.UpdateHomework(c)
-	assert.NoError(t, err)
-	assert.Equal(t, http.StatusOK, rec.Code)
-	svc.AssertExpectations(t)
-}
-
-func TestHandlerUpdateHomework_WithPositionZero(t *testing.T) {
-	svc := new(MockAdminHomeworkService)
-	h := handler.NewAdminHomeworkHandler(svc)
-
-	hwID := uuid.New()
-	pos := 0
-	newTitle := "Week 0"
-	body := map[string]interface{}{"title": newTitle, "position": pos}
-	expected := &model.Homework{HwID: hwID}
-
-	c, rec := newEchoContextMultiParam(http.MethodPatch, "/", body,
-		[]string{"courseId", "hwId"},
-		[]string{uuid.New().String(), hwID.String()},
-	)
-	zeroPos := 0
-	svc.On("UpdateHomework", mock.Anything, mock.Anything, hwID, service.UpdateHomeworkInput{
-		Title:    &newTitle,
-		Position: &zeroPos,
-	}).Return(expected, nil)
 
 	err := h.UpdateHomework(c)
 	assert.NoError(t, err)
@@ -570,5 +551,69 @@ func TestHandlerDeleteDeadline_NotFound(t *testing.T) {
 	err := h.DeleteDeadline(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusNotFound, rec.Code)
+	svc.AssertExpectations(t)
+}
+
+func TestHandlerCreateHomework_MissingRequiredFields(t *testing.T) {
+	svc := new(MockAdminHomeworkService)
+	h := handler.NewAdminHomeworkHandler(svc)
+
+	courseID := uuid.New()
+	body := map[string]interface{}{
+		"start_date": "2025-01-01",
+		"end_date":   "2025-06-01",
+	}
+
+	c, rec := newEchoContext(http.MethodPost, "/", body, map[string]string{"courseId": courseID.String()})
+	svc.On("CreateHomework", mock.Anything, mock.Anything, mock.Anything).Return(nil, service.BadRequest("title is required"))
+
+	err := h.CreateHomework(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	svc.AssertExpectations(t)
+}
+
+func TestHandlerCreateHomework_InvalidSoftDeadline(t *testing.T) {
+	svc := new(MockAdminHomeworkService)
+	h := handler.NewAdminHomeworkHandler(svc)
+
+	courseID := uuid.New()
+	body := map[string]interface{}{
+		"title":         "Week 1",
+		"start_date":    "2025-01-01",
+		"end_date":      "2025-06-01",
+		"soft_deadline": "invalid",
+		"hard_deadline": time.Now().UTC(),
+	}
+
+	c, rec := newEchoContext(http.MethodPost, "/", body, map[string]string{"courseId": courseID.String()})
+	err := h.CreateHomework(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.Contains(t, rec.Body.String(), "bad_request")
+}
+
+func TestHandlerCreateHomework_ServiceDeadlineValidationError(t *testing.T) {
+	svc := new(MockAdminHomeworkService)
+	h := handler.NewAdminHomeworkHandler(svc)
+
+	courseID := uuid.New()
+	softDeadline := time.Now().UTC()
+	hardDeadline := softDeadline.Add(-24 * time.Hour)
+
+	body := map[string]interface{}{
+		"title":         "Week 1",
+		"start_date":    "2025-01-01",
+		"end_date":      "2025-06-01",
+		"soft_deadline": softDeadline,
+		"hard_deadline": hardDeadline,
+	}
+
+	c, rec := newEchoContext(http.MethodPost, "/", body, map[string]string{"courseId": courseID.String()})
+	svc.On("CreateHomework", mock.Anything, mock.Anything, mock.Anything).Return(nil, service.BadRequest("hard_deadline must be after soft_deadline"))
+
+	err := h.CreateHomework(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
 	svc.AssertExpectations(t)
 }

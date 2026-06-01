@@ -34,12 +34,14 @@ func (s *AdminHomeworkService) WithMetrics(m *metrics.AdminMetrics) *AdminHomewo
 }
 
 type CreateHomeworkInput struct {
-	CourseID    uuid.UUID
-	Title       string
-	Description string
-	Position    int
-	StartDate   string
-	EndDate     string
+	CourseID     uuid.UUID
+	Title        string
+	Description  string
+	Position     int
+	StartDate    string
+	EndDate      string
+	SoftDeadline time.Time
+	HardDeadline time.Time
 }
 
 type UpdateHomeworkInput struct {
