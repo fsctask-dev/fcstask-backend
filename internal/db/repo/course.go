@@ -22,6 +22,8 @@ type CourseRepositoryInterface interface {
 	DeleteCourse(ctx context.Context, courseID string) error
 	GetCourseBoard(ctx context.Context, courseID string, userID uuid.UUID) (*models.TaskBoardSummary, bool, error)
 	GetLeaderboard(ctx context.Context, courseID string) ([]models.LeaderboardEntry, error)
+	UpdateInviteCode(ctx context.Context, courseID uuid.UUID, code *string) error
+	GetPublicCourses(ctx context.Context) ([]models.Course, error)
 }
 
 type CourseRepository struct {
@@ -38,6 +40,16 @@ func (r *CourseRepository) GetCourses(ctx context.Context) ([]models.Course, err
 		return nil, err
 	}
 	return courses, nil
+}
+
+func (r *CourseRepository) GetPublicCourses(ctx context.Context) ([]models.Course, error) {
+    var courses []models.Course
+    if err := r.rw.ReadDB().WithContext(ctx).
+        Where("type = ?", models.CourseTypePublic).
+        Find(&courses).Error; err != nil {
+        return nil, err
+    }
+    return courses, nil
 }
 
 func (r *CourseRepository) GetCoursesByUserID(ctx context.Context, userID uuid.UUID, status string) ([]models.Course, error) {
@@ -387,4 +399,11 @@ func deadlineStatus(dueDate time.Time) string {
 		return "urgent"
 	}
 	return "active"
+}
+
+func (r *CourseRepository) UpdateInviteCode(ctx context.Context, courseID uuid.UUID, code *string) error {
+    return r.rw.WriteDB().WithContext(ctx).
+        Model(&models.Course{}).
+        Where("id = ?", courseID).
+        Update("invite_code", code).Error
 }
