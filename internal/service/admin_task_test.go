@@ -159,8 +159,10 @@ func TestCreateTask_HomeworkNotFound(t *testing.T) {
 
 	hwID := uuid.New()
 	hwRepo.On("GetByID", ctx, hwID).Return(nil, assert.AnError)
+	title := "first"
 
 	result, err := svc.CreateTask(ctx, uuid.New(), service.CreateTaskInput{
+		Title:   &title,
 		HwID:    hwID,
 		RepoURL: "https://github.com/test/repo",
 		TaskURL: "https://test.com/task",
@@ -180,8 +182,10 @@ func TestCreateTask_RepoError(t *testing.T) {
 	hwID := uuid.New()
 	hwRepo.On("GetByID", ctx, hwID).Return(&model.Homework{HwID: hwID, CourseID: uuid.New()}, nil)
 	taskRepo.On("Create", ctx, mock.AnythingOfType("*model.Task")).Return(assert.AnError)
+	title := "first"
 
 	result, err := svc.CreateTask(ctx, uuid.New(), service.CreateTaskInput{
+		Title:   &title,
 		HwID:    hwID,
 		RepoURL: "https://github.com/test/repo",
 		Score:   100,
@@ -203,8 +207,10 @@ func TestCreateTask_NilURLs(t *testing.T) {
 	taskRepo.On("Create", ctx, mock.MatchedBy(func(task *model.Task) bool {
 		return task.HwID == hwID && task.RepoURL == nil && task.TaskURL == nil
 	})).Return(nil)
+	title := "first"
 
 	result, err := svc.CreateTask(ctx, uuid.New(), service.CreateTaskInput{
+		Title: &title,
 		HwID:  hwID,
 		Score: 100,
 	})

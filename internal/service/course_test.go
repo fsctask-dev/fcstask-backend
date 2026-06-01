@@ -444,8 +444,8 @@ func TestGetLeaderboard_Success(t *testing.T) {
 	svc, cRepo, rRepo := setupService()
 	userID := uuid.New()
 	roleID := uuid.New()
-	courseID := uuid.New().String()
-	course := &models.Course{ID: uuid.MustParse(courseID), Name: "Go", Type: models.CourseTypePrivate}
+	courseID := uuid.New()
+	course := &models.Course{ID: courseID, Name: "Go", Type: models.CourseTypePrivate}
 
 	hwID := uuid.New()
 	task1 := uuid.New()
@@ -484,13 +484,13 @@ func TestGetLeaderboard_Success(t *testing.T) {
 		},
 	}
 
-	cRepo.On("GetCourseByID", mock.Anything, courseID).Return(course, nil)
-	rRepo.On("GetRoleIDByUserAndCourse", mock.Anything, userID, courseID).Return(roleID, nil)
+	cRepo.On("GetCourseByID", mock.Anything, course.ID.String()).Return(course, nil)
+	rRepo.On("GetRoleIDByUserAndCourse", mock.Anything, userID, course.ID).Return(roleID, nil)
 	rRepo.On("HasPermission", mock.Anything, roleID, PermissionCourseRead).Return(true, nil)
 	rRepo.On("HasPermission", mock.Anything, roleID, PermissionLeaderboardRead).Return(true, nil)
-	cRepo.On("GetLeaderboard", mock.Anything, courseID).Return(entries, nil)
+	cRepo.On("GetLeaderboard", mock.Anything, courseID.String()).Return(entries, nil)
 
-	result, err := svc.GetLeaderboard(context.Background(), userID, courseID)
+	result, err := svc.GetLeaderboard(context.Background(), userID, courseID.String())
 
 	assert.NoError(t, err)
 	assert.Len(t, result, 2)
