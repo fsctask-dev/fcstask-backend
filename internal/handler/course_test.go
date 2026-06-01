@@ -62,12 +62,12 @@ func (m *mockCourseRepo) GetLeaderboard(ctx context.Context, courseID string) ([
 	return args.Get(0).([]model.LeaderboardEntry), args.Error(1)
 }
 func (m *mockCourseRepo) UpdateInviteCode(ctx context.Context, courseID uuid.UUID, code *string) error {
-    args := m.Called(ctx, courseID, code)
-    return args.Error(0)
+	args := m.Called(ctx, courseID, code)
+	return args.Error(0)
 }
 
 func (m *mockCourseRepo) GetPublicCourses(ctx context.Context) ([]model.Course, error) {
-    return nil, nil
+	return nil, nil
 }
 
 type mockRoleRepo struct {
@@ -452,7 +452,7 @@ func TestGetScores_Success(t *testing.T) {
 	roleRepo.On("GetRoleIDByUserAndCourse", mock.Anything, user.ID, courseID).Return(roleID, nil)
 	roleRepo.On("HasPermission", mock.Anything, roleID, service.PermissionCourseRead).Return(true, nil)
 	roleRepo.On("HasPermission", mock.Anything, roleID, service.PermissionLeaderboardRead).Return(true, nil)
-	courseRepo.On("GetLeaderboard", mock.Anything, courseID).Return(entries, nil)
+	courseRepo.On("GetLeaderboard", mock.Anything, courseID.String()).Return(entries, nil)
 
 	c := makeContext(e, user, map[string]string{"courseId": courseID.String()})
 	err := handler.GetScores(c)
