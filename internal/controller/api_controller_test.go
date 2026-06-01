@@ -183,7 +183,7 @@ func (r *controllerCourseRepo) GetCourseBoard(ctx context.Context, courseID stri
 	return nil, false, nil
 }
 
-func (r *controllerCourseRepo) GetLeaderboard(ctx context.Context, courseID uuid.UUID) ([]models.LeaderboardEntry, error) {
+func (r *controllerCourseRepo) GetLeaderboard(ctx context.Context, courseID string) ([]models.LeaderboardEntry, error) {
 	return nil, nil
 }
 
