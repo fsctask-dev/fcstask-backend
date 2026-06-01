@@ -19,7 +19,6 @@ import (
 	"fcstask-backend/internal/service"
 )
 
-// Моки
 type mockCourseRepo struct {
 	mock.Mock
 }
@@ -61,6 +60,14 @@ func (m *mockCourseRepo) GetCourses(ctx context.Context) ([]model.Course, error)
 func (m *mockCourseRepo) GetLeaderboard(ctx context.Context, courseID string) ([]model.LeaderboardEntry, error) {
 	args := m.Called(ctx, courseID)
 	return args.Get(0).([]model.LeaderboardEntry), args.Error(1)
+}
+func (m *mockCourseRepo) UpdateInviteCode(ctx context.Context, courseID uuid.UUID, code *string) error {
+    args := m.Called(ctx, courseID, code)
+    return args.Error(0)
+}
+
+func (m *mockCourseRepo) GetPublicCourses(ctx context.Context) ([]model.Course, error) {
+    return nil, nil
 }
 
 type mockRoleRepo struct {

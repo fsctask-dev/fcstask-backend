@@ -79,11 +79,13 @@ func (c *APIController) GetUsersWithSessions(ctx echo.Context, params api.GetUse
 func (c *APIController) RegisterCourseRoutes(e *echo.Echo) {
 	e.GET("/api/courses", c.courseHandler.GetCourses)
 	e.POST("/api/courses", c.courseHandler.CreateCourse)
+	e.GET("/api/courses/public", c.courseHandler.GetPublicCourses)
 	e.GET("/api/courses/:courseId", c.courseHandler.GetCourse)
 	e.PUT("/api/courses/:courseId", c.courseHandler.UpdateCourse)
 	e.GET("/api/courses/:courseId/board", c.courseHandler.GetCourseBoard)
 	e.GET("/api/courses/:courseId/scores", c.courseHandler.GetScores)
 	e.POST("/api/courses/:courseId/join", c.courseHandler.JoinCourse)
+	e.POST("/api/courses/:courseId/invite", c.courseHandler.RegenerateInviteCode)
 }
 
 func (c *APIController) RegisterHomeworkRoutes(e *echo.Echo) {
