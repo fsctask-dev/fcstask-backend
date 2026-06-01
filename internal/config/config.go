@@ -12,6 +12,7 @@ type Config struct {
 	Database      DatabaseConfig      `yaml:"database"`
 	Session       SessionConfig       `yaml:"session"`
 	Observability ObservabilityConfig `yaml:"observability"`
+	Kafka         KafkaConfig         `yaml:"kafka"`
 }
 
 type SessionConfig struct {
