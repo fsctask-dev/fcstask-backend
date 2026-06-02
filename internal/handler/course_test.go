@@ -19,7 +19,6 @@ import (
 	"fcstask-backend/internal/service"
 )
 
-// Моки
 type mockCourseRepo struct {
 	mock.Mock
 }
@@ -68,6 +67,14 @@ func (m *mockCourseRepo) GetCourses(ctx context.Context) ([]model.Course, error)
 func (m *mockCourseRepo) GetLeaderboard(ctx context.Context, courseID uuid.UUID) ([]model.LeaderboardEntry, error) {
 	args := m.Called(ctx, courseID)
 	return args.Get(0).([]model.LeaderboardEntry), args.Error(1)
+}
+func (m *mockCourseRepo) UpdateInviteCode(ctx context.Context, courseID uuid.UUID, code *string) error {
+    args := m.Called(ctx, courseID, code)
+    return args.Error(0)
+}
+
+func (m *mockCourseRepo) GetPublicCourses(ctx context.Context) ([]model.Course, error) {
+    return nil, nil
 }
 
 type mockRoleRepo struct {
@@ -320,8 +327,8 @@ func TestUpdateCourse_Success(t *testing.T) {
 
 	courseRepo.On("GetCourseByID", mock.Anything, "old").Return(course, nil)
 	roleRepo.On("GetRoleIDByUserAndCourse", mock.Anything, user.ID, course.ID).Return(roleID, nil)
-	roleRepo.On("HasPermission", mock.Anything, roleID, service.PermissionCourseRead).Return(true, nil)   // ← GetCourse
-	roleRepo.On("HasPermission", mock.Anything, roleID, service.PermissionCourseUpdate).Return(true, nil) // ← UpdateCourse
+	roleRepo.On("HasPermission", mock.Anything, roleID, service.PermissionCourseRead).Return(true, nil)
+	roleRepo.On("HasPermission", mock.Anything, roleID, service.PermissionCourseUpdate).Return(true, nil)
 	courseRepo.On("UpdateCourse", mock.Anything, "old", mock.Anything).Return(course, nil)
 
 	body := `{"name":"Updated"}`

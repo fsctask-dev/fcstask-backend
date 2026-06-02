@@ -196,6 +196,20 @@ func (r *controllerCourseRepo) GetLeaderboard(ctx context.Context, courseID uuid
 	return nil, nil
 }
 
+func (r *controllerCourseRepo) UpdateInviteCode(ctx context.Context, courseID uuid.UUID, code *string) error {
+    return nil
+}
+
+func (r *controllerCourseRepo) GetPublicCourses(ctx context.Context) ([]models.Course, error) {
+    var courses []models.Course
+    for _, course := range r.courses {
+        if course.Type == models.CourseTypePublic {
+            courses = append(courses, course)
+        }
+    }
+    return courses, nil
+}
+
 func newTestController(userRepo *controllerUserRepo, sessionRepo *controllerSessionRepo, courseRepo *controllerCourseRepo) *APIController {
 	userService := service.NewUserService(userRepo)
 	authService := service.NewAuthService(userRepo, sessionRepo)

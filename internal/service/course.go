@@ -51,6 +51,14 @@ func (s *CourseService) GetCourses(ctx context.Context, userID uuid.UUID, status
 	return courses, nil
 }
 
+func (s *CourseService) GetPublicCourses(ctx context.Context) ([]models.Course, error) {
+    courses, err := s.CourseRepo.GetPublicCourses(ctx)
+    if err != nil {
+        return nil, Internal("Failed to get public courses", err)
+    }
+    return courses, nil
+}
+
 func (s *CourseService) GetCourse(ctx context.Context, userID uuid.UUID, courseID string) (*models.Course, error) {
 	course, err := s.CourseRepo.GetCourseByID(ctx, courseID)
 	if err != nil {
@@ -284,7 +292,6 @@ func (s *CourseService) GetLeaderboard(ctx context.Context, userID uuid.UUID, co
 	if err != nil {
 		return nil, err
 	}
-	// Проверяем, что у пользователя есть права на чтение leaderboard
 	if err := RequireScopedPermission(ctx, s.RoleRepo, userID, course.ID, PermissionLeaderboardRead); err != nil {
 		return nil, err
 	}
@@ -293,6 +300,27 @@ func (s *CourseService) GetLeaderboard(ctx context.Context, userID uuid.UUID, co
 		return nil, Internal("Failed to get leaderboard", err)
 	}
 	return entries, nil
+}
+
+func (s *CourseService) RegenerateInviteCode(ctx context.Context, userID uuid.UUID, courseID string) (*string, error) {
+    if courseID == "" {
+        return nil, BadRequest("course_id is required")
+    }
+    course, err := s.GetCourse(ctx, userID, courseID)
+    if err != nil {
+        return nil, err
+    }
+    if err := RequireScopedPermission(ctx, s.RoleRepo, userID, course.ID, PermissionCourseInviteRegenerate); err != nil {
+        return nil, err
+    }
+    if course.Type != models.CourseTypePrivate {
+        return nil, BadRequest("course is not private")
+    }
+    code := generateInviteCode()
+    if err := s.CourseRepo.UpdateInviteCode(ctx, course.ID, &code); err != nil {
+        return nil, Internal("Failed to regenerate invite code", err)
+    }
+    return &code, nil
 }
 
 func generateInviteCode() string {
