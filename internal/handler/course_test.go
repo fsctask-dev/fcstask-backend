@@ -168,6 +168,7 @@ func TestGetCourse_Public_NoAuth(t *testing.T) {
 	handler, e, courseRepo, _ := setupTest()
 	course := &model.Course{ID: uuid.New(), Name: "Pub", Type: model.CourseTypePublic}
 
+	courseRepo.On("GetCourseByID", mock.Anything, "pub").Return(course, nil)
     courseRepo.On("GetCourseInfo", mock.Anything, course.ID).Return(&model.CourseInfo{Course: *course}, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -187,6 +188,7 @@ func TestGetCourse_Public_WithAuth(t *testing.T) {
 	user := newTestUser()
 	course := &model.Course{ID: uuid.New(), Name: "Pub", Type: model.CourseTypePublic}
 
+	courseRepo.On("GetCourseByID", mock.Anything, "pub").Return(course, nil)
 	courseRepo.On("GetCourseInfo", mock.Anything, course.ID).Return(&model.CourseInfo{Course: *course}, nil)
 
 	c := makeContext(e, user, map[string]string{"courseId": "pub"})
@@ -221,6 +223,7 @@ func TestGetCourse_Private_HasPermission(t *testing.T) {
 	roleID := uuid.New()
 	course := &model.Course{ID: uuid.New(), Name: "Priv", Type: model.CourseTypePrivate}
 
+	courseRepo.On("GetCourseByID", mock.Anything, "priv").Return(course, nil)
 	courseRepo.On("GetCourseInfo", mock.Anything, course.ID).Return(&model.CourseInfo{Course: *course}, nil)
 	roleRepo.On("GetRoleIDByUserAndCourse", mock.Anything, user.ID, course.ID).Return(roleID, nil)
 	roleRepo.On("HasPermission", mock.Anything, roleID, service.PermissionCourseRead).Return(true, nil)
