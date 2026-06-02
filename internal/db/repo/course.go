@@ -43,13 +43,13 @@ func (r *CourseRepository) GetCourses(ctx context.Context) ([]models.Course, err
 }
 
 func (r *CourseRepository) GetPublicCourses(ctx context.Context) ([]models.Course, error) {
-    var courses []models.Course
-    if err := r.rw.ReadDB().WithContext(ctx).
-        Where("type = ?", models.CourseTypePublic).
-        Find(&courses).Error; err != nil {
-        return nil, err
-    }
-    return courses, nil
+	var courses []models.Course
+	if err := r.rw.ReadDB().WithContext(ctx).
+		Where("type = ?", models.CourseTypePublic).
+		Find(&courses).Error; err != nil {
+		return nil, err
+	}
+	return courses, nil
 }
 
 func (r *CourseRepository) GetCoursesByUserID(ctx context.Context, userID uuid.UUID, status string) ([]models.Course, error) {
@@ -146,7 +146,7 @@ func (r *CourseRepository) GetCourseBoard(ctx context.Context, courseID string, 
 
 	var homeworks []models.Homework
 	if err := r.rw.ReadDB().WithContext(ctx).
-		Where("course_id = ?", course.ID).
+		Where("course_id = ? AND is_public = true", course.ID).
 		Order("position ASC").
 		Find(&homeworks).Error; err != nil {
 		return nil, false, err
@@ -166,18 +166,22 @@ func (r *CourseRepository) GetCourseBoard(ctx context.Context, courseID string, 
 	}
 
 	var tasks []models.Task
-	r.rw.ReadDB().WithContext(ctx).
+	if err := r.rw.ReadDB().WithContext(ctx).
 		Where("hw_id IN ?", hwIDs).
-		Find(&tasks)
+		Find(&tasks).Error; err != nil {
+		return nil, false, err
+	}
 	tasksByHW := make(map[uuid.UUID][]models.Task)
 	for _, t := range tasks {
 		tasksByHW[t.HwID] = append(tasksByHW[t.HwID], t)
 	}
 
 	var deadlines []models.Deadline
-	r.rw.ReadDB().WithContext(ctx).
+	if err := r.rw.ReadDB().WithContext(ctx).
 		Where("homework_id IN ?", hwIDs).
-		Find(&deadlines)
+		Find(&deadlines).Error; err != nil {
+		return nil, false, err
+	}
 	deadlinesByHW := make(map[uuid.UUID][]models.Deadline)
 	for _, dl := range deadlines {
 		if dl.HomeworkID != nil {
@@ -303,8 +307,8 @@ func (r *CourseRepository) GetLeaderboard(ctx context.Context, courseID string) 
 		Joins("JOIN users u ON u.id = user_roles.user_id").
 		Joins("JOIN course_admin_permissions cap ON cap.role_id = user_roles.role_id AND cap.permission = ?", "task.submit").
 		Joins("LEFT JOIN student_task_scores sts ON sts.student_id = user_roles.user_id AND sts.course_id = user_roles.course_id").
-		Joins("LEFT JOIN tasks t ON t.task_id = sts.task_id").
-		Joins("LEFT JOIN homework hw ON hw.hw_id = t.hw_id").
+		Joins("LEFT JOIN tasks t ON t.task_id = sts.task_id AND t.is_public = true").
+		Joins("LEFT JOIN homework hw ON hw.hw_id = t.hw_id AND hw.is_public = true").
 		Where("user_roles.course_id = ?", course.ID).
 		Order("u.username ASC, hw.position ASC, sts.task_id ASC").
 		Scan(&rows).Error
@@ -402,8 +406,8 @@ func deadlineStatus(dueDate time.Time) string {
 }
 
 func (r *CourseRepository) UpdateInviteCode(ctx context.Context, courseID uuid.UUID, code *string) error {
-    return r.rw.WriteDB().WithContext(ctx).
-        Model(&models.Course{}).
-        Where("id = ?", courseID).
-        Update("invite_code", code).Error
+	return r.rw.WriteDB().WithContext(ctx).
+		Model(&models.Course{}).
+		Where("id = ?", courseID).
+		Update("invite_code", code).Error
 }
