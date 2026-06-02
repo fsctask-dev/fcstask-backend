@@ -13,265 +13,652 @@ import (
 	"fcstask-backend/internal/service"
 )
 
-func setupCheckerService() (*service.CheckerService, *MockTaskRepo, *MockHomeworkRepo, *MockScoreRepo, *MockHwDeadlineRepo, *MockCourseLateRepo) {
+func setupCheckerService() (*service.CheckerService, *MockTaskRepo, *MockHomeworkRepo, *MockScoreRepo, *MockDeadlineRepo, *MockCourseLateRepo, *MockRoleRepo) {
 	taskRepo := new(MockTaskRepo)
 	hwRepo := new(MockHomeworkRepo)
 	scoreRepo := new(MockScoreRepo)
-	hwDlRepo := new(MockHwDeadlineRepo)
+	deadlineRepo := new(MockDeadlineRepo)
 	lateRepo := new(MockCourseLateRepo)
-	svc := service.NewCheckerService(taskRepo, hwRepo, scoreRepo, hwDlRepo, lateRepo)
-	return svc, taskRepo, hwRepo, scoreRepo, hwDlRepo, lateRepo
+	roleRepo := new(MockRoleRepo)
+
+	roleID := uuid.New()
+	roleRepo.On("GetRoleIDByUserAndCourse", mock.Anything, mock.Anything, mock.Anything).Return(roleID, nil)
+	roleRepo.On("HasPermission", mock.Anything, roleID, service.PermissionTaskSubmit).Return(true, nil)
+	deadlineRepo.On("GetByHomeworkID", mock.Anything, mock.Anything).Return(nil, assert.AnError)
+	svc := service.NewCheckerService(taskRepo, hwRepo, scoreRepo, deadlineRepo, lateRepo, roleRepo)
+	return svc, taskRepo, hwRepo, scoreRepo, deadlineRepo, lateRepo, roleRepo
 }
 
 func intPtr(v int) *int         { return &v }
 func f64Ptr(v float64) *float64 { return &v }
 
+func TestSubmitGrade_Success_Passed(t *testing.T) {
+	svc, taskRepo, hwRepo, scoreRepo, _, _, _ := setupCheckerService()
+	ctx := context.Background()
+
+	studentID := uuid.New()
+	taskID := uuid.New()
+	courseID := uuid.New()
+	hwID := uuid.New()
+	scoreValue := 85
+	submittedAt := time.Now().Add(-24 * time.Hour)
+
+	task := &model.Task{TaskID: taskID, HwID: hwID, Score: &scoreValue}
+	hw := &model.Homework{HwID: hwID, CourseID: courseID}
+
+	taskRepo.On("GetByID", ctx, taskID).Return(task, nil)
+	hwRepo.On("GetByID", ctx, hwID).Return(hw, nil)
+	scoreRepo.On("Upsert", ctx, mock.MatchedBy(func(s *model.StudentTaskScore) bool {
+		return s.StudentID == studentID && s.TaskID == taskID && s.Score == scoreValue && s.IsPassed == true
+	})).Return(nil)
+
+	input := service.SubmitGradeInput{
+		StudentID:   studentID,
+		TaskID:      taskID,
+		CourseID:    courseID,
+		Status:      "passed",
+		SubmittedAt: submittedAt,
+	}
+
+	result, err := svc.SubmitGrade(ctx, courseID, input)
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
+	assert.Equal(t, scoreValue, result.Score)
+	assert.True(t, result.IsPassed)
+
+	taskRepo.AssertExpectations(t)
+	hwRepo.AssertExpectations(t)
+	scoreRepo.AssertExpectations(t)
+}
+
+func TestSubmitGrade_Success_Fail(t *testing.T) {
+	svc, taskRepo, hwRepo, scoreRepo, _, _, _ := setupCheckerService()
+	ctx := context.Background()
+
+	studentID := uuid.New()
+	taskID := uuid.New()
+	courseID := uuid.New()
+	hwID := uuid.New()
+	submittedAt := time.Now().Add(-24 * time.Hour)
+
+	task := &model.Task{TaskID: taskID, HwID: hwID}
+	hw := &model.Homework{HwID: hwID, CourseID: courseID}
+
+	taskRepo.On("GetByID", ctx, taskID).Return(task, nil)
+	hwRepo.On("GetByID", ctx, hwID).Return(hw, nil)
+	scoreRepo.On("Upsert", ctx, mock.MatchedBy(func(s *model.StudentTaskScore) bool {
+		return s.Score == 0 && s.IsPassed == false
+	})).Return(nil)
+
+	input := service.SubmitGradeInput{
+		StudentID:   studentID,
+		TaskID:      taskID,
+		CourseID:    courseID,
+		Status:      "fail",
+		SubmittedAt: submittedAt,
+	}
+
+	result, err := svc.SubmitGrade(ctx, courseID, input)
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
+	assert.Equal(t, 0, result.Score)
+	assert.False(t, result.IsPassed)
+
+	taskRepo.AssertExpectations(t)
+	hwRepo.AssertExpectations(t)
+	scoreRepo.AssertExpectations(t)
+}
+
 func TestSubmitGrade_MissingStudentID(t *testing.T) {
-	svc, _, _, _, _, _ := setupCheckerService()
-	_, err := svc.SubmitGrade(context.Background(), service.SubmitGradeInput{
-		TaskID: uuid.New(), CourseID: uuid.New(), Status: "passed", SubmittedAt: time.Now(),
-	})
-	assert.ErrorContains(t, err, "student_id is required")
+	svc, _, _, _, _, _, _ := setupCheckerService()
+	ctx := context.Background()
+
+	input := service.SubmitGradeInput{
+		StudentID:   uuid.Nil,
+		TaskID:      uuid.New(),
+		CourseID:    uuid.New(),
+		Status:      "passed",
+		SubmittedAt: time.Now(),
+	}
+
+	result, err := svc.SubmitGrade(ctx, uuid.New(), input)
+	assert.Error(t, err)
+	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), "You don't have permission to access this resource")
 }
 
 func TestSubmitGrade_MissingTaskID(t *testing.T) {
-	svc, _, _, _, _, _ := setupCheckerService()
-	_, err := svc.SubmitGrade(context.Background(), service.SubmitGradeInput{
-		StudentID: uuid.New(), CourseID: uuid.New(), Status: "passed", SubmittedAt: time.Now(),
-	})
-	assert.ErrorContains(t, err, "task_id is required")
+	svc, _, _, _, _, _, _ := setupCheckerService()
+	ctx := context.Background()
+
+	input := service.SubmitGradeInput{
+		StudentID:   uuid.New(),
+		TaskID:      uuid.Nil,
+		CourseID:    uuid.New(),
+		Status:      "passed",
+		SubmittedAt: time.Now(),
+	}
+
+	result, err := svc.SubmitGrade(ctx, uuid.New(), input)
+	assert.Error(t, err)
+	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), "task_id is required")
+}
+
+func TestSubmitGrade_MissingCourseID(t *testing.T) {
+	svc, _, _, _, _, _, _ := setupCheckerService()
+	ctx := context.Background()
+
+	input := service.SubmitGradeInput{
+		StudentID:   uuid.New(),
+		TaskID:      uuid.New(),
+		CourseID:    uuid.Nil,
+		Status:      "passed",
+		SubmittedAt: time.Now(),
+	}
+
+	result, err := svc.SubmitGrade(ctx, uuid.New(), input)
+	assert.Error(t, err)
+	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), "course_id is required")
 }
 
 func TestSubmitGrade_InvalidStatus(t *testing.T) {
-	svc, _, _, _, _, _ := setupCheckerService()
-	_, err := svc.SubmitGrade(context.Background(), service.SubmitGradeInput{
-		StudentID: uuid.New(), TaskID: uuid.New(), CourseID: uuid.New(),
-		Status: "unknown", SubmittedAt: time.Now(),
-	})
-	assert.ErrorContains(t, err, "status must be")
+	svc, _, _, _, _, _, _ := setupCheckerService()
+	ctx := context.Background()
+
+	input := service.SubmitGradeInput{
+		StudentID:   uuid.New(),
+		TaskID:      uuid.New(),
+		CourseID:    uuid.New(),
+		Status:      "invalid",
+		SubmittedAt: time.Now(),
+	}
+
+	result, err := svc.SubmitGrade(ctx, uuid.New(), input)
+	assert.Error(t, err)
+	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), "status must be 'passed' or 'fail'")
+}
+
+func TestSubmitGrade_MissingSubmittedAt(t *testing.T) {
+	svc, _, _, _, _, _, _ := setupCheckerService()
+	ctx := context.Background()
+
+	input := service.SubmitGradeInput{
+		StudentID:   uuid.New(),
+		TaskID:      uuid.New(),
+		CourseID:    uuid.New(),
+		Status:      "passed",
+		SubmittedAt: time.Time{},
+	}
+
+	result, err := svc.SubmitGrade(ctx, uuid.New(), input)
+	assert.Error(t, err)
+	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), "submitted_at is required")
+}
+
+func TestSubmitGrade_FutureSubmittedAt(t *testing.T) {
+	svc, _, _, _, _, _, _ := setupCheckerService()
+	ctx := context.Background()
+
+	input := service.SubmitGradeInput{
+		StudentID:   uuid.New(),
+		TaskID:      uuid.New(),
+		CourseID:    uuid.New(),
+		Status:      "passed",
+		SubmittedAt: time.Now().Add(24 * time.Hour),
+	}
+
+	result, err := svc.SubmitGrade(ctx, uuid.New(), input)
+	assert.Error(t, err)
+	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), "submitted_at cannot be in the future")
 }
 
 func TestSubmitGrade_TaskNotFound(t *testing.T) {
-	svc, taskRepo, _, _, _, _ := setupCheckerService()
+	svc, taskRepo, _, _, _, _, _ := setupCheckerService()
 	ctx := context.Background()
-	taskID := uuid.New()
-	taskRepo.On("GetByID", ctx, taskID).Return(nil, assert.AnError)
-	_, err := svc.SubmitGrade(ctx, service.SubmitGradeInput{
-		StudentID: uuid.New(), TaskID: taskID, CourseID: uuid.New(),
-		Status: "passed", SubmittedAt: time.Now(),
-	})
-	assert.ErrorContains(t, err, "Task not found")
+
+	taskRepo.On("GetByID", ctx, mock.Anything).Return(nil, assert.AnError)
+
+	input := service.SubmitGradeInput{
+		StudentID:   uuid.New(),
+		TaskID:      uuid.New(),
+		CourseID:    uuid.New(),
+		Status:      "passed",
+		SubmittedAt: time.Now().Add(-24 * time.Hour),
+	}
+
+	result, err := svc.SubmitGrade(ctx, uuid.New(), input)
+	assert.Error(t, err)
+	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), "Task not found")
+	taskRepo.AssertExpectations(t)
 }
 
-func TestSubmitGrade_CourseMismatch(t *testing.T) {
-	svc, taskRepo, hwRepo, _, _, _ := setupCheckerService()
+func TestSubmitGrade_HomeworkNotFound(t *testing.T) {
+	svc, taskRepo, hwRepo, _, _, _, _ := setupCheckerService()
+	ctx := context.Background()
+	taskID := uuid.New()
+	hwID := uuid.New()
+
+	task := &model.Task{TaskID: taskID, HwID: hwID}
+	taskRepo.On("GetByID", ctx, taskID).Return(task, nil)
+	hwRepo.On("GetByID", ctx, hwID).Return(nil, assert.AnError)
+
+	input := service.SubmitGradeInput{
+		StudentID:   uuid.New(),
+		TaskID:      taskID,
+		CourseID:    uuid.New(),
+		Status:      "passed",
+		SubmittedAt: time.Now().Add(-24 * time.Hour),
+	}
+
+	result, err := svc.SubmitGrade(ctx, uuid.New(), input)
+	assert.Error(t, err)
+	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), "Homework not found")
+	taskRepo.AssertExpectations(t)
+	hwRepo.AssertExpectations(t)
+}
+
+func TestSubmitGrade_TaskCourseMismatch(t *testing.T) {
+	svc, taskRepo, hwRepo, _, _, _, _ := setupCheckerService()
 	ctx := context.Background()
 	taskID := uuid.New()
 	hwID := uuid.New()
 	courseID := uuid.New()
+	otherCourseID := uuid.New()
 
-	taskRepo.On("GetByID", ctx, taskID).Return(&model.Task{TaskID: taskID, HwID: hwID}, nil)
-	hwRepo.On("GetByID", ctx, hwID).Return(&model.Homework{HwID: hwID, CourseID: uuid.New()}, nil) // different course
+	task := &model.Task{TaskID: taskID, HwID: hwID}
+	hw := &model.Homework{HwID: hwID, CourseID: otherCourseID}
 
-	_, err := svc.SubmitGrade(ctx, service.SubmitGradeInput{
-		StudentID: uuid.New(), TaskID: taskID, CourseID: courseID,
-		Status: "passed", SubmittedAt: time.Now(),
-	})
-	assert.ErrorContains(t, err, "does not belong to the specified course")
+	taskRepo.On("GetByID", ctx, taskID).Return(task, nil)
+	hwRepo.On("GetByID", ctx, hwID).Return(hw, nil)
+
+	input := service.SubmitGradeInput{
+		StudentID:   uuid.New(),
+		TaskID:      taskID,
+		CourseID:    courseID,
+		Status:      "passed",
+		SubmittedAt: time.Now().Add(-24 * time.Hour),
+	}
+
+	result, err := svc.SubmitGrade(ctx, courseID, input)
+	assert.Error(t, err)
+	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), "task does not belong to the specified course")
 }
 
-func TestSubmitGrade_PassedNoLatePolicy(t *testing.T) {
-	svc, taskRepo, hwRepo, scoreRepo, hwDlRepo, lateRepo := setupCheckerService()
+func TestSubmitGrade_UpsertError(t *testing.T) {
+	svc, taskRepo, hwRepo, scoreRepo, _, _, _ := setupCheckerService()
 	ctx := context.Background()
-	taskID, hwID, courseID, studentID := uuid.New(), uuid.New(), uuid.New(), uuid.New()
-	score := 100
 
-	taskRepo.On("GetByID", ctx, taskID).Return(&model.Task{TaskID: taskID, HwID: hwID, Score: &score}, nil)
-	hwRepo.On("GetByID", ctx, hwID).Return(&model.Homework{HwID: hwID, CourseID: courseID}, nil)
-	hwDlRepo.On("GetByHwID", ctx, hwID).Return(nil, assert.AnError) // no deadlines
-	scoreRepo.On("Upsert", ctx, mock.Anything).Return(nil)
+	studentID := uuid.New()
+	taskID := uuid.New()
+	courseID := uuid.New()
+	hwID := uuid.New()
+	submittedAt := time.Now().Add(-24 * time.Hour)
 
-	result, err := svc.SubmitGrade(ctx, service.SubmitGradeInput{
-		StudentID: studentID, TaskID: taskID, CourseID: courseID,
-		Status: "passed", SubmittedAt: time.Now(),
-	})
+	task := &model.Task{TaskID: taskID, HwID: hwID}
+	hw := &model.Homework{HwID: hwID, CourseID: courseID}
+
+	taskRepo.On("GetByID", ctx, taskID).Return(task, nil)
+	hwRepo.On("GetByID", ctx, hwID).Return(hw, nil)
+	scoreRepo.On("Upsert", ctx, mock.Anything).Return(assert.AnError)
+
+	input := service.SubmitGradeInput{
+		StudentID:   studentID,
+		TaskID:      taskID,
+		CourseID:    courseID,
+		Status:      "fail",
+		SubmittedAt: submittedAt,
+	}
+
+	result, err := svc.SubmitGrade(ctx, courseID, input)
+	assert.Error(t, err)
+	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), "Failed to save grade")
+}
+
+func TestSubmitGrade_LatePolicy_NoPenalty_OnTime(t *testing.T) {
+	svc, taskRepo, hwRepo, scoreRepo, deadlineRepo, lateRepo, _ := setupCheckerService()
+	ctx := context.Background()
+
+	studentID := uuid.New()
+	taskID := uuid.New()
+	courseID := uuid.New()
+	hwID := uuid.New()
+	scoreValue := 100
+	softDeadline := time.Now().Add(-48 * time.Hour)
+	submittedAt := softDeadline.Add(-1 * time.Hour) // before soft deadline
+
+	task := &model.Task{TaskID: taskID, HwID: hwID, Score: &scoreValue}
+	hw := &model.Homework{HwID: hwID, CourseID: courseID}
+	deadline := &model.Deadline{SoftDeadline: softDeadline, HardDeadline: softDeadline.Add(72 * time.Hour)}
+	policy := &model.CourseLatePolicy{PolicyType: model.PolicyTypeLinear, SoftPenalty: 0.2, HardDeadlineScore: 0.5}
+
+	taskRepo.On("GetByID", ctx, taskID).Return(task, nil)
+	hwRepo.On("GetByID", ctx, hwID).Return(hw, nil)
+	deadlineRepo.On("GetByHomeworkID", ctx, hwID).Return(deadline, nil)
+	lateRepo.On("GetByCourseID", ctx, courseID).Return(policy, nil)
+	scoreRepo.On("Upsert", ctx, mock.MatchedBy(func(s *model.StudentTaskScore) bool {
+		return s.Score == scoreValue
+	})).Return(nil)
+
+	input := service.SubmitGradeInput{
+		StudentID:   studentID,
+		TaskID:      taskID,
+		CourseID:    courseID,
+		Status:      "passed",
+		SubmittedAt: submittedAt,
+	}
+
+	result, err := svc.SubmitGrade(ctx, courseID, input)
 	assert.NoError(t, err)
-	assert.Equal(t, score, result.Score)
-	assert.True(t, result.IsPassed)
-
-	_ = lateRepo
+	assert.Equal(t, scoreValue, result.Score)
 }
 
-func TestSubmitGrade_FailStatus(t *testing.T) {
-	svc, taskRepo, hwRepo, scoreRepo, hwDlRepo, _ := setupCheckerService()
+func TestSubmitGrade_LatePolicy_LinearPenalty(t *testing.T) {
+	svc, taskRepo, hwRepo, scoreRepo, deadlineRepo, lateRepo, _ := setupCheckerService()
 	ctx := context.Background()
-	taskID, hwID, courseID, studentID := uuid.New(), uuid.New(), uuid.New(), uuid.New()
-	score := 100
 
-	taskRepo.On("GetByID", ctx, taskID).Return(&model.Task{TaskID: taskID, HwID: hwID, Score: &score}, nil)
-	hwRepo.On("GetByID", ctx, hwID).Return(&model.Homework{HwID: hwID, CourseID: courseID}, nil)
-	hwDlRepo.On("GetByHwID", ctx, hwID).Return(nil, assert.AnError)
-	scoreRepo.On("Upsert", ctx, mock.Anything).Return(nil)
+	studentID := uuid.New()
+	taskID := uuid.New()
+	courseID := uuid.New()
+	hwID := uuid.New()
+	scoreValue := 100
+	softDeadline := time.Now().Add(-48 * time.Hour)
+	hardDeadline := softDeadline.Add(48 * time.Hour)
+	submittedAt := softDeadline.Add(24 * time.Hour)
 
-	result, err := svc.SubmitGrade(ctx, service.SubmitGradeInput{
-		StudentID: studentID, TaskID: taskID, CourseID: courseID,
-		Status: "fail", SubmittedAt: time.Now(),
-	})
+	task := &model.Task{TaskID: taskID, HwID: hwID, Score: &scoreValue}
+	hw := &model.Homework{HwID: hwID, CourseID: courseID}
+	deadline := &model.Deadline{SoftDeadline: softDeadline, HardDeadline: hardDeadline}
+	policy := &model.CourseLatePolicy{PolicyType: model.PolicyTypeLinear, SoftPenalty: 0.2, HardDeadlineScore: 0.5}
+
+	taskRepo.On("GetByID", ctx, taskID).Return(task, nil)
+	hwRepo.On("GetByID", ctx, hwID).Return(hw, nil)
+	deadlineRepo.On("GetByHomeworkID", ctx, hwID).Return(deadline, nil)
+	lateRepo.On("GetByCourseID", ctx, courseID).Return(policy, nil)
+	scoreRepo.On("Upsert", ctx, mock.MatchedBy(func(s *model.StudentTaskScore) bool {
+		return s.Score == 65
+	})).Return(nil)
+
+	input := service.SubmitGradeInput{
+		StudentID:   studentID,
+		TaskID:      taskID,
+		CourseID:    courseID,
+		Status:      "passed",
+		SubmittedAt: submittedAt,
+	}
+
+	result, err := svc.SubmitGrade(ctx, courseID, input)
 	assert.NoError(t, err)
-	assert.Equal(t, 0, result.Score)
-	assert.False(t, result.IsPassed)
+	assert.Equal(t, 65, result.Score)
 }
 
-func TestSubmitGrade_LinearPolicy_BeforeSoft(t *testing.T) {
-	svc, taskRepo, hwRepo, scoreRepo, hwDlRepo, lateRepo := setupCheckerService()
+func TestSubmitGrade_LatePolicy_StepPenalty(t *testing.T) {
+	svc, taskRepo, hwRepo, scoreRepo, deadlineRepo, lateRepo, _ := setupCheckerService()
 	ctx := context.Background()
-	taskID, hwID, courseID, studentID := uuid.New(), uuid.New(), uuid.New(), uuid.New()
-	score := 100
-	now := time.Now()
-	soft := now.Add(2 * time.Hour)
-	hard := now.Add(4 * time.Hour)
 
-	taskRepo.On("GetByID", ctx, taskID).Return(&model.Task{TaskID: taskID, HwID: hwID, Score: &score}, nil)
-	hwRepo.On("GetByID", ctx, hwID).Return(&model.Homework{HwID: hwID, CourseID: courseID}, nil)
-	hwDlRepo.On("GetByHwID", ctx, hwID).Return(&model.HomeworkDeadline{SoftDeadline: soft, HardDeadline: hard}, nil)
-	lateRepo.On("GetByCourseID", ctx, courseID).Return(&model.CourseLatePolicy{
-		PolicyType: model.PolicyTypeLinear, HardDeadlineScore: 0.5,
-	}, nil)
-	scoreRepo.On("Upsert", ctx, mock.Anything).Return(nil)
+	studentID := uuid.New()
+	taskID := uuid.New()
+	courseID := uuid.New()
+	hwID := uuid.New()
+	scoreValue := 100
+	softDeadline := time.Now().Add(-72 * time.Hour)
+	hardDeadline := softDeadline.Add(120 * time.Hour)
+	submittedAt := softDeadline.Add(48 * time.Hour) // 2 days late
+	stepPercent := 0.1
 
-	result, err := svc.SubmitGrade(ctx, service.SubmitGradeInput{
-		StudentID: studentID, TaskID: taskID, CourseID: courseID,
-		Status: "passed", SubmittedAt: now,
-	})
-	assert.NoError(t, err)
-	assert.Equal(t, 100, result.Score)
-}
+	task := &model.Task{TaskID: taskID, HwID: hwID, Score: &scoreValue}
+	hw := &model.Homework{HwID: hwID, CourseID: courseID}
+	deadline := &model.Deadline{SoftDeadline: softDeadline, HardDeadline: hardDeadline}
+	policy := &model.CourseLatePolicy{PolicyType: model.PolicyTypeStep, StepPercent: &stepPercent}
 
-func TestSubmitGrade_LinearPolicy_AfterHard(t *testing.T) {
-	svc, taskRepo, hwRepo, scoreRepo, hwDlRepo, lateRepo := setupCheckerService()
-	ctx := context.Background()
-	taskID, hwID, courseID, studentID := uuid.New(), uuid.New(), uuid.New(), uuid.New()
-	score := 100
-	now := time.Now()
-	soft := now.Add(-4 * time.Hour)
-	hard := now.Add(-2 * time.Hour)
+	taskRepo.On("GetByID", ctx, taskID).Return(task, nil)
+	hwRepo.On("GetByID", ctx, hwID).Return(hw, nil)
+	deadlineRepo.On("GetByHomeworkID", ctx, hwID).Return(deadline, nil)
+	lateRepo.On("GetByCourseID", ctx, courseID).Return(policy, nil)
+	scoreRepo.On("Upsert", ctx, mock.MatchedBy(func(s *model.StudentTaskScore) bool {
+		return s.Score == 80
+	})).Return(nil)
 
-	taskRepo.On("GetByID", ctx, taskID).Return(&model.Task{TaskID: taskID, HwID: hwID, Score: &score}, nil)
-	hwRepo.On("GetByID", ctx, hwID).Return(&model.Homework{HwID: hwID, CourseID: courseID}, nil)
-	hwDlRepo.On("GetByHwID", ctx, hwID).Return(&model.HomeworkDeadline{SoftDeadline: soft, HardDeadline: hard}, nil)
-	lateRepo.On("GetByCourseID", ctx, courseID).Return(&model.CourseLatePolicy{
-		PolicyType: model.PolicyTypeLinear, HardDeadlineScore: 0.5,
-	}, nil)
-	scoreRepo.On("Upsert", ctx, mock.Anything).Return(nil)
+	input := service.SubmitGradeInput{
+		StudentID:   studentID,
+		TaskID:      taskID,
+		CourseID:    courseID,
+		Status:      "passed",
+		SubmittedAt: submittedAt,
+	}
 
-	result, err := svc.SubmitGrade(ctx, service.SubmitGradeInput{
-		StudentID: studentID, TaskID: taskID, CourseID: courseID,
-		Status: "passed", SubmittedAt: now,
-	})
-	assert.NoError(t, err)
-	assert.Equal(t, 0, result.Score)
-}
-
-func TestSubmitGrade_LinearPolicy_BetweenSoftAndHard(t *testing.T) {
-	svc, taskRepo, hwRepo, scoreRepo, hwDlRepo, lateRepo := setupCheckerService()
-	ctx := context.Background()
-	taskID, hwID, courseID, studentID := uuid.New(), uuid.New(), uuid.New(), uuid.New()
-	score := 100
-	now := time.Now()
-	soft := now.Add(-2 * time.Hour)
-	hard := now.Add(2 * time.Hour)
-
-	taskRepo.On("GetByID", ctx, taskID).Return(&model.Task{TaskID: taskID, HwID: hwID, Score: &score}, nil)
-	hwRepo.On("GetByID", ctx, hwID).Return(&model.Homework{HwID: hwID, CourseID: courseID}, nil)
-	hwDlRepo.On("GetByHwID", ctx, hwID).Return(&model.HomeworkDeadline{SoftDeadline: soft, HardDeadline: hard}, nil)
-	lateRepo.On("GetByCourseID", ctx, courseID).Return(&model.CourseLatePolicy{
-		PolicyType: model.PolicyTypeLinear, HardDeadlineScore: 0.0,
-	}, nil)
-	scoreRepo.On("Upsert", ctx, mock.Anything).Return(nil)
-
-	result, err := svc.SubmitGrade(ctx, service.SubmitGradeInput{
-		StudentID: studentID, TaskID: taskID, CourseID: courseID,
-		Status: "passed", SubmittedAt: now,
-	})
-	assert.NoError(t, err)
-	assert.Equal(t, 50, result.Score)
-}
-
-func TestSubmitGrade_StepPolicy(t *testing.T) {
-	svc, taskRepo, hwRepo, scoreRepo, hwDlRepo, lateRepo := setupCheckerService()
-	ctx := context.Background()
-	taskID, hwID, courseID, studentID := uuid.New(), uuid.New(), uuid.New(), uuid.New()
-	score := 100
-	now := time.Now()
-	soft := now.Add(-23 * time.Hour)
-	hard := now.Add(48 * time.Hour)
-
-	taskRepo.On("GetByID", ctx, taskID).Return(&model.Task{TaskID: taskID, HwID: hwID, Score: &score}, nil)
-	hwRepo.On("GetByID", ctx, hwID).Return(&model.Homework{HwID: hwID, CourseID: courseID}, nil)
-	hwDlRepo.On("GetByHwID", ctx, hwID).Return(&model.HomeworkDeadline{SoftDeadline: soft, HardDeadline: hard}, nil)
-	lateRepo.On("GetByCourseID", ctx, courseID).Return(&model.CourseLatePolicy{
-		PolicyType:  model.PolicyTypeStep,
-		StepPercent: f64Ptr(0.1),
-	}, nil)
-	scoreRepo.On("Upsert", ctx, mock.Anything).Return(nil)
-
-	result, err := svc.SubmitGrade(ctx, service.SubmitGradeInput{
-		StudentID: studentID, TaskID: taskID, CourseID: courseID,
-		Status: "passed", SubmittedAt: now,
-	})
-	assert.NoError(t, err)
-	assert.Equal(t, 90, result.Score)
-}
-
-func TestSubmitGrade_CoefficientPolicy(t *testing.T) {
-	svc, taskRepo, hwRepo, scoreRepo, hwDlRepo, lateRepo := setupCheckerService()
-	ctx := context.Background()
-	taskID, hwID, courseID, studentID := uuid.New(), uuid.New(), uuid.New(), uuid.New()
-	score := 100
-	now := time.Now()
-	soft := now.Add(-1 * time.Hour)
-	hard := now.Add(48 * time.Hour)
-
-	taskRepo.On("GetByID", ctx, taskID).Return(&model.Task{TaskID: taskID, HwID: hwID, Score: &score}, nil)
-	hwRepo.On("GetByID", ctx, hwID).Return(&model.Homework{HwID: hwID, CourseID: courseID}, nil)
-	hwDlRepo.On("GetByHwID", ctx, hwID).Return(&model.HomeworkDeadline{SoftDeadline: soft, HardDeadline: hard}, nil)
-	lateRepo.On("GetByCourseID", ctx, courseID).Return(&model.CourseLatePolicy{
-		PolicyType:  model.PolicyTypeCoefficient,
-		Coefficient: f64Ptr(0.8),
-	}, nil)
-	scoreRepo.On("Upsert", ctx, mock.Anything).Return(nil)
-
-	result, err := svc.SubmitGrade(ctx, service.SubmitGradeInput{
-		StudentID: studentID, TaskID: taskID, CourseID: courseID,
-		Status: "passed", SubmittedAt: now,
-	})
+	result, err := svc.SubmitGrade(ctx, courseID, input)
 	assert.NoError(t, err)
 	assert.Equal(t, 80, result.Score)
 }
 
-func TestSubmitGrade_LinearPolicy_WithSoftPenalty(t *testing.T) {
-	svc, taskRepo, hwRepo, scoreRepo, hwDlRepo, lateRepo := setupCheckerService()
+func TestSubmitGrade_LatePolicy_StepPenalty_MinZero(t *testing.T) {
+	svc, taskRepo, hwRepo, scoreRepo, deadlineRepo, lateRepo, _ := setupCheckerService()
 	ctx := context.Background()
-	taskID, hwID, courseID, studentID := uuid.New(), uuid.New(), uuid.New(), uuid.New()
-	score := 100
-	now := time.Now()
-	soft := now.Add(-2 * time.Hour)
-	hard := now.Add(2 * time.Hour)
 
-	taskRepo.On("GetByID", ctx, taskID).Return(&model.Task{TaskID: taskID, HwID: hwID, Score: &score}, nil)
-	hwRepo.On("GetByID", ctx, hwID).Return(&model.Homework{HwID: hwID, CourseID: courseID}, nil)
-	hwDlRepo.On("GetByHwID", ctx, hwID).Return(&model.HomeworkDeadline{SoftDeadline: soft, HardDeadline: hard}, nil)
-	lateRepo.On("GetByCourseID", ctx, courseID).Return(&model.CourseLatePolicy{
-		PolicyType:        model.PolicyTypeLinear,
-		SoftPenalty:       0.1,
-		HardDeadlineScore: 0.3,
-	}, nil)
-	scoreRepo.On("Upsert", ctx, mock.Anything).Return(nil)
+	studentID := uuid.New()
+	taskID := uuid.New()
+	courseID := uuid.New()
+	hwID := uuid.New()
+	scoreValue := 100
+	softDeadline := time.Now().Add(-720 * time.Hour)
+	hardDeadline := softDeadline.Add(720 * time.Hour)
+	submittedAt := softDeadline.Add(720 * time.Hour)
+	stepPercent := 0.1
 
-	result, err := svc.SubmitGrade(ctx, service.SubmitGradeInput{
-		StudentID: studentID, TaskID: taskID, CourseID: courseID,
-		Status: "passed", SubmittedAt: now,
-	})
+	task := &model.Task{TaskID: taskID, HwID: hwID, Score: &scoreValue}
+	hw := &model.Homework{HwID: hwID, CourseID: courseID}
+	deadline := &model.Deadline{SoftDeadline: softDeadline, HardDeadline: hardDeadline}
+	policy := &model.CourseLatePolicy{PolicyType: model.PolicyTypeStep, StepPercent: &stepPercent}
+
+	taskRepo.On("GetByID", ctx, taskID).Return(task, nil)
+	hwRepo.On("GetByID", ctx, hwID).Return(hw, nil)
+	deadlineRepo.On("GetByHomeworkID", ctx, hwID).Return(deadline, nil)
+	lateRepo.On("GetByCourseID", ctx, courseID).Return(policy, nil)
+	scoreRepo.On("Upsert", ctx, mock.MatchedBy(func(s *model.StudentTaskScore) bool {
+		return s.Score == 0
+	})).Return(nil)
+
+	input := service.SubmitGradeInput{
+		StudentID:   studentID,
+		TaskID:      taskID,
+		CourseID:    courseID,
+		Status:      "passed",
+		SubmittedAt: submittedAt,
+	}
+
+	result, err := svc.SubmitGrade(ctx, courseID, input)
 	assert.NoError(t, err)
-	assert.Equal(t, 60, result.Score)
+	assert.Equal(t, 0, result.Score)
+}
+
+func TestSubmitGrade_LatePolicy_CoefficientPenalty(t *testing.T) {
+	svc, taskRepo, hwRepo, scoreRepo, deadlineRepo, lateRepo, _ := setupCheckerService()
+	ctx := context.Background()
+
+	studentID := uuid.New()
+	taskID := uuid.New()
+	courseID := uuid.New()
+	hwID := uuid.New()
+	scoreValue := 100
+	softDeadline := time.Now().Add(-48 * time.Hour)
+	hardDeadline := softDeadline.Add(48 * time.Hour)
+	submittedAt := softDeadline.Add(24 * time.Hour)
+	coefficient := 0.75
+
+	task := &model.Task{TaskID: taskID, HwID: hwID, Score: &scoreValue}
+	hw := &model.Homework{HwID: hwID, CourseID: courseID}
+	deadline := &model.Deadline{SoftDeadline: softDeadline, HardDeadline: hardDeadline}
+	policy := &model.CourseLatePolicy{PolicyType: model.PolicyTypeCoefficient, Coefficient: &coefficient}
+
+	taskRepo.On("GetByID", ctx, taskID).Return(task, nil)
+	hwRepo.On("GetByID", ctx, hwID).Return(hw, nil)
+	deadlineRepo.On("GetByHomeworkID", ctx, hwID).Return(deadline, nil)
+	lateRepo.On("GetByCourseID", ctx, courseID).Return(policy, nil)
+	scoreRepo.On("Upsert", ctx, mock.MatchedBy(func(s *model.StudentTaskScore) bool {
+		return s.Score == 75
+	})).Return(nil)
+
+	input := service.SubmitGradeInput{
+		StudentID:   studentID,
+		TaskID:      taskID,
+		CourseID:    courseID,
+		Status:      "passed",
+		SubmittedAt: submittedAt,
+	}
+
+	result, err := svc.SubmitGrade(ctx, courseID, input)
+	assert.NoError(t, err)
+	assert.Equal(t, 75, result.Score)
+}
+
+func TestSubmitGrade_LatePolicy_AfterHardDeadline_ZeroScore(t *testing.T) {
+	svc, taskRepo, hwRepo, scoreRepo, deadlineRepo, lateRepo, _ := setupCheckerService()
+	ctx := context.Background()
+
+	studentID := uuid.New()
+	taskID := uuid.New()
+	courseID := uuid.New()
+	hwID := uuid.New()
+	scoreValue := 100
+	softDeadline := time.Now().Add(-96 * time.Hour)
+	hardDeadline := softDeadline.Add(48 * time.Hour)
+	submittedAt := hardDeadline.Add(1 * time.Hour) // after hard deadline
+
+	task := &model.Task{TaskID: taskID, HwID: hwID, Score: &scoreValue}
+	hw := &model.Homework{HwID: hwID, CourseID: courseID}
+	deadline := &model.Deadline{SoftDeadline: softDeadline, HardDeadline: hardDeadline}
+	policy := &model.CourseLatePolicy{PolicyType: model.PolicyTypeLinear}
+
+	taskRepo.On("GetByID", ctx, taskID).Return(task, nil)
+	hwRepo.On("GetByID", ctx, hwID).Return(hw, nil)
+	deadlineRepo.On("GetByHomeworkID", ctx, hwID).Return(deadline, nil)
+	lateRepo.On("GetByCourseID", ctx, courseID).Return(policy, nil)
+	scoreRepo.On("Upsert", ctx, mock.MatchedBy(func(s *model.StudentTaskScore) bool {
+		return s.Score == 0
+	})).Return(nil)
+
+	input := service.SubmitGradeInput{
+		StudentID:   studentID,
+		TaskID:      taskID,
+		CourseID:    courseID,
+		Status:      "passed",
+		SubmittedAt: submittedAt,
+	}
+
+	result, err := svc.SubmitGrade(ctx, courseID, input)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, result.Score)
+}
+
+func TestSubmitGrade_LatePolicy_TaskScoreNil_ReturnsZero(t *testing.T) {
+	svc, taskRepo, hwRepo, scoreRepo, _, _, _ := setupCheckerService()
+	ctx := context.Background()
+
+	studentID := uuid.New()
+	taskID := uuid.New()
+	courseID := uuid.New()
+	hwID := uuid.New()
+	submittedAt := time.Now().Add(-24 * time.Hour)
+
+	task := &model.Task{TaskID: taskID, HwID: hwID, Score: nil}
+	hw := &model.Homework{HwID: hwID, CourseID: courseID}
+
+	taskRepo.On("GetByID", ctx, taskID).Return(task, nil)
+	hwRepo.On("GetByID", ctx, hwID).Return(hw, nil)
+	scoreRepo.On("Upsert", ctx, mock.MatchedBy(func(s *model.StudentTaskScore) bool {
+		return s.Score == 0
+	})).Return(nil)
+
+	input := service.SubmitGradeInput{
+		StudentID:   studentID,
+		TaskID:      taskID,
+		CourseID:    courseID,
+		Status:      "passed",
+		SubmittedAt: submittedAt,
+	}
+
+	result, err := svc.SubmitGrade(ctx, courseID, input)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, result.Score)
+}
+
+func TestSubmitGrade_LatePolicy_DeadlineRepoError_Fallback(t *testing.T) {
+	svc, taskRepo, hwRepo, scoreRepo, deadlineRepo, _, _ := setupCheckerService()
+	ctx := context.Background()
+
+	studentID := uuid.New()
+	taskID := uuid.New()
+	courseID := uuid.New()
+	hwID := uuid.New()
+	scoreValue := 100
+	submittedAt := time.Now()
+
+	task := &model.Task{TaskID: taskID, HwID: hwID, Score: &scoreValue}
+	hw := &model.Homework{HwID: hwID, CourseID: courseID}
+
+	taskRepo.On("GetByID", ctx, taskID).Return(task, nil)
+	hwRepo.On("GetByID", ctx, hwID).Return(hw, nil)
+	deadlineRepo.On("GetByHomeworkID", ctx, hwID).Return(nil, assert.AnError)
+	scoreRepo.On("Upsert", ctx, mock.MatchedBy(func(s *model.StudentTaskScore) bool {
+		return s.Score == scoreValue
+	})).Return(nil)
+
+	input := service.SubmitGradeInput{
+		StudentID:   studentID,
+		TaskID:      taskID,
+		CourseID:    courseID,
+		Status:      "passed",
+		SubmittedAt: submittedAt,
+	}
+
+	result, err := svc.SubmitGrade(ctx, courseID, input)
+	assert.NoError(t, err)
+	assert.Equal(t, scoreValue, result.Score)
+}
+
+func TestSubmitGrade_LatePolicy_LatePolicyRepoError_Fallback(t *testing.T) {
+	svc, taskRepo, hwRepo, scoreRepo, deadlineRepo, lateRepo, _ := setupCheckerService()
+	ctx := context.Background()
+
+	studentID := uuid.New()
+	taskID := uuid.New()
+	courseID := uuid.New()
+	hwID := uuid.New()
+	scoreValue := 100
+	softDeadline := time.Now().Add(-48 * time.Hour)
+	hardDeadline := softDeadline.Add(48 * time.Hour)
+	submittedAt := softDeadline.Add(24 * time.Hour)
+
+	task := &model.Task{TaskID: taskID, HwID: hwID, Score: &scoreValue}
+	hw := &model.Homework{HwID: hwID, CourseID: courseID}
+	deadline := &model.Deadline{SoftDeadline: softDeadline, HardDeadline: hardDeadline}
+
+	taskRepo.On("GetByID", ctx, taskID).Return(task, nil)
+	hwRepo.On("GetByID", ctx, hwID).Return(hw, nil)
+	deadlineRepo.On("GetByHomeworkID", ctx, hwID).Return(deadline, nil)
+	lateRepo.On("GetByCourseID", ctx, courseID).Return(nil, assert.AnError)
+	scoreRepo.On("Upsert", ctx, mock.MatchedBy(func(s *model.StudentTaskScore) bool {
+		return s.Score == scoreValue // fallback to base score
+	})).Return(nil)
+
+	input := service.SubmitGradeInput{
+		StudentID:   studentID,
+		TaskID:      taskID,
+		CourseID:    courseID,
+		Status:      "passed",
+		SubmittedAt: submittedAt,
+	}
+
+	result, err := svc.SubmitGrade(ctx, courseID, input)
+	assert.NoError(t, err)
+	assert.Equal(t, scoreValue, result.Score)
 }

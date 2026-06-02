@@ -37,7 +37,7 @@ type CourseLateInput struct {
 
 func (s *CourseLatePolicy) CreateOrUpdate(ctx context.Context, userID, courseID uuid.UUID, in CourseLateInput) (result *model.CourseLatePolicy, err error) {
 	defer func() { s.latepolicyMetrics.IncAction(metrics.LatePolicyActionCreateOrUpdate, adminOutcome(err)) }()
-	if err := RequireScopedPermission(ctx, s.roleRepo, userID, courseID, PermissionCourseCreate); err != nil {
+	if err := RequireScopedPermission(ctx, s.roleRepo, userID, courseID, PermissionLatePolicyCreate); err != nil {
 		return nil, err
 	}
 	if err := validateCourseLateInput(in); err != nil {
@@ -80,6 +80,9 @@ func validateCourseLateInput(in CourseLateInput) error {
 	case model.PolicyTypeLinear:
 		if in.HardDeadlineScore < 0 || in.HardDeadlineScore > 1 {
 			return BadRequest("hard_deadline_score must be between 0.0 and 1.0")
+		}
+		if in.SoftPenalty > in.HardDeadlineScore {
+			return BadRequest("soft_penalty must be less than or equal to hard_deadline_score")
 		}
 	case model.PolicyTypeStep:
 		if in.StepPercent == nil {

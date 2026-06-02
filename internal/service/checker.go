@@ -15,9 +15,10 @@ type CheckerService struct {
 	taskRepo       repo.ITaskRepo
 	homeworkRepo   repo.IHomeworkRepo
 	scoreRepo      repo.IStudentTaskScoreRepo
-	hwDeadlineRepo repo.IHomeworkDeadlineRepo
+	deadlineRepo   repo.IDeadlineRepo
 	courseLateRepo repo.ICourseLatePolicy
 	checkerMetrics *metrics.CheckerMetrics
+	roleRepo       repo.IRoleRepo
 }
 
 func (s *CheckerService) WithMetrics(m *metrics.CheckerMetrics) *CheckerService {
@@ -29,15 +30,17 @@ func NewCheckerService(
 	taskRepo repo.ITaskRepo,
 	homeworkRepo repo.IHomeworkRepo,
 	scoreRepo repo.IStudentTaskScoreRepo,
-	hwDeadlineRepo repo.IHomeworkDeadlineRepo,
+	deadlineRepo repo.IDeadlineRepo,
 	courseLateRepo repo.ICourseLatePolicy,
+	roleRepo repo.IRoleRepo,
 ) *CheckerService {
 	return &CheckerService{
 		taskRepo:       taskRepo,
 		homeworkRepo:   homeworkRepo,
 		scoreRepo:      scoreRepo,
-		hwDeadlineRepo: hwDeadlineRepo,
+		deadlineRepo:   deadlineRepo,
 		courseLateRepo: courseLateRepo,
+		roleRepo:       roleRepo,
 	}
 }
 
@@ -52,6 +55,9 @@ type SubmitGradeInput struct {
 func (s *CheckerService) SubmitGrade(ctx context.Context, input SubmitGradeInput) (score *model.StudentTaskScore, err error) {
 	defer func() { s.checkerMetrics.IncAction(metrics.CheckerActionSubmitGrade, adminOutcome(err)) }()
 
+	if err := RequireScopedPermission(ctx, s.roleRepo, input.StudentID, input.CourseID, PermissionTaskSubmit); err != nil {
+		return nil, err
+	}
 	if input.StudentID == uuid.Nil {
 		return nil, BadRequest("student_id is required")
 	}
@@ -64,6 +70,13 @@ func (s *CheckerService) SubmitGrade(ctx context.Context, input SubmitGradeInput
 	if input.Status != "passed" && input.Status != "fail" {
 		return nil, BadRequest("status must be 'passed' or 'fail'")
 	}
+	if input.SubmittedAt.IsZero() {
+		return nil, BadRequest("submitted_at is required")
+	}
+	if input.SubmittedAt.After(time.Now()) {
+		return nil, BadRequest("submitted_at cannot be in the future")
+	}
+
 	task, err := s.taskRepo.GetByID(ctx, input.TaskID)
 	if err != nil {
 		return nil, NotFound("Task not found")
@@ -109,7 +122,7 @@ func (s *CheckerService) applyLatePolicy(ctx context.Context, taskID uuid.UUID, 
 		return baseScore
 	}
 
-	deadlines, err := s.hwDeadlineRepo.GetByHwID(ctx, task.HwID)
+	deadlines, err := s.deadlineRepo.GetByHomeworkID(ctx, task.HwID)
 	if err != nil {
 		return baseScore
 	}

@@ -20,13 +20,11 @@ func NewAdminHomeworkHandler(homeworkService IAdminHomeworkService) *AdminHomewo
 }
 
 type CreateHomeworkRequest struct {
-	Title        *string   `json:"title"`
-	Description  *string   `json:"description"`
-	Position     *int      `json:"position"`
-	StartDate    *string   `json:"start_date"`
-	EndDate      *string   `json:"end_date"`
-	SoftDeadline time.Time `json:"soft_deadline"`
-	HardDeadline time.Time `json:"hard_deadline"`
+	Title       *string `json:"title"`
+	Description *string `json:"description"`
+	Position    *int    `json:"position"`
+	StartDate   *string `json:"start_date"`
+	EndDate     *string `json:"end_date"`
 }
 
 type UpdateHomeworkRequest struct {
@@ -42,16 +40,20 @@ type PublishHomeworkRequest struct {
 }
 
 type SetDeadlineRequest struct {
-	CourseID    string  `json:"course_id"`
-	Title       string  `json:"title"`
-	Description *string `json:"description"`
-	DueDate     string  `json:"due_date"`
+	CourseID     string    `json:"course_id"`
+	Title        string    `json:"title"`
+	Description  *string   `json:"description"`
+	DueDate      string    `json:"due_date"`
+	SoftDeadline time.Time `json:"soft_deadline"`
+	HardDeadline time.Time `json:"hard_deadline"`
 }
 
 type UpdateDeadlineRequest struct {
-	Title       *string `json:"title"`
-	Description *string `json:"description"`
-	DueDate     *string `json:"due_date"`
+	Title        *string `json:"title"`
+	Description  *string `json:"description"`
+	DueDate      *string `json:"due_date"`
+	SoftDeadline time.Time
+	HardDeadline time.Time
 }
 
 // POST /admin/courses/:courseId/homework
@@ -72,9 +74,7 @@ func (h *AdminHomeworkHandler) CreateHomework(c echo.Context) error {
 	}
 
 	input := service.CreateHomeworkInput{
-		CourseID:     courseID,
-		SoftDeadline: req.SoftDeadline,
-		HardDeadline: req.HardDeadline,
+		CourseID: courseID,
 	}
 	if req.Title != nil {
 		input.Title = *req.Title
@@ -275,11 +275,13 @@ func (h *AdminHomeworkHandler) SetDeadline(c echo.Context) error {
 	assignedBy = &user.ID
 
 	input := service.SetDeadlineInput{
-		CourseID:   courseID,
-		HomeworkID: hwID,
-		Title:      req.Title,
-		DueDate:    req.DueDate,
-		AssignedBy: assignedBy,
+		CourseID:     courseID,
+		HomeworkID:   hwID,
+		Title:        req.Title,
+		DueDate:      req.DueDate,
+		AssignedBy:   assignedBy,
+		SoftDeadline: req.SoftDeadline,
+		HardDeadline: req.HardDeadline,
 	}
 	if req.Description != nil {
 		input.Description = *req.Description
@@ -319,6 +321,12 @@ func (h *AdminHomeworkHandler) UpdateDeadline(c echo.Context) error {
 	}
 	if req.DueDate != nil {
 		input.DueDate = *req.DueDate
+	}
+	if !req.SoftDeadline.IsZero() {
+		input.SoftDeadline = req.SoftDeadline
+	}
+	if !req.HardDeadline.IsZero() {
+		input.HardDeadline = req.HardDeadline
 	}
 
 	deadline, err := h.homeworkService.UpdateDeadline(c.Request().Context(), user.ID, deadlineID, input)

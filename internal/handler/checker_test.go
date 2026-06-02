@@ -134,32 +134,21 @@ func TestCheckerHandler_SubmitGrade_MissingCourseID(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
-func TestCheckerHandler_SubmitGrade_DefaultsSubmittedAt(t *testing.T) {
+func TestCheckerHandler_MissingSubmittedAt(t *testing.T) {
 	e := echo.New()
-	h, svc := setupCheckerHandler()
-
-	studentID := uuid.New()
-	taskID := uuid.New()
-	courseID := uuid.New()
-
-	score := &model.StudentTaskScore{Score: 80, IsPassed: true}
-	svc.On("SubmitGrade", mock.Anything, mock.MatchedBy(func(in service.SubmitGradeInput) bool {
-		return !in.SubmittedAt.IsZero()
-	})).Return(score, nil)
-
+	h, _ := setupCheckerHandler()
 	body, _ := json.Marshal(map[string]interface{}{
-		"student_id": studentID,
-		"task_id":    taskID,
-		"course_id":  courseID,
+		"student_id": uuid.New(),
+		"task_id":    uuid.New(),
+		"course_id":  uuid.New(),
 		"status":     "passed",
 	})
 	req := httptest.NewRequest(http.MethodPost, "/api/grades", bytes.NewReader(body))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
-
 	assert.NoError(t, h.SubmitGrade(c))
-	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
 func TestCheckerHandler_SubmitGrade_ServiceError(t *testing.T) {

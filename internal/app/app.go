@@ -50,17 +50,16 @@ func New(cfg *config.Config) (*App, error) {
 	taskRepo := repo.NewTaskRepository(dbClient.DB())
 	deadlineRepo := repo.NewDeadlineRepository(dbClient.DB())
 	studentScoreRepo := repo.NewStudentTaskScoreRepository(dbClient.DB())
-	hwDeadlineRepo := repo.NewHomeworkDeadlineRepo(dbClient.DB())
 	courseLateRepo := repo.NewCourseLatePolicy(dbClient.DB())
 
 	userService := service.NewUserService(userRepo)
 	authService := service.NewAuthService(userRepo, sessionRepo).WithMetrics(m.Auth, m.Session)
 	sessionService := service.NewSessionService(sessionRepo)
 	courseService := service.NewCourseService(courseRepo, roleRepo, studentScoreRepo).WithMetrics(m.Course)
-	adminHomeworkService := service.NewAdminHomeworkService(homeworkRepo, deadlineRepo, roleRepo, hwDeadlineRepo).WithMetrics(m.Admin)
+	adminHomeworkService := service.NewAdminHomeworkService(homeworkRepo, deadlineRepo, roleRepo).WithMetrics(m.Admin)
 	adminTaskService := service.NewAdminTaskService(taskRepo, homeworkRepo, roleRepo).WithMetrics(m.Admin)
 	adminRoleService := service.NewAdminRoleService(roleRepo, userRepo).WithMetrics(m.Admin)
-	checkerService := service.NewCheckerService(taskRepo, homeworkRepo, studentScoreRepo, hwDeadlineRepo, courseLateRepo).WithMetrics(m.Checker)
+	checkerService := service.NewCheckerService(taskRepo, homeworkRepo, studentScoreRepo, deadlineRepo, courseLateRepo, roleRepo).WithMetrics(m.Checker)
 	courseLateService := service.NewCourseLatePolicy(courseLateRepo, roleRepo).WithMetrics(m.LatePolicy)
 
 	adminHomeworkHandler := handler.NewAdminHomeworkHandler(adminHomeworkService)
@@ -75,6 +74,7 @@ func New(cfg *config.Config) (*App, error) {
 		handler.NewSessionHandler(sessionService, userService),
 		handler.NewCourseHandler(courseService),
 		adminHomeworkHandler,
+		handler.NewCheckerHandler(checkerService),
 	)
 
 	e.Use(metrics.EchoMiddleware(m.HTTP))

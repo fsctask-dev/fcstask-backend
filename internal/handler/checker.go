@@ -42,6 +42,12 @@ func (h *CheckerHandler) SubmitGrade(c echo.Context) error {
 	if req.CourseID == uuid.Nil {
 		return badRequest(c, "course_id is required")
 	}
+	if req.SubmittedAt.IsZero() {
+		return badRequest(c, "submitted_at is required")
+	}
+	if req.SubmittedAt.After(time.Now()) {
+		return badRequest(c, "submitted_at cannot be in the future")
+	}
 
 	submittedAt := req.SubmittedAt
 	if submittedAt.IsZero() {

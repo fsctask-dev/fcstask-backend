@@ -12,19 +12,17 @@ import (
 )
 
 type AdminHomeworkService struct {
-	homeworkRepo   repo.IHomeworkRepo
-	deadlineRepo   repo.IDeadlineRepo
-	roleRepo       repo.IRoleRepo
-	hwDeadlineRepo repo.IHomeworkDeadlineRepo
-	adminMetrics   *metrics.AdminMetrics
+	homeworkRepo repo.IHomeworkRepo
+	deadlineRepo repo.IDeadlineRepo
+	roleRepo     repo.IRoleRepo
+	adminMetrics *metrics.AdminMetrics
 }
 
-func NewAdminHomeworkService(homeworkRepo repo.IHomeworkRepo, deadlineRepo repo.IDeadlineRepo, roleRepo repo.IRoleRepo, hwDeadlineRepo repo.IHomeworkDeadlineRepo) *AdminHomeworkService {
+func NewAdminHomeworkService(homeworkRepo repo.IHomeworkRepo, deadlineRepo repo.IDeadlineRepo, roleRepo repo.IRoleRepo) *AdminHomeworkService {
 	return &AdminHomeworkService{
-		homeworkRepo:   homeworkRepo,
-		deadlineRepo:   deadlineRepo,
-		roleRepo:       roleRepo,
-		hwDeadlineRepo: hwDeadlineRepo,
+		homeworkRepo: homeworkRepo,
+		deadlineRepo: deadlineRepo,
+		roleRepo:     roleRepo,
 	}
 }
 
@@ -34,14 +32,12 @@ func (s *AdminHomeworkService) WithMetrics(m *metrics.AdminMetrics) *AdminHomewo
 }
 
 type CreateHomeworkInput struct {
-	CourseID     uuid.UUID
-	Title        string
-	Description  string
-	Position     int
-	StartDate    string
-	EndDate      string
-	SoftDeadline time.Time
-	HardDeadline time.Time
+	CourseID    uuid.UUID
+	Title       string
+	Description string
+	Position    int
+	StartDate   string
+	EndDate     string
 }
 
 type UpdateHomeworkInput struct {
@@ -53,18 +49,22 @@ type UpdateHomeworkInput struct {
 }
 
 type SetDeadlineInput struct {
-	CourseID    uuid.UUID
-	HomeworkID  uuid.UUID
-	Title       string
-	Description string
-	DueDate     string // RFC3339
-	AssignedBy  *uuid.UUID
+	CourseID     uuid.UUID
+	HomeworkID   uuid.UUID
+	Title        string
+	Description  string
+	DueDate      string // RFC3339
+	SoftDeadline time.Time
+	HardDeadline time.Time
+	AssignedBy   *uuid.UUID
 }
 
 type UpdateDeadlineInput struct {
-	Title       string
-	Description string
-	DueDate     string // RFC3339
+	Title        string
+	Description  string
+	DueDate      string // RFC3339
+	SoftDeadline time.Time
+	HardDeadline time.Time
 }
 
 func (s *AdminHomeworkService) CreateHomework(ctx context.Context, userID uuid.UUID, input CreateHomeworkInput) (hw *model.Homework, err error) {
@@ -114,24 +114,6 @@ func (s *AdminHomeworkService) CreateHomework(ctx context.Context, userID uuid.U
 
 	if err := s.homeworkRepo.Create(ctx, hw); err != nil {
 		return nil, Internal("Failed to create homework", err)
-	}
-
-	if input.SoftDeadline.IsZero() {
-		return nil, BadRequest("soft_deadline is required")
-	}
-	if input.HardDeadline.IsZero() {
-		return nil, BadRequest("hard_deadline is required")
-	}
-	if !input.HardDeadline.After(input.SoftDeadline) {
-		return nil, BadRequest("hard_deadline must be after soft_deadline")
-	}
-	hwDeadline := &model.HomeworkDeadline{
-		HwID:         hw.HwID,
-		SoftDeadline: input.SoftDeadline,
-		HardDeadline: input.HardDeadline,
-	}
-	if err := s.hwDeadlineRepo.Create(ctx, hwDeadline); err != nil {
-		return nil, Internal("Failed to create homework deadline", err)
 	}
 
 	return hw, nil
@@ -287,6 +269,13 @@ func (s *AdminHomeworkService) SetDeadline(ctx context.Context, userID uuid.UUID
 		return nil, BadRequest("due date must be in RFC3339 format")
 	}
 
+	if input.SoftDeadline.IsZero() {
+		return nil, BadRequest("soft_deadline is required")
+	}
+	if input.HardDeadline.IsZero() {
+		return nil, BadRequest("hard_deadline is required")
+	}
+
 	hw, err := s.homeworkRepo.GetByID(ctx, input.HomeworkID)
 	if err != nil {
 		return nil, NotFound("Homework not found")
@@ -296,12 +285,14 @@ func (s *AdminHomeworkService) SetDeadline(ctx context.Context, userID uuid.UUID
 	}
 
 	deadline = &model.Deadline{
-		Title:       input.Title,
-		Description: stringPtr(input.Description),
-		CourseID:    input.CourseID,
-		DueDate:     dueDate,
-		AssignedBy:  input.AssignedBy,
-		HomeworkID:  &input.HomeworkID,
+		Title:        input.Title,
+		Description:  stringPtr(input.Description),
+		CourseID:     input.CourseID,
+		DueDate:      dueDate,
+		AssignedBy:   input.AssignedBy,
+		HomeworkID:   &input.HomeworkID,
+		SoftDeadline: input.SoftDeadline,
+		HardDeadline: input.HardDeadline,
 	}
 
 	if err := s.deadlineRepo.Create(ctx, deadline); err != nil {
@@ -360,7 +351,12 @@ func (s *AdminHomeworkService) UpdateDeadline(ctx context.Context, userID, deadl
 		}
 		deadline.DueDate = dueDate
 	}
-
+	if !input.SoftDeadline.IsZero() {
+		deadline.SoftDeadline = input.SoftDeadline
+	}
+	if !input.HardDeadline.IsZero() {
+		deadline.HardDeadline = input.HardDeadline
+	}
 	if err := s.deadlineRepo.Update(ctx, deadline); err != nil {
 		return nil, Internal("Failed to update deadline", err)
 	}

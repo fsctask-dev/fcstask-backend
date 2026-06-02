@@ -22,22 +22,6 @@ func (m *MockScoreRepo) GetByStudentAndCourse(ctx context.Context, studentID, co
 	return args.Get(0).([]model.StudentTaskScore), args.Error(1)
 }
 
-type MockHwDeadlineRepo struct{ mock.Mock }
-
-func (m *MockHwDeadlineRepo) GetByHwID(ctx context.Context, hwID uuid.UUID) (*model.HomeworkDeadline, error) {
-	args := m.Called(ctx, hwID)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*model.HomeworkDeadline), args.Error(1)
-}
-func (m *MockHwDeadlineRepo) Create(ctx context.Context, d *model.HomeworkDeadline) error {
-	return m.Called(ctx, d).Error(0)
-}
-func (m *MockHwDeadlineRepo) Update(ctx context.Context, d *model.HomeworkDeadline) error {
-	return m.Called(ctx, d).Error(0)
-}
-
 type MockCourseLateRepo struct{ mock.Mock }
 
 func (m *MockCourseLateRepo) GetByCourseID(ctx context.Context, courseID uuid.UUID) (*model.CourseLatePolicy, error) {

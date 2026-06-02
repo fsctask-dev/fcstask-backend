@@ -168,9 +168,7 @@ func TestHandlerCreateHomework_Success(t *testing.T) {
 			input.Description == description &&
 			input.Position == position &&
 			input.StartDate == startDate &&
-			input.EndDate == endDate &&
-			input.SoftDeadline.Equal(softDeadline) &&
-			input.HardDeadline.Equal(hardDeadline)
+			input.EndDate == endDate
 	})).Return(expected, nil)
 
 	err := h.CreateHomework(c)
