@@ -54,6 +54,13 @@ func (m *mockCourseRepo) DeleteCourse(ctx context.Context, courseID string) erro
 func (m *mockCourseRepo) GetCourseBoard(ctx context.Context, courseID string, userID uuid.UUID) (*model.TaskBoardSummary, bool, error) {
 	return nil, false, nil
 }
+func (m *mockCourseRepo) GetCourseInfo(ctx context.Context, courseID uuid.UUID) (*model.CourseInfo, error) {
+	args := m.Called(ctx, courseID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*model.CourseInfo), args.Error(1)
+}
 func (m *mockCourseRepo) GetCourses(ctx context.Context) ([]model.Course, error) {
 	return nil, nil
 }
@@ -169,6 +176,7 @@ func TestGetCourse_Public_NoAuth(t *testing.T) {
 	course := &model.Course{ID: uuid.New(), Name: "Pub", Type: model.CourseTypePublic}
 
 	courseRepo.On("GetCourseByID", mock.Anything, "pub").Return(course, nil)
+    courseRepo.On("GetCourseInfo", mock.Anything, course.ID).Return(&model.CourseInfo{Course: *course}, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
@@ -188,6 +196,7 @@ func TestGetCourse_Public_WithAuth(t *testing.T) {
 	course := &model.Course{ID: uuid.New(), Name: "Pub", Type: model.CourseTypePublic}
 
 	courseRepo.On("GetCourseByID", mock.Anything, "pub").Return(course, nil)
+	courseRepo.On("GetCourseInfo", mock.Anything, course.ID).Return(&model.CourseInfo{Course: *course}, nil)
 
 	c := makeContext(e, user, map[string]string{"courseId": "pub"})
 	err := handler.GetCourse(c)
@@ -222,6 +231,7 @@ func TestGetCourse_Private_HasPermission(t *testing.T) {
 	course := &model.Course{ID: uuid.New(), Name: "Priv", Type: model.CourseTypePrivate}
 
 	courseRepo.On("GetCourseByID", mock.Anything, "priv").Return(course, nil)
+	courseRepo.On("GetCourseInfo", mock.Anything, course.ID).Return(&model.CourseInfo{Course: *course}, nil)
 	roleRepo.On("GetRoleIDByUserAndCourse", mock.Anything, user.ID, course.ID).Return(roleID, nil)
 	roleRepo.On("HasPermission", mock.Anything, roleID, service.PermissionCourseRead).Return(true, nil)
 
@@ -317,8 +327,8 @@ func TestUpdateCourse_Success(t *testing.T) {
 
 	courseRepo.On("GetCourseByID", mock.Anything, "old").Return(course, nil)
 	roleRepo.On("GetRoleIDByUserAndCourse", mock.Anything, user.ID, course.ID).Return(roleID, nil)
-	roleRepo.On("HasPermission", mock.Anything, roleID, service.PermissionCourseRead).Return(true, nil)   // ← GetCourse
-	roleRepo.On("HasPermission", mock.Anything, roleID, service.PermissionCourseUpdate).Return(true, nil) // ← UpdateCourse
+	roleRepo.On("HasPermission", mock.Anything, roleID, service.PermissionCourseRead).Return(true, nil)
+	roleRepo.On("HasPermission", mock.Anything, roleID, service.PermissionCourseUpdate).Return(true, nil)
 	courseRepo.On("UpdateCourse", mock.Anything, "old", mock.Anything).Return(course, nil)
 
 	body := `{"name":"Updated"}`

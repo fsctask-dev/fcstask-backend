@@ -82,3 +82,14 @@ type LeaderboardEntry struct {
 	Rank       int               `json:"rank"`
 	Tasks      map[uuid.UUID]int `json:"tasks"`
 }
+
+type HomeworkWithTasks struct {
+	Homework  `json:",inline"`
+	Tasks     []Task     `json:"tasks"`
+	Deadlines []Deadline `json:"deadlines,omitempty"`
+}
+
+type CourseInfo struct {
+	Course          `json:",inline"`
+	Homeworks       []HomeworkWithTasks `json:"homework"`
+}
