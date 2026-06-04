@@ -50,11 +50,11 @@ func (h *CourseHandler) GetCourses(ctx echo.Context) error {
 
 // GET /courses/public
 func (h *CourseHandler) GetPublicCourses(ctx echo.Context) error {
-    courses, err := h.courseService.GetPublicCourses(ctx.Request().Context())
-    if err != nil {
-        return serviceError(ctx, err)
-    }
-    return ctx.JSON(http.StatusOK, courses)
+	courses, err := h.courseService.GetPublicCourses(ctx.Request().Context())
+	if err != nil {
+		return serviceError(ctx, err)
+	}
+	return ctx.JSON(http.StatusOK, courses)
 }
 
 // GET /api/courses/:courseId
@@ -67,19 +67,19 @@ func (h *CourseHandler) GetCourse(ctx echo.Context) error {
 		userID = user.ID
 	}
 
-	course, err := h.courseService.GetCourse(ctx.Request().Context(), userID, courseID)
+	info, err := h.courseService.GetCourseInfo(ctx.Request().Context(), userID, courseID)
 	if err != nil {
 		return serviceError(ctx, err)
 	}
 
-	return ctx.JSON(http.StatusOK, course)
+	return ctx.JSON(http.StatusOK, info)
 }
 
 // POST /admin/course/create
 func (h *CourseHandler) CreateCourse(ctx echo.Context) error {
 	user, ok := ctx.Get(UserContextKey).(*model.User)
 	if !ok || user == nil {
-    	return unauthorized(ctx, "User not found in context")
+		return unauthorized(ctx, "User not found in context")
 	}
 
 	var req PostCourseRequest
@@ -99,7 +99,7 @@ func (h *CourseHandler) CreateCourse(ctx echo.Context) error {
 func (h *CourseHandler) UpdateCourse(ctx echo.Context) error {
 	user, ok := ctx.Get(UserContextKey).(*model.User)
 	if !ok || user == nil {
-    	return unauthorized(ctx, "User not found in context")
+		return unauthorized(ctx, "User not found in context")
 	}
 
 	var req PostCourseRequest
@@ -167,16 +167,16 @@ func (h *CourseHandler) GetScores(ctx echo.Context) error {
 
 // POST /api/courses/:courseId/invite
 func (h *CourseHandler) RegenerateInviteCode(ctx echo.Context) error {
-    user, ok := ctx.Get(UserContextKey).(*model.User)
-    if !ok || user == nil {
-        return unauthorized(ctx, "User not found in context")
-    }
-    courseID := ctx.Param("courseId")
-    code, err := h.courseService.RegenerateInviteCode(ctx.Request().Context(), user.ID, courseID)
-    if err != nil {
-        return serviceError(ctx, err)
-    }
-    return ctx.JSON(http.StatusOK, map[string]string{"invite_code": *code})
+	user, ok := ctx.Get(UserContextKey).(*model.User)
+	if !ok || user == nil {
+		return unauthorized(ctx, "User not found in context")
+	}
+	courseID := ctx.Param("courseId")
+	code, err := h.courseService.RegenerateInviteCode(ctx.Request().Context(), user.ID, courseID)
+	if err != nil {
+		return serviceError(ctx, err)
+	}
+	return ctx.JSON(http.StatusOK, map[string]string{"invite_code": *code})
 }
 
 func courseInput(req PostCourseRequest) service.CourseInput {
