@@ -62,6 +62,24 @@ func (m *mockCourseRepo) GetLeaderboard(ctx context.Context, courseID uuid.UUID)
 	return args.Get(0).([]models.LeaderboardEntry), args.Error(1)
 }
 
+func (m *mockCourseRepo) GetCourseInfo(ctx context.Context, courseID uuid.UUID) (*models.CourseInfo, error) {
+	args := m.Called(ctx, courseID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.CourseInfo), args.Error(1)
+}
+
+func (m *mockCourseRepo) UpdateInviteCode(ctx context.Context, courseID uuid.UUID, code *string) error {
+    args := m.Called(ctx, courseID, code)
+    return args.Error(0)
+}
+
+func (m *mockCourseRepo) GetPublicCourses(ctx context.Context) ([]models.Course, error) {
+    args := m.Called(ctx)
+    return args.Get(0).([]models.Course), args.Error(1)
+}
+
 type mockRoleRepo struct {
 	mock.Mock
 }

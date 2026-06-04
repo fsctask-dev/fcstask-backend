@@ -280,7 +280,7 @@ func (s *AdminHomeworkService) SetDeadline(ctx context.Context, userID uuid.UUID
 		CourseID:    input.CourseID,
 		DueDate:     dueDate,
 		AssignedBy:  input.AssignedBy,
-		HomeworkID:  &input.HomeworkID,
+		HomeworkID:  input.HomeworkID,
 	}
 
 	if err := s.deadlineRepo.Create(ctx, deadline); err != nil {

@@ -183,6 +183,15 @@ func (r *controllerCourseRepo) GetCourseBoard(ctx context.Context, courseID stri
 	return nil, false, nil
 }
 
+func (r *controllerCourseRepo) GetCourseInfo(ctx context.Context, courseID uuid.UUID) (*models.CourseInfo, error) {
+	for _, c := range r.courses {
+		if c.ID == courseID || c.Slug == courseID.String() {
+			return &models.CourseInfo{Course: c, Homeworks: []models.HomeworkWithTasks{}}, nil
+		}
+	}
+	return nil, nil
+}
+
 func (r *controllerCourseRepo) GetLeaderboard(ctx context.Context, courseID uuid.UUID) ([]models.LeaderboardEntry, error) {
 	return nil, nil
 }
@@ -246,6 +255,16 @@ func (r *controllerStatsRepo) GetStats(ctx context.Context) (*models.PlatformSta
 		PrivateCourses: 0,
 		TotalUsers:     1,
 	}, nil
+}
+
+func (r *controllerCourseRepo) GetPublicCourses(ctx context.Context) ([]models.Course, error) {
+    var courses []models.Course
+    for _, course := range r.courses {
+        if course.Type == models.CourseTypePublic {
+            courses = append(courses, course)
+        }
+    }
+    return courses, nil
 }
 
 func newTestController(userRepo *controllerUserRepo, sessionRepo *controllerSessionRepo, courseRepo *controllerCourseRepo) *APIController {
