@@ -67,12 +67,12 @@ func (h *CourseHandler) GetCourse(ctx echo.Context) error {
 		userID = user.ID
 	}
 
-	course, err := h.courseService.GetCourse(ctx.Request().Context(), userID, courseID)
+	info, err := h.courseService.GetCourseInfo(ctx.Request().Context(), userID, courseID)
 	if err != nil {
 		return serviceError(ctx, err)
 	}
 
-	return ctx.JSON(http.StatusOK, course)
+	return ctx.JSON(http.StatusOK, info)
 }
 
 // POST /admin/course/create

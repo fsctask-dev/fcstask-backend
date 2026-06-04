@@ -78,6 +78,23 @@ func (s *CourseService) GetCourse(ctx context.Context, userID uuid.UUID, courseI
 	return course, nil
 }
 
+func (s *CourseService) GetCourseInfo(ctx context.Context, userID uuid.UUID, courseID string) (*models.CourseInfo, error) {
+	course, err := s.GetCourse(ctx, userID, courseID)
+	if err != nil {
+		return nil, err
+	}
+
+	info, err := s.CourseRepo.GetCourseInfo(ctx, course.ID)
+	if err != nil {
+		return nil, Internal("Failed to get course info", err)
+	}
+	if info == nil {
+		return nil, NotFound("course not found")
+	}
+
+	return info, nil
+}
+
 func (s *CourseService) CreateCourse(ctx context.Context, userID uuid.UUID, input CourseInput) (*models.Course, error) {
 	if err := RequireScopedPermission(ctx, s.RoleRepo, userID, uuid.Nil, PermissionCourseCreate); err != nil {
 		return nil, err
@@ -276,7 +293,6 @@ func (s *CourseService) GetLeaderboard(ctx context.Context, userID uuid.UUID, co
 	if err != nil {
 		return nil, err
 	}
-	// Проверяем, что у пользователя есть права на чтение leaderboard
 	if err := RequireScopedPermission(ctx, s.RoleRepo, userID, course.ID, PermissionLeaderboardRead); err != nil {
 		return nil, err
 	}

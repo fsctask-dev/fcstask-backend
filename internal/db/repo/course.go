@@ -21,6 +21,7 @@ type CourseRepositoryInterface interface {
 	UpdateCourse(ctx context.Context, courseID string, course models.Course) (*models.Course, error)
 	DeleteCourse(ctx context.Context, courseID string) error
 	GetCourseBoard(ctx context.Context, courseID string, userID uuid.UUID) (*models.TaskBoardSummary, bool, error)
+	GetCourseInfo(ctx context.Context, courseID uuid.UUID) (*models.CourseInfo, error)
 	GetLeaderboard(ctx context.Context, courseID string) ([]models.LeaderboardEntry, error)
 	UpdateInviteCode(ctx context.Context, courseID uuid.UUID, code *string) error
 	GetPublicCourses(ctx context.Context) ([]models.Course, error)
@@ -271,6 +272,62 @@ func (r *CourseRepository) GetCourseBoard(ctx context.Context, courseID string, 
 	}
 
 	return summary, true, nil
+}
+
+func (r *CourseRepository) GetCourseInfo(ctx context.Context, courseID uuid.UUID) (*models.CourseInfo, error) {
+	var course models.Course
+	if err := r.rw.ReadDB().WithContext(ctx).First(&course, "id = ?", courseID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	var homeworks []models.Homework
+	if err := r.rw.ReadDB().WithContext(ctx).Where("course_id = ? AND is_public = ?", courseID, true).Order("position ASC, created_at ASC").Find(&homeworks).Error; err != nil {
+		return nil, err
+	}
+
+	hwIDs := make([]uuid.UUID, len(homeworks))
+	for i, hw := range homeworks {
+		hwIDs[i] = hw.HwID
+	}
+
+	var allTasks []models.Task
+	if len(hwIDs) > 0 {
+		if err := r.rw.ReadDB().WithContext(ctx).Where("hw_id IN ? AND is_public = ?", hwIDs, true).Find(&allTasks).Error; err != nil {
+			return nil, err
+		}
+	}
+
+	var allDeadlines []models.Deadline
+	if err := r.rw.ReadDB().WithContext(ctx).Joins("JOIN homework h ON h.hw_id = deadlines.homework_id").Where("deadlines.course_id = ? AND h.is_public = ?", courseID, true).Order("due_date ASC").Find(&allDeadlines).Error; err != nil {
+		return nil, err
+	}
+
+	tasksByHwID := make(map[uuid.UUID][]models.Task)
+	for _, t := range allTasks {
+		tasksByHwID[t.HwID] = append(tasksByHwID[t.HwID], t)
+	}
+
+	deadlinesByHwID := make(map[uuid.UUID][]models.Deadline)
+		for _, d := range allDeadlines {
+    		deadlinesByHwID[d.HomeworkID] = append(deadlinesByHwID[d.HomeworkID], d)
+		}
+
+	details := make([]models.HomeworkWithTasks, len(homeworks))
+	for i, hw := range homeworks {
+		details[i] = models.HomeworkWithTasks{
+			Homework:  hw,
+			Tasks:     tasksByHwID[hw.HwID],
+			Deadlines: deadlinesByHwID[hw.HwID],
+		}
+	}
+
+	return &models.CourseInfo{
+		Course:          course,
+		Homeworks:       details,
+	}, nil
 }
 
 func (r *CourseRepository) GetLeaderboard(ctx context.Context, courseID string) ([]models.LeaderboardEntry, error) {
