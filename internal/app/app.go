@@ -96,6 +96,7 @@ func New(cfg *config.Config) (*App, error) {
 		"/api/courses/:courseId/scores",
 		"/api/courses/:courseId/join",
 		"/api/courses/:courseId/invite",
+		"/api/grades",
 		"/admin/courses/:courseId/homework",
 		"/admin/courses/:courseId/homework/:hwId",
 		"/admin/courses/:courseId/homework/:hwId/publish",
@@ -105,13 +106,14 @@ func New(cfg *config.Config) (*App, error) {
 		"/admin/courses/:courseId/homework/:hwId/tasks/:taskId",
 		"/admin/courses/:courseId/homework/:hwId/tasks/:taskId/publish",
 		"/admin/courses/:courseId/homework/:hwId/tasks/:taskId/score",
+		"/admin/courses/:courseId/homework/:hwId/tasks/:taskId/update_grade",
+		"/admin/courses/:courseId/late-policy",
 		"/admin/courses/:courseId/roles",
 		"/admin/courses/:courseId/participants",
 		"/admin/courses/:courseId/roles/:roleId/permissions",
 		"/admin/courses/:courseId/roles/:roleId/permissions/:permission",
 		"/admin/super-admins",
 		"/admin/homework/:hwId/deadline",
-		"/admin/courses/:courseId/homework/:hwId/tasks/:taskId/update_grade",
 	}))
 
 	api.RegisterHandlers(e, apiController)
