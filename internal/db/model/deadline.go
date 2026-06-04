@@ -14,14 +14,14 @@ type Deadline struct {
 	CourseID     uuid.UUID      `gorm:"type:uuid;not null;index" json:"course_id"`
 	Course       Course         `gorm:"foreignKey:CourseID;constraint:OnDelete:CASCADE" json:"course"`
 	DueDate      time.Time      `gorm:"type:timestamp;not null" json:"due_date"`
-	SoftDeadline time.Time      `gorm:"type:timestamp;not null" json:"soft_deadline"`
-	HardDeadline time.Time      `gorm:"type:timestamp;not null" json:"hard_deadline"`
 	AssignedBy   *uuid.UUID     `gorm:"type:uuid;index" json:"assigned_by,omitempty"`
 	Assignee     *User          `gorm:"foreignKey:AssignedBy;constraint:OnDelete:SET NULL" json:"assignee,omitempty"`
-	HomeworkID   *uuid.UUID     `gorm:"type:uuid;index" json:"homework_id,omitempty"`
+	HomeworkID   uuid.UUID      `gorm:"type:uuid;not null;index" json:"homework_id,omitempty"`
 	CreatedAt    time.Time      `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt    time.Time      `gorm:"autoUpdateTime" json:"updated_at"`
 	DeletedAt    gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
+	SoftDeadline time.Time      `gorm:"type:timestamp" json:"soft_deadline"`
+	HardDeadline time.Time      `gorm:"type:timestamp" json:"hard_deadline"`
 }
 
 func (d *Deadline) BeforeCreate(tx *gorm.DB) error {
