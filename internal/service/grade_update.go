@@ -10,7 +10,7 @@ import (
 	"github.com/google/uuid"
 )
 
-type gradeUpdateService struct {
+type GradeUpdateService struct {
 	taskRepo     repo.ITaskRepo
 	scoreRepo    repo.IStudentTaskScoreRepo
 	roleRepo     repo.IRoleRepo
@@ -25,7 +25,7 @@ type UpdateGradeInput struct {
 	UserID    uuid.UUID `json:"user_id"`
 }
 
-func (s *gradeUpdateService) WithMetrics(m *metrics.AdminMetrics) *gradeUpdateService {
+func (s *GradeUpdateService) WithMetrics(m *metrics.AdminMetrics) *GradeUpdateService {
 	s.adminMetrics = m
 	return s
 }
@@ -34,15 +34,15 @@ func NewGradeUpdateService(
 	taskRepo repo.ITaskRepo,
 	scoreRepo repo.IStudentTaskScoreRepo,
 	roleRepo repo.IRoleRepo,
-) *gradeUpdateService {
-	return &gradeUpdateService{
+) *GradeUpdateService {
+	return &GradeUpdateService{
 		taskRepo:  taskRepo,
 		scoreRepo: scoreRepo,
 		roleRepo:  roleRepo,
 	}
 }
 
-func (s *gradeUpdateService) UpdateGrade(ctx context.Context, userID uuid.UUID, input UpdateGradeInput) (score *model.StudentTaskScore, err error) {
+func (s *GradeUpdateService) UpdateGrade(ctx context.Context, userID uuid.UUID, input UpdateGradeInput) (score *model.StudentTaskScore, err error) {
 	defer func() { s.adminMetrics.IncAction(metrics.AdminActionUpdateGrade, adminOutcome(err)) }()
 	if err := RequireScopedPermission(ctx, s.roleRepo, userID, input.CourseID, PermissionGradeUpdate); err != nil {
 		return nil, err

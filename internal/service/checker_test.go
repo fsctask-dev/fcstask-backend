@@ -318,10 +318,6 @@ func TestSubmitGrade_OnTime_Nopenalty(t *testing.T) {
 	assert.Equal(t, scoreVal, result.Score)
 }
 
-func TestSubmitGrade_AfterHardDeadline(t *testing.T) {
-	return
-}
-
 func TestSubmitGrade_LinearPenalty_MidWindow(t *testing.T) {
 	svc, taskRepo, hwRepo, scoreRepo, dlRepo, lateRepo := setupChecker(false)
 	scoreVal := 100
@@ -383,8 +379,70 @@ func TestSubmitGrade_StepPenalty_ThreeDaysLate(t *testing.T) {
 	assert.Equal(t, 70, result.Score)
 }
 
+func TestSubmitGrade_AfterHardDeadline(t *testing.T) {
+	svc, taskRepo, hwRepo, scoreRepo, dlRepo, lateRepo := setupChecker(false)
+	scoreVal := 100
+	soft := time.Now().Add(-96 * time.Hour)
+	hard := soft.Add(48 * time.Hour) // hard deadline is 48 hours after soft
+	taskID := uuid.New()
+	hwID := uuid.New()
+	courseID := uuid.New()
+	studentID := uuid.New()
+
+	task := &model.Task{TaskID: taskID, HwID: hwID, Score: &scoreVal}
+	hw := &model.Homework{HwID: hwID, CourseID: courseID}
+	deadline := &model.Deadline{SoftDeadline: soft, HardDeadline: hard}
+	policy := &model.CourseLatePolicy{
+		PolicyType:        model.PolicyTypeLinear,
+		SoftPenalty:       0.2,
+		HardDeadlineScore: 0.5,
+	}
+
+	setupLatePolicyMocks(taskRepo, hwRepo, dlRepo, lateRepo, scoreRepo,
+		task, hw, deadline, policy, 0, true, studentID)
+
+	// Submit after hard deadline
+	submittedAt := hard.Add(1 * time.Hour)
+	result, err := svc.SubmitGrade(context.Background(), service.SubmitGradeInput{
+		StudentID:   studentID,
+		TaskID:      taskID,
+		CourseID:    courseID,
+		Status:      "passed",
+		SubmittedAt: submittedAt,
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, 0, result.Score)
+	assert.True(t, result.IsPassed)
+}
+
 func TestSubmitGrade_StepPenalty_ClampedToZero(t *testing.T) {
-	return
+	svc, taskRepo, hwRepo, scoreRepo, dlRepo, lateRepo := setupChecker(false)
+	scoreVal := 100
+	soft := time.Now().Add(-240 * time.Hour)
+	hard := soft.Add(480 * time.Hour)
+	taskID := uuid.New()
+	hwID := uuid.New()
+	courseID := uuid.New()
+	studentID := uuid.New()
+	stepPercent := 0.15
+
+	task := &model.Task{TaskID: taskID, HwID: hwID, Score: &scoreVal}
+	hw := &model.Homework{HwID: hwID, CourseID: courseID}
+	deadline := &model.Deadline{SoftDeadline: soft, HardDeadline: hard}
+	policy := &model.CourseLatePolicy{PolicyType: model.PolicyTypeStep, StepPercent: &stepPercent}
+	setupLatePolicyMocks(taskRepo, hwRepo, dlRepo, lateRepo, scoreRepo,
+		task, hw, deadline, policy, 0, true, studentID)
+	submittedAt := soft.Add(168 * time.Hour)
+	result, err := svc.SubmitGrade(context.Background(), service.SubmitGradeInput{
+		StudentID:   studentID,
+		TaskID:      taskID,
+		CourseID:    courseID,
+		Status:      "passed",
+		SubmittedAt: submittedAt,
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, 0, result.Score)
+	assert.True(t, result.IsPassed)
 }
 
 func TestSubmitGrade_CoefficientPenalty(t *testing.T) {
