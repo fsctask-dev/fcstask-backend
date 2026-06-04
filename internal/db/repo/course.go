@@ -22,6 +22,7 @@ type CourseRepositoryInterface interface {
 	DeleteCourse(ctx context.Context, courseID string) error
 	GetCourseBoard(ctx context.Context, courseID string, userID uuid.UUID) (*models.TaskBoardSummary, bool, error)
 	GetCourseInfo(ctx context.Context, courseID uuid.UUID) (*models.CourseInfo, error)
+	GetLeaderboard(ctx context.Context, courseID string) ([]models.LeaderboardEntry, error)
 	UpdateInviteCode(ctx context.Context, courseID uuid.UUID, code *string) error
 	GetPublicCourses(ctx context.Context) ([]models.Course, error)
 }
