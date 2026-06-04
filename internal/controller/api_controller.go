@@ -10,6 +10,8 @@ import (
 
 type APIController struct {
 	authHandler          *handler.AuthHandler
+	passwordResetHandler *handler.PasswordResetHandler
+	oauthHandler         *handler.OAuthHandler
 	userHandler          *handler.UserHandler
 	sessionHandler       *handler.SessionHandler
 	courseHandler        *handler.CourseHandler
@@ -18,6 +20,8 @@ type APIController struct {
 
 func NewAPIController(
 	authHandler *handler.AuthHandler,
+	passwordResetHandler *handler.PasswordResetHandler,
+	oauthHandler *handler.OAuthHandler,
 	userHandler *handler.UserHandler,
 	sessionHandler *handler.SessionHandler,
 	courseHandler *handler.CourseHandler,
@@ -25,6 +29,8 @@ func NewAPIController(
 ) *APIController {
 	return &APIController{
 		authHandler:          authHandler,
+		passwordResetHandler: passwordResetHandler,
+		oauthHandler:         oauthHandler,
 		userHandler:          userHandler,
 		sessionHandler:       sessionHandler,
 		courseHandler:        courseHandler,
@@ -54,6 +60,42 @@ func (c *APIController) GetUserByEmail(ctx echo.Context, email openapi_types.Ema
 
 func (c *APIController) SignUp(ctx echo.Context) error {
 	return c.authHandler.SignUp(ctx)
+}
+
+func (c *APIController) SignUpVerify(ctx echo.Context) error {
+	return c.authHandler.SignUpVerify(ctx)
+}
+
+func (c *APIController) SignUpResendCode(ctx echo.Context) error {
+	return c.authHandler.SignUpResendCode(ctx)
+}
+
+func (c *APIController) PasswordResetRequest(ctx echo.Context) error {
+	return c.passwordResetHandler.PasswordResetRequest(ctx)
+}
+
+func (c *APIController) PasswordResetResend(ctx echo.Context) error {
+	return c.passwordResetHandler.PasswordResetResend(ctx)
+}
+
+func (c *APIController) PasswordResetConfirm(ctx echo.Context) error {
+	return c.passwordResetHandler.PasswordResetConfirm(ctx)
+}
+
+func (c *APIController) OAuthExchange(ctx echo.Context, provider string) error {
+	return c.oauthHandler.OAuthExchange(ctx, provider)
+}
+
+func (c *APIController) OAuthAddExchange(ctx echo.Context, provider string) error {
+	return c.oauthHandler.OAuthAddExchange(ctx, provider)
+}
+
+func (c *APIController) OAuthUnlink(ctx echo.Context, provider string) error {
+	return c.oauthHandler.OAuthUnlink(ctx, provider)
+}
+
+func (c *APIController) OAuthCompleteSignUp(ctx echo.Context) error {
+	return c.oauthHandler.OAuthCompleteSignUp(ctx)
 }
 
 func (c *APIController) SignIn(ctx echo.Context) error {

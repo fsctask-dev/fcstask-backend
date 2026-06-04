@@ -169,7 +169,7 @@ func (m *MockSessionRepository) CleanOutdatedSessions(ctx context.Context, ttl t
 	return args.Get(0).(int64), args.Error(1)
 }
 
-var _ repo.SessionRepositoryInterface = (*MockSessionRepository)(nil)
+var _ repo.ISessionRepository = (*MockSessionRepository)(nil)
 
 // --- Tests ---
 

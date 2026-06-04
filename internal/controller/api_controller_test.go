@@ -12,11 +12,13 @@ import (
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	openapi_types "github.com/oapi-codegen/runtime/types"
+	"github.com/openframebox/gomail"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 
 	"fcstask-backend/internal/api"
+	"fcstask-backend/internal/config"
 	models "fcstask-backend/internal/db/model"
 	"fcstask-backend/internal/handler"
 	"fcstask-backend/internal/service"
@@ -188,27 +190,65 @@ func (r *controllerCourseRepo) GetLeaderboard(ctx context.Context, courseID uuid
 }
 
 func (r *controllerCourseRepo) UpdateInviteCode(ctx context.Context, courseID uuid.UUID, code *string) error {
-    return nil
+	return nil
 }
 
 func (r *controllerCourseRepo) GetPublicCourses(ctx context.Context) ([]models.Course, error) {
-    var courses []models.Course
-    for _, course := range r.courses {
-        if course.Type == models.CourseTypePublic {
-            courses = append(courses, course)
-        }
-    }
-    return courses, nil
+	var courses []models.Course
+	for _, course := range r.courses {
+		if course.Type == models.CourseTypePublic {
+			courses = append(courses, course)
+		}
+	}
+	return courses, nil
+}
+
+type controllerEmailRegRepo struct {
+	reg *models.EmailRegistration
+}
+
+func (r *controllerEmailRegRepo) Create(ctx context.Context, reg *models.EmailRegistration) error {
+	if reg.ID == uuid.Nil {
+		reg.ID = uuid.New()
+	}
+	r.reg = reg
+	return nil
+}
+func (r *controllerEmailRegRepo) Update(ctx context.Context, reg *models.EmailRegistration) error {
+	r.reg = reg
+	return nil
+}
+func (r *controllerEmailRegRepo) GetByID(ctx context.Context, id uuid.UUID) (*models.EmailRegistration, error) {
+	if r.reg == nil || r.reg.ID != id {
+		return nil, gorm.ErrRecordNotFound
+	}
+	return r.reg, nil
+}
+func (r *controllerEmailRegRepo) Delete(ctx context.Context, id uuid.UUID) error {
+	r.reg = nil
+	return nil
+}
+func (r *controllerEmailRegRepo) DeleteByEmail(ctx context.Context, email string) error { return nil }
+func (r *controllerEmailRegRepo) DeleteExpired(ctx context.Context, before time.Time) (int64, error) {
+	return 0, nil
+}
+
+type controllerMailer struct{}
+
+func (controllerMailer) Send(ctx context.Context, to gomail.Address, subject, body string) error {
+	return nil
 }
 
 func newTestController(userRepo *controllerUserRepo, sessionRepo *controllerSessionRepo, courseRepo *controllerCourseRepo) *APIController {
 	userService := service.NewUserService(userRepo)
-	authService := service.NewAuthService(userRepo, sessionRepo)
+	authService := service.NewAuthService(userRepo, sessionRepo, &controllerEmailRegRepo{}, nil, controllerMailer{}, config.EmailRegistrationConfig{})
 	sessionService := service.NewSessionService(sessionRepo)
 	courseService := service.NewCourseService(courseRepo, nil, nil)
 
 	return NewAPIController(
 		handler.NewAuthHandler(authService),
+		handler.NewPasswordResetHandler(nil),
+		handler.NewOAuthHandler(nil),
 		handler.NewUserHandler(userService),
 		handler.NewSessionHandler(sessionService, userService),
 		handler.NewCourseHandler(courseService),
@@ -231,9 +271,15 @@ func TestAPIController_SignUp(t *testing.T) {
 	err := controller.SignUp(ctx)
 
 	assert.NoError(t, err)
-	assert.Equal(t, http.StatusCreated, rec.Code)
-	assert.Equal(t, "new@example.com", userRepo.user.Email)
-	assert.Equal(t, userRepo.user.ID, sessionRepo.session.UserID)
+	// Email/password signup is now a pending flow: 202, user/session not created
+	// until the emailed code is verified.
+	assert.Equal(t, http.StatusAccepted, rec.Code)
+	assert.Nil(t, userRepo.user)
+	assert.Nil(t, sessionRepo.session)
+
+	var resp api.SignUpPendingResponse
+	assert.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	assert.NotEqual(t, uuid.Nil, uuid.UUID(resp.VerificationToken))
 }
 
 func TestAPIController_GetUserByID(t *testing.T) {

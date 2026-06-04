@@ -23,6 +23,8 @@ paths:
 
   /v1/users:
     post:
+      security:
+        - bearerAuth: []
       operationId: CreateUser
       summary: Create a new user
       requestBody:
@@ -59,6 +61,8 @@ paths:
 
   /v1/users/{id}:
     get:
+      security:
+        - bearerAuth: []
       operationId: GetUserByID
       summary: Get user by ID
       parameters:
@@ -90,6 +94,8 @@ paths:
 
   /v1/users/username/{username}:
     get:
+      security:
+        - bearerAuth: []
       operationId: GetUserByUsername
       summary: Get user by username
       parameters:
@@ -120,6 +126,8 @@ paths:
 
   /v1/users/email/{email}:
     get:
+      security:
+        - bearerAuth: []
       operationId: GetUserByEmail
       summary: Get user by email
       parameters:
@@ -151,6 +159,8 @@ paths:
 
   /v1/sessions:
     get:
+      security:
+        - bearerAuth: []
       operationId: GetSessions
       summary: Get all active sessions with user data (paginated)
       parameters:
@@ -236,7 +246,7 @@ paths:
   /api/signup:
     post:
       operationId: SignUp
-      summary: Register a new user
+      summary: Begin email/password registration; sends a verification code to the email
       requestBody:
         required: true
         content:
@@ -244,8 +254,38 @@ paths:
             schema:
               $ref: "#/components/schemas/SignUpRequest"
       responses:
+        "202":
+          description: Verification code sent; client must call /api/signup/verify to finish
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignUpPendingResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: User already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/signup/verify:
+    post:
+      operationId: SignUpVerify
+      summary: Finish registration by submitting the emailed verification code
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SignUpVerifyRequest"
+      responses:
         "201":
-          description: User registered successfully
+          description: User created and signed in
           content:
             application/json:
               schema:
@@ -256,8 +296,184 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        "409":
-          description: User already exists
+        "401":
+          description: Invalid verification code
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Verification token not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "410":
+          description: Verification token expired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Too many verification attempts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/signup/resend-code:
+    post:
+      operationId: SignUpResendCode
+      summary: Re-send the email verification code; rate-limited
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SignUpResendRequest"
+      responses:
+        "200":
+          description: New code sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignUpPendingResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Verification token not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "410":
+          description: Verification token expired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Cooldown not elapsed yet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/password-reset/request:
+    post:
+      operationId: PasswordResetRequest
+      summary: Start password reset; sends a code to the user's email
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordResetRequest"
+      responses:
+        "202":
+          description: Reset code sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PasswordResetPendingResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: User with this email not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/password-reset/resend-code:
+    post:
+      operationId: PasswordResetResend
+      summary: Re-send the password reset code; rate-limited
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordResetResendRequest"
+      responses:
+        "200":
+          description: New code sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PasswordResetPendingResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Reset token not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "410":
+          description: Reset token expired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Cooldown not elapsed yet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/password-reset/confirm:
+    post:
+      operationId: PasswordResetConfirm
+      summary: Confirm a password reset and set a new password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordResetConfirmRequest"
+      responses:
+        "204":
+          description: Password reset; all existing sessions invalidated
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Invalid reset code
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Reset token not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "410":
+          description: Reset token expired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Too many attempts
           content:
             application/json:
               schema:
@@ -293,8 +509,135 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/oauth/{provider}/exchange:
+    post:
+      operationId: OAuthExchange
+      summary: Exchange OAuth provider payload for a session or a registration token
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          description: One of `gitlab`, `google`, `telegram`
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OAuthExchangeRequest"
+      responses:
+        "200":
+          description: Either signed in (status=ok) or registration required (status=registration_required)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OAuthExchangeResponse"
+        "400":
+          description: Invalid payload or signature
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Provider unknown or disabled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/oauth/add/{provider}/exchange:
+    post:
+      security:
+        - bearerAuth: []
+      operationId: OAuthAddExchange
+      summary: Link Oauth identity to existing account
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          description: One of `gitlab`, `google`, `telegram`
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OAuthExchangeRequest"
+      responses:
+        "200":
+          description: Oauth identity added
+        "400":
+          description: Invalid payload or signature
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Provider unknown or disabled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/oauth/add/{provider}/unlink:
+    post:
+      security:
+        - bearerAuth: []
+      operationId: OAuthUnlink
+      summary: Unlink Oauth identity from existing account
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          description: One of `gitlab`, `google`, `telegram`
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Oauth identity unlinked
+        "404":
+          description: Provider unknown, disabled or not linked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+                
+  /api/oauth/complete-signup:
+    post:
+      operationId: OAuthCompleteSignUp
+      summary: Finish registration started by an OAuth exchange and create the user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OAuthCompleteSignUpRequest"
+      responses:
+        "201":
+          description: User created and awaiting email verification
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignUpPendingResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Registration token not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /api/signout:
     post:
+      security:
+        - bearerAuth: []
       operationId: SignOut
       summary: Sign out and delete current session
       responses:
@@ -324,9 +667,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-
-security:
-  - BearerAuth: []
 
 components:
   securitySchemes:
@@ -398,3 +738,26 @@ components:
               type: array
               items:
                 $ref: "#/components/schemas/UserWithSessions"
+    OAuthExchangeRequest:
+      $ref: "./schemas/OAuthExchangeRequest.yaml"
+    OAuthExchangeResponse:
+      $ref: "./schemas/OAuthExchangeResponse.yaml"
+    OAuthSuggestedProfile:
+      $ref: "./schemas/OAuthSuggestedProfile.yaml"
+    OAuthCompleteSignUpRequest:
+      $ref: "./schemas/OAuthCompleteSignUpRequest.yaml"
+    SignUpPendingResponse:
+      $ref: "./schemas/SignUpPendingResponse.yaml"
+    SignUpVerifyRequest:
+      $ref: "./schemas/SignUpVerifyRequest.yaml"
+    SignUpResendRequest:
+      $ref: "./schemas/SignUpResendRequest.yaml"
+    PasswordResetRequest:
+      $ref: "./schemas/PasswordResetRequest.yaml"
+    PasswordResetPendingResponse:
+      $ref: "./schemas/PasswordResetPendingResponse.yaml"
+    PasswordResetResendRequest:
+      $ref: "./schemas/PasswordResetResendRequest.yaml"
+    PasswordResetConfirmRequest:
+      $ref: "./schemas/PasswordResetConfirmRequest.yaml"
+

@@ -8,8 +8,10 @@ import (
 	"fcstask-backend/internal/db"
 	"fcstask-backend/internal/db/repo"
 	"fcstask-backend/internal/handler"
+	"fcstask-backend/internal/mailer"
 	"fcstask-backend/internal/metrics"
 	authmw "fcstask-backend/internal/middleware"
+	"fcstask-backend/internal/oauth"
 	"fcstask-backend/internal/server"
 	"fcstask-backend/internal/service"
 	"fmt"
@@ -21,15 +23,21 @@ import (
 )
 
 type App struct {
-	echo             *echo.Echo
-	db               *db.Client
-	sessionRepo      repo.SessionRepositoryInterface
-	httpServer       server.HTTPServer
-	metrics          *metrics.Metrics
-	metricsServer    *metrics.Server
-	shutdownTimeout  time.Duration
-	sessionCfg       config.SessionConfig
-	observabilityCfg config.ObservabilityConfig
+	echo                    *echo.Echo
+	db                      *db.Client
+	sessionRepo             repo.ISessionRepository
+	emailRegistrationRepo   repo.IEmailRegistrationRepo
+	passwordResetRepo       repo.IPasswordResetRepository
+	registrationSessionRepo repo.IRegistrationSessionRepo
+	httpServer              server.HTTPServer
+	metrics                 *metrics.Metrics
+	metricsServer           *metrics.Server
+	shutdownTimeout         time.Duration
+	sessionCfg              config.SessionConfig
+	emailRegistrationCfg    config.EmailRegistrationConfig
+	passwordResetCfg        config.PasswordResetConfig
+	oauthCfg                config.OAuthConfig
+	observabilityCfg        config.ObservabilityConfig
 }
 
 func New(cfg *config.Config) (*App, error) {
@@ -50,9 +58,34 @@ func New(cfg *config.Config) (*App, error) {
 	taskRepo := repo.NewTaskRepository(dbClient.DB())
 	deadlineRepo := repo.NewDeadlineRepository(dbClient.DB())
 	studentScoreRepo := repo.NewStudentTaskScoreRepository(dbClient.DB())
+	passwordResetRepo := repo.NewPasswordResetRepository(dbClient.DB())
+	emailRegistrationRepo := repo.NewEmailRegistrationRepository(dbClient.DB())
+	oauthRegistrationRepo := repo.NewRegistrationSessionRepository(dbClient.DB())
+	oauthIdentityRepo := repo.NewOAuthIdentityRepository(dbClient.DB())
+
+	// SMTPMailer does not yet satisfy the mailer.Mailer interface, so we use the
+	// dev LogMailer regardless of cfg.Mailer.Enabled for now.
+	var mailerImpl mailer.Mailer = mailer.NewLogMailer()
+
+	oauthRegistry := oauth.NewRegistry(
+		oauth.NewGitLabProvider(cfg.OAuth.GitLab),
+		oauth.NewGoogleProvider(cfg.OAuth.Google),
+		oauth.NewTelegramProvider(cfg.OAuth.Telegram),
+	)
 
 	userService := service.NewUserService(userRepo)
-	authService := service.NewAuthService(userRepo, sessionRepo).WithMetrics(m.Auth, m.Session)
+	authService := service.NewAuthService(
+		userRepo, sessionRepo, emailRegistrationRepo, oauthIdentityRepo, mailerImpl,
+		cfg.EmailRegistration,
+	).WithMetrics(m.Auth, m.Session)
+	passwordResetService := service.NewPasswordResetService(
+		userRepo, passwordResetRepo, mailerImpl,
+		config.EmailRegistrationConfig{TTL: cfg.PasswordReset.TTL},
+	)
+	oauthService := service.NewOAuthService(
+		userRepo, sessionRepo, emailRegistrationRepo, oauthRegistrationRepo, oauthIdentityRepo,
+		oauthRegistry, mailerImpl, cfg.OAuth, cfg.EmailRegistration,
+	).WithMetrics(m.Session)
 	sessionService := service.NewSessionService(sessionRepo)
 	courseService := service.NewCourseService(courseRepo, roleRepo, studentScoreRepo).WithMetrics(m.Course)
 	adminHomeworkService := service.NewAdminHomeworkService(homeworkRepo, deadlineRepo, roleRepo).WithMetrics(m.Admin)
@@ -64,7 +97,9 @@ func New(cfg *config.Config) (*App, error) {
 	adminRoleHandler := handler.NewAdminRoleHandler(adminRoleService)
 
 	apiController := controller.NewAPIController(
-		handler.NewAuthHandler(authService),
+		handler.NewAuthHandler(authService).WithMailerConfig(cfg.Mailer),
+		handler.NewPasswordResetHandler(passwordResetService).WithMailerConfig(cfg.Mailer),
+		handler.NewOAuthHandler(oauthService).WithMailerConfig(cfg.Mailer),
 		handler.NewUserHandler(userService),
 		handler.NewSessionHandler(sessionService, userService),
 		handler.NewCourseHandler(courseService),
@@ -84,6 +119,8 @@ func New(cfg *config.Config) (*App, error) {
 		"/v1/sessions",
 		"/v1/users/sessions",
 		"/api/signout",
+		"/api/oauth/add/:provider/exchange",
+		"/api/oauth/add/:provider/unlink",
 		"/api/courses",
 		"/api/courses/:courseId/scores",
 		"/api/courses/:courseId/join",
@@ -104,7 +141,7 @@ func New(cfg *config.Config) (*App, error) {
 		"/admin/super-admins",
 		"/admin/homework/:hwId/deadline",
 	}))
-	
+
 	api.RegisterHandlers(e, apiController)
 	apiController.RegisterCourseRoutes(e)
 	apiController.RegisterHomeworkRoutes(e)
@@ -116,15 +153,21 @@ func New(cfg *config.Config) (*App, error) {
 	metricsServer := metrics.NewServer(cfg.Observability.MetricsAddr, m.Registry)
 
 	return &App{
-		echo:             e,
-		db:               dbClient,
-		sessionRepo:      sessionRepo,
-		httpServer:       httpServer,
-		metrics:          m,
-		metricsServer:    metricsServer,
-		shutdownTimeout:  cfg.Server.ShutdownTimeout,
-		sessionCfg:       cfg.Session,
-		observabilityCfg: cfg.Observability,
+		echo:                    e,
+		db:                      dbClient,
+		sessionRepo:             sessionRepo,
+		emailRegistrationRepo:   emailRegistrationRepo,
+		passwordResetRepo:       passwordResetRepo,
+		registrationSessionRepo: oauthRegistrationRepo,
+		httpServer:              httpServer,
+		metrics:                 m,
+		metricsServer:           metricsServer,
+		shutdownTimeout:         cfg.Server.ShutdownTimeout,
+		sessionCfg:              cfg.Session,
+		emailRegistrationCfg:    cfg.EmailRegistration,
+		passwordResetCfg:        cfg.PasswordReset,
+		oauthCfg:                cfg.OAuth,
+		observabilityCfg:        cfg.Observability,
 	}, nil
 }
 
@@ -140,6 +183,9 @@ func (a *App) Run(ctx context.Context) error {
 	}()
 
 	go a.runSessionCleanup(ctx)
+	go a.runExpiryCleanup(ctx, "email registration", a.emailRegistrationCfg.CleanupInterval, a.emailRegistrationRepo.DeleteExpired)
+	go a.runExpiryCleanup(ctx, "password reset", a.passwordResetCfg.CleanupInterval, a.passwordResetRepo.DeleteExpired)
+	go a.runExpiryCleanup(ctx, "oauth registration session", a.oauthCfg.CleanupInterval, a.registrationSessionRepo.DeleteExpired)
 	go a.db.RunStatsCollector(ctx, a.metrics.DB, a.observabilityCfg.DBStatsInterval)
 
 	select {
@@ -180,6 +226,36 @@ func (a *App) runSessionCleanup(ctx context.Context) {
 			} else if deleted > 0 {
 				a.metrics.Session.AddCleanupDeleted(deleted)
 				log.Printf("Session cleanup: removed %d expired sessions", deleted)
+			}
+		}
+	}
+}
+
+// runExpiryCleanup periodically deletes rows whose expires_at is in the past via
+// the given DeleteExpired function. A non-positive interval disables the cleaner.
+func (a *App) runExpiryCleanup(
+	ctx context.Context,
+	name string,
+	interval time.Duration,
+	deleteExpired func(context.Context, time.Time) (int64, error),
+) {
+	if interval <= 0 {
+		return
+	}
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			deleted, err := deleteExpired(ctx, time.Now())
+			if err != nil {
+				log.Printf("%s cleanup error: %v", name, err)
+			} else if deleted > 0 {
+				log.Printf("%s cleanup: removed %d expired rows", name, deleted)
 			}
 		}
 	}
