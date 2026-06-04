@@ -14,6 +14,7 @@ import (
 	"fcstask-backend/internal/service"
 	"fmt"
 	"log"
+	"net/http"
 	"time"
 
 	"github.com/labstack/echo/v4"
@@ -50,6 +51,7 @@ func New(cfg *config.Config) (*App, error) {
 	taskRepo := repo.NewTaskRepository(dbClient.DB())
 	deadlineRepo := repo.NewDeadlineRepository(dbClient.DB())
 	studentScoreRepo := repo.NewStudentTaskScoreRepository(dbClient.DB())
+	statsRepo := repo.NewStatsRepository(dbClient)
 
 	userService := service.NewUserService(userRepo)
 	authService := service.NewAuthService(userRepo, sessionRepo).WithMetrics(m.Auth, m.Session)
@@ -58,10 +60,13 @@ func New(cfg *config.Config) (*App, error) {
 	adminHomeworkService := service.NewAdminHomeworkService(homeworkRepo, deadlineRepo, roleRepo).WithMetrics(m.Admin)
 	adminTaskService := service.NewAdminTaskService(taskRepo, homeworkRepo, roleRepo).WithMetrics(m.Admin)
 	adminRoleService := service.NewAdminRoleService(roleRepo, userRepo).WithMetrics(m.Admin)
+	statsService := service.NewStatsService(statsRepo, roleRepo)
 
 	adminHomeworkHandler := handler.NewAdminHomeworkHandler(adminHomeworkService)
 	adminTaskHandler := handler.NewAdminTaskHandler(adminTaskService)
 	adminRoleHandler := handler.NewAdminRoleHandler(adminRoleService)
+
+	statsHandler := handler.NewStatsHandler(statsService)
 
 	apiController := controller.NewAPIController(
 		handler.NewAuthHandler(authService),
@@ -69,7 +74,19 @@ func New(cfg *config.Config) (*App, error) {
 		handler.NewSessionHandler(sessionService, userService),
 		handler.NewCourseHandler(courseService),
 		adminHomeworkHandler,
+		statsHandler,
 	)
+
+	e.GET("/health", func(c echo.Context) error {
+		sqlDB, err := dbClient.DB().DB()
+		if err != nil {
+			return c.JSON(http.StatusServiceUnavailable, map[string]string{"status": "error", "detail": "db connection lost"})
+		}
+		if err := sqlDB.Ping(); err != nil {
+			return c.JSON(http.StatusServiceUnavailable, map[string]string{"status": "error", "detail": "db ping failed"})
+		}
+		return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
+	})
 
 	e.Use(metrics.EchoMiddleware(m.HTTP))
 
@@ -84,6 +101,7 @@ func New(cfg *config.Config) (*App, error) {
 		"/v1/sessions",
 		"/v1/users/sessions",
 		"/api/signout",
+		"/api/stats",
 		"/api/courses/:courseId/scores",
 		"/api/courses/:courseId/join",
 		"/admin/courses/:courseId/homework",
@@ -102,7 +120,7 @@ func New(cfg *config.Config) (*App, error) {
 		"/admin/super-admins",
 		"/admin/homework/:hwId/deadline",
 	}))
-	
+
 	api.RegisterHandlers(e, apiController)
 	apiController.RegisterCourseRoutes(e)
 	apiController.RegisterHomeworkRoutes(e)
