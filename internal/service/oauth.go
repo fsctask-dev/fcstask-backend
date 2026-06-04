@@ -34,6 +34,7 @@ type OAuthService struct {
 	oauthConfig             config.OAuthConfig
 	emailRegistrationConfig config.EmailRegistrationConfig
 
+	oauthMetrics   *metrics.OAuthMetrics
 	sessionMetrics *metrics.SessionMetrics
 	now            func() time.Time
 }
@@ -63,9 +64,22 @@ func NewOAuthService(
 	}
 }
 
-func (s *OAuthService) WithMetrics(session *metrics.SessionMetrics) *OAuthService {
+func (s *OAuthService) WithMetrics(oauth *metrics.OAuthMetrics, session *metrics.SessionMetrics) *OAuthService {
+	s.oauthMetrics = oauth
 	s.sessionMetrics = session
 	return s
+}
+
+// exchangeOutcome labels an OauthExchange: signed_in / registration_required on
+// success, otherwise the service error code.
+func exchangeOutcome(result *OauthExchangeResult, err error) string {
+	if err != nil {
+		return errorOutcome(err)
+	}
+	if result != nil && result.RegistrationRequired {
+		return "registration_required"
+	}
+	return "signed_in"
 }
 
 type OauthExchangeInput struct {
@@ -105,6 +119,8 @@ type OauthCompleteInput struct {
 }
 
 func (s *OAuthService) OauthExchange(ctx context.Context, input OauthExchangeInput) (result *OauthExchangeResult, err error) {
+	defer func() { s.oauthMetrics.IncExchange(input.ProviderName, exchangeOutcome(result, err)) }()
+
 	provider, ok := s.registry.Get(input.ProviderName)
 	if !ok || !provider.Enabled() {
 		return nil, NotFound("Oauth provider not found or disabled")
@@ -198,6 +214,8 @@ func (s *OAuthService) signInExisting(ctx context.Context, input OauthExchangeIn
 }
 
 func (s *OAuthService) OauthComplete(ctx context.Context, input OauthCompleteInput) (result *model.EmailRegistration, err error) {
+	defer func() { s.oauthMetrics.IncCompletion(errorOutcome(err)) }()
+
 	if input.Username == "" || input.Email == "" || input.RegistrationToken == uuid.Nil {
 		return nil, BadRequest("registration_token, username and email are required")
 	}
@@ -280,6 +298,8 @@ func (s *OAuthService) OauthComplete(ctx context.Context, input OauthCompleteInp
 }
 
 func (s *OAuthService) OauthAddExchange(ctx context.Context, user *model.User, input OauthExchangeInput) (err error) {
+	defer func() { s.oauthMetrics.IncLink(input.ProviderName, errorOutcome(err)) }()
+
 	provider, ok := s.registry.Get(input.ProviderName)
 	if !ok || !provider.Enabled() {
 		return NotFound("Oauth provider not found or disabled")
@@ -329,6 +349,8 @@ func (s *OAuthService) OauthAddExchange(ctx context.Context, user *model.User, i
 }
 
 func (s *OAuthService) OauthUnlink(ctx context.Context, user *model.User, providerName string) (err error) {
+	defer func() { s.oauthMetrics.IncUnlink(providerName, errorOutcome(err)) }()
+
 	provider, ok := s.registry.Get(providerName)
 	if !ok || !provider.Enabled() {
 		return NotFound("Oauth provider not found or disabled")

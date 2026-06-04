@@ -13,6 +13,7 @@ import (
 	models "fcstask-backend/internal/db/model"
 	"fcstask-backend/internal/db/repo"
 	"fcstask-backend/internal/mailer"
+	"fcstask-backend/internal/metrics"
 )
 
 // PasswordResetService owns the "I forgot my password" flow: request a code,
@@ -24,6 +25,8 @@ type PasswordResetService struct {
 	mailer mailer.Mailer
 
 	passwordResetConfig config.EmailRegistrationConfig
+
+	metrics *metrics.PasswordResetMetrics
 }
 
 func NewPasswordResetService(
@@ -40,6 +43,11 @@ func NewPasswordResetService(
 	}
 }
 
+func (s *PasswordResetService) WithMetrics(m *metrics.PasswordResetMetrics) *PasswordResetService {
+	s.metrics = m
+	return s
+}
+
 type PasswordResetConfirmInput struct {
 	Email       string
 	Code        string
@@ -48,6 +56,8 @@ type PasswordResetConfirmInput struct {
 }
 
 func (s *PasswordResetService) PasswordResetRequest(ctx context.Context, email string) (result *model.PasswordReset, err error) {
+	defer func() { s.metrics.IncRequest(errorOutcome(err)) }()
+
 	user, err := s.userRepo.GetUserByEmail(ctx, email)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -87,6 +97,8 @@ func (s *PasswordResetService) PasswordResetRequest(ctx context.Context, email s
 }
 
 func (s *PasswordResetService) PasswordResetResend(ctx context.Context, email string) (result *model.PasswordReset, err error) {
+	defer func() { s.metrics.IncResend(errorOutcome(err)) }()
+
 	result, err = s.passwordResetRepo.GetByUserEmail(ctx, email)
 
 	if err != nil {
@@ -128,6 +140,8 @@ func (s *PasswordResetService) PasswordResetResend(ctx context.Context, email st
 }
 
 func (s *PasswordResetService) PasswordResetConfirm(ctx context.Context, input PasswordResetConfirmInput) (err error) {
+	defer func() { s.metrics.IncConfirm(errorOutcome(err)) }()
+
 	passwordReset, err := s.passwordResetRepo.GetByUserEmail(ctx, input.Email)
 
 	if err != nil {

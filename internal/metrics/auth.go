@@ -16,9 +16,11 @@ const (
 )
 
 type AuthMetrics struct {
-	SignupsTotal  *prometheus.CounterVec
-	SignInsTotal  *prometheus.CounterVec
-	SignOutsTotal prometheus.Counter
+	SignupsTotal       *prometheus.CounterVec
+	VerificationsTotal *prometheus.CounterVec
+	ResendsTotal       *prometheus.CounterVec
+	SignInsTotal       *prometheus.CounterVec
+	SignOutsTotal      prometheus.Counter
 }
 
 func newAuthMetrics(reg prometheus.Registerer) *AuthMetrics {
@@ -30,7 +32,25 @@ func newAuthMetrics(reg prometheus.Registerer) *AuthMetrics {
 				Namespace: Namespace,
 				Subsystem: "auth",
 				Name:      "signups_total",
-				Help:      "Total number of user sign-up attempts.",
+				Help:      "Total number of sign-up starts (verification code sent).",
+			},
+			[]string{"outcome"},
+		),
+		VerificationsTotal: factory.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: Namespace,
+				Subsystem: "auth",
+				Name:      "verifications_total",
+				Help:      "Total number of sign-up email-verification attempts.",
+			},
+			[]string{"outcome"},
+		),
+		ResendsTotal: factory.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: Namespace,
+				Subsystem: "auth",
+				Name:      "resends_total",
+				Help:      "Total number of sign-up verification-code resends.",
 			},
 			[]string{"outcome"},
 		),
@@ -59,6 +79,20 @@ func (m *AuthMetrics) IncSignup(outcome AuthOutcome) {
 		return
 	}
 	m.SignupsTotal.WithLabelValues(string(outcome)).Inc()
+}
+
+func (m *AuthMetrics) IncVerification(outcome AuthOutcome) {
+	if m == nil {
+		return
+	}
+	m.VerificationsTotal.WithLabelValues(string(outcome)).Inc()
+}
+
+func (m *AuthMetrics) IncResend(outcome AuthOutcome) {
+	if m == nil {
+		return
+	}
+	m.ResendsTotal.WithLabelValues(string(outcome)).Inc()
 }
 
 func (m *AuthMetrics) IncSignIn(outcome AuthOutcome) {

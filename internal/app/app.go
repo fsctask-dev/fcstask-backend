@@ -81,11 +81,11 @@ func New(cfg *config.Config) (*App, error) {
 	passwordResetService := service.NewPasswordResetService(
 		userRepo, passwordResetRepo, mailerImpl,
 		config.EmailRegistrationConfig{TTL: cfg.PasswordReset.TTL},
-	)
+	).WithMetrics(m.PasswordReset)
 	oauthService := service.NewOAuthService(
 		userRepo, sessionRepo, emailRegistrationRepo, oauthRegistrationRepo, oauthIdentityRepo,
 		oauthRegistry, mailerImpl, cfg.OAuth, cfg.EmailRegistration,
-	).WithMetrics(m.Session)
+	).WithMetrics(m.OAuth, m.Session)
 	sessionService := service.NewSessionService(sessionRepo)
 	courseService := service.NewCourseService(courseRepo, roleRepo, studentScoreRepo).WithMetrics(m.Course)
 	adminHomeworkService := service.NewAdminHomeworkService(homeworkRepo, deadlineRepo, roleRepo).WithMetrics(m.Admin)

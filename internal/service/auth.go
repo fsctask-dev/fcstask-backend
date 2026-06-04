@@ -160,7 +160,7 @@ func (s *AuthService) SignUp(ctx context.Context, input SignUpInput) (result *mo
 // emailed code, creates the user, opens a session and discards the pending
 // registration.
 func (s *AuthService) SignUpVerify(ctx context.Context, input SignUpVerifyInput) (result *AuthResult, err error) {
-	defer func() { s.authMetrics.IncSignup(authOutcomeFromError(err)) }()
+	defer func() { s.authMetrics.IncVerification(authOutcomeFromError(err)) }()
 
 	reg, err := s.emailRegistrationRepo.GetByID(ctx, input.Token)
 	if err != nil {
@@ -229,6 +229,8 @@ func (s *AuthService) SignUpVerify(ctx context.Context, input SignUpVerifyInput)
 // SignUpResend re-issues the verification code for a pending registration,
 // identified by the verification_token returned from SignUp.
 func (s *AuthService) SignUpResend(ctx context.Context, token uuid.UUID) (result *model.EmailRegistration, err error) {
+	defer func() { s.authMetrics.IncResend(authOutcomeFromError(err)) }()
+
 	result, err = s.emailRegistrationRepo.GetByID(ctx, token)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -340,6 +342,19 @@ func openSession(
 	}
 	sessionMetrics.IncCreated()
 	return session, nil
+}
+
+// errorOutcome maps a service error to a metric "outcome" label: "success" when
+// nil, otherwise the service error code (not_found, unauthorized, conflict, …).
+func errorOutcome(err error) string {
+	if err == nil {
+		return "success"
+	}
+	var se *Error
+	if errors.As(err, &se) {
+		return se.Code
+	}
+	return "internal_error"
 }
 
 func authOutcomeFromError(err error) metrics.AuthOutcome {
