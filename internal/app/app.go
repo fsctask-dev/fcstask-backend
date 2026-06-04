@@ -77,6 +77,7 @@ func New(cfg *config.Config) (*App, error) {
 		adminHomeworkHandler,
 		handler.NewCheckerHandler(checkerService),
 		handler.NewGradeUpdateHandler(gradeUpdateService),
+		handler.NewCourseLateHandler(courseLateService),
 	)
 
 	e.Use(metrics.EchoMiddleware(m.HTTP))

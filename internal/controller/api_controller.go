@@ -16,6 +16,7 @@ type APIController struct {
 	adminHomeworkHandler *handler.AdminHomeworkHandler
 	checkerHandler       *handler.CheckerHandler
 	gradeUpdateHandler   *handler.GradeUpdateHandler
+	courseLateHandler    *handler.CourseLateHandler
 }
 
 func NewAPIController(
@@ -26,6 +27,7 @@ func NewAPIController(
 	adminHomeworkHandler *handler.AdminHomeworkHandler,
 	checkerHandler *handler.CheckerHandler,
 	gradeUpdateHandler *handler.GradeUpdateHandler,
+	courseLateHandler *handler.CourseLateHandler,
 ) *APIController {
 	return &APIController{
 		authHandler:          authHandler,
@@ -35,6 +37,7 @@ func NewAPIController(
 		adminHomeworkHandler: adminHomeworkHandler,
 		checkerHandler:       checkerHandler,
 		gradeUpdateHandler:   gradeUpdateHandler,
+		courseLateHandler:    courseLateHandler,
 	}
 }
 
