@@ -1,0 +1,18 @@
+type: object
+required:
+  - verification_token
+  - resend_after
+  - expires_at
+properties:
+  verification_token:
+    type: string
+    format: uuid
+    description: Pass this back to /api/signup/verify and /api/signup/resend-code
+  resend_after:
+    type: string
+    format: date-time
+    description: Earliest time the client may call /api/signup/resend-code
+  expires_at:
+    type: string
+    format: date-time
+    description: When the verification_token becomes invalid

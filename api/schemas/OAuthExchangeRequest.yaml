@@ -1,0 +1,20 @@
+type: object
+description: |
+  Request body for /api/oauth/{provider}/exchange. Each provider only reads
+  the fields it cares about: gitlab/google use code + redirect_uri (+ optional
+  code_verifier for PKCE); telegram uses telegram_data from the Login Widget.
+properties:
+  code:
+    type: string
+    description: Authorization code from gitlab/google redirect callback
+  redirect_uri:
+    type: string
+    description: Same redirect_uri the frontend used in the authorize step
+  code_verifier:
+    type: string
+    description: PKCE code_verifier (optional, gitlab/google)
+  telegram_data:
+    type: object
+    additionalProperties:
+      type: string
+    description: Raw fields from the Telegram Login Widget (id, first_name, last_name, username, photo_url, auth_date, hash)

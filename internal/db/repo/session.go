@@ -10,7 +10,7 @@ import (
 	"fcstask-backend/internal/db/model"
 )
 
-type SessionRepositoryInterface interface {
+type ISessionRepository interface {
 	CreateSession(ctx context.Context, session *model.Session) error
 	GetSessionByID(ctx context.Context, id uuid.UUID) (*model.Session, error)
 	GetSessionsByUserID(ctx context.Context, userID uuid.UUID) ([]model.Session, error)
@@ -26,9 +26,9 @@ type SessionRepository struct {
 	rw db.ReadWriter
 }
 
-var _ SessionRepositoryInterface = (*SessionRepository)(nil)
+var _ ISessionRepository = (*SessionRepository)(nil)
 
-func NewSessionRepository(rw db.ReadWriter) SessionRepositoryInterface {
+func NewSessionRepository(rw db.ReadWriter) ISessionRepository {
 	return &SessionRepository{rw: rw}
 }
 

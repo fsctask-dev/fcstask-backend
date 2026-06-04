@@ -12,12 +12,14 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
+	"github.com/openframebox/gomail"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 
 	"fcstask-backend/internal/api"
+	"fcstask-backend/internal/config"
 	models "fcstask-backend/internal/db/model"
 	"fcstask-backend/internal/db/repo"
 	"fcstask-backend/internal/service"
@@ -82,7 +84,7 @@ func (m *MockSessionRepository) CleanOutdatedSessions(ctx context.Context, ttl t
 	return args.Get(0).(int64), args.Error(1)
 }
 
-var _ repo.SessionRepositoryInterface = (*MockSessionRepository)(nil)
+var _ repo.ISessionRepository = (*MockSessionRepository)(nil)
 
 var (
 	testUserUUID1    = uuid.MustParse("11111111-1111-1111-1111-111111111111")
@@ -93,12 +95,84 @@ var (
 	testSessionUUID3 = uuid.MustParse("cccccccc-cccc-cccc-cccc-cccccccccccc")
 )
 
+// stubEmailRegRepo is a minimal IEmailRegistrationRepo for handler tests.
+type stubEmailRegRepo struct {
+	reg       *models.EmailRegistration
+	createErr error
+}
+
+func (r *stubEmailRegRepo) Create(ctx context.Context, reg *models.EmailRegistration) error {
+	if r.createErr != nil {
+		return r.createErr
+	}
+	if reg.ID == uuid.Nil {
+		reg.ID = uuid.New()
+	}
+	r.reg = reg
+	return nil
+}
+
+func (r *stubEmailRegRepo) Update(ctx context.Context, reg *models.EmailRegistration) error {
+	r.reg = reg
+	return nil
+}
+
+func (r *stubEmailRegRepo) GetByID(ctx context.Context, id uuid.UUID) (*models.EmailRegistration, error) {
+	if r.reg == nil || r.reg.ID != id {
+		return nil, gorm.ErrRecordNotFound
+	}
+	return r.reg, nil
+}
+
+func (r *stubEmailRegRepo) Delete(ctx context.Context, id uuid.UUID) error {
+	r.reg = nil
+	return nil
+}
+
+func (r *stubEmailRegRepo) DeleteByEmail(ctx context.Context, email string) error { return nil }
+
+func (r *stubEmailRegRepo) DeleteExpired(ctx context.Context, before time.Time) (int64, error) {
+	return 0, nil
+}
+
+// stubMailer satisfies mailer.Mailer for handler tests.
+type stubMailer struct{ err error }
+
+func (m stubMailer) Send(ctx context.Context, to gomail.Address, subject, body string) error {
+	return m.err
+}
+
+// stubOAuthRepo is a no-op IOAuthIdentityRepo; SignUpVerify consults it after
+// creating the user. GetByEmailRegistrationID returns a nil error so the verify
+// path treats it as "nothing to relink".
+type stubOAuthRepo struct{}
+
+func (stubOAuthRepo) Create(ctx context.Context, i *models.OAuthIdentity) error { return nil }
+func (stubOAuthRepo) Update(ctx context.Context, i *models.OAuthIdentity) error { return nil }
+func (stubOAuthRepo) GetByID(ctx context.Context, id uuid.UUID) (*models.OAuthIdentity, error) {
+	return nil, gorm.ErrRecordNotFound
+}
+func (stubOAuthRepo) GetByProviderUID(ctx context.Context, provider, uid string) (*models.OAuthIdentity, error) {
+	return nil, gorm.ErrRecordNotFound
+}
+func (stubOAuthRepo) GetProviderForUserID(ctx context.Context, userID uuid.UUID, provider string) (*models.OAuthIdentity, error) {
+	return nil, gorm.ErrRecordNotFound
+}
+func (stubOAuthRepo) GetByEmailRegistrationID(ctx context.Context, id uuid.UUID) (*models.OAuthIdentity, error) {
+	return &models.OAuthIdentity{}, nil
+}
+func (stubOAuthRepo) ListByUserID(ctx context.Context, userID uuid.UUID) ([]models.OAuthIdentity, error) {
+	return nil, nil
+}
+func (stubOAuthRepo) Delete(ctx context.Context, id uuid.UUID) error { return nil }
+
 // === SignUp ===
 
 func TestAuthHandler_SignUp_Success(t *testing.T) {
 	e := echo.New()
 	mockUserRepo := new(MockUserRepository)
 	mockSessionRepo := new(MockSessionRepository)
+	emailRepo := &stubEmailRegRepo{}
 
 	reqBody := api.SignUpRequest{
 		Email:    "new@example.com",
@@ -109,43 +183,28 @@ func TestAuthHandler_SignUp_Success(t *testing.T) {
 
 	mockUserRepo.On("ExistsUserByEmail", mock.Anything, string(reqBody.Email)).Return(false, nil)
 	mockUserRepo.On("ExistsUserByUsername", mock.Anything, reqBody.Username).Return(false, nil)
-	mockUserRepo.On("CreateUser", mock.Anything, mock.MatchedBy(func(user *models.User) bool {
-		return user.Email == string(reqBody.Email) &&
-			user.Username == reqBody.Username &&
-			user.PasswordHash != "" &&
-			user.UserID != uuid.Nil
-	})).Return(nil).Run(func(args mock.Arguments) {
-		user := args.Get(1).(*models.User)
-		user.ID = testUserUUID1
-		user.CreatedAt = time.Now()
-		user.UpdatedAt = time.Now()
-	})
-	mockSessionRepo.On("CreateSession", mock.Anything, mock.MatchedBy(func(s *models.Session) bool {
-		return s.UserID == testUserUUID1
-	})).Return(nil).Run(func(args mock.Arguments) {
-		s := args.Get(1).(*models.Session)
-		s.ID = testSessionUUID1
-	})
 
 	req := httptest.NewRequest(http.MethodPost, "/api/signup", bytes.NewBuffer(reqJSON))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	ctx := e.NewContext(req, rec)
 
-	err := NewAuthHandler(service.NewAuthService(mockUserRepo, mockSessionRepo)).SignUp(ctx)
+	svc := service.NewAuthService(mockUserRepo, mockSessionRepo, emailRepo, nil, stubMailer{}, config.EmailRegistrationConfig{})
+	err := NewAuthHandler(svc).SignUp(ctx)
 
 	assert.NoError(t, err)
-	assert.Equal(t, http.StatusCreated, rec.Code)
+	// Registration is pending email verification: 202, no user created yet.
+	assert.Equal(t, http.StatusAccepted, rec.Code)
 
-	var resp api.AuthResponse
+	var resp api.SignUpPendingResponse
 	json.Unmarshal(rec.Body.Bytes(), &resp)
-	assert.Equal(t, "new@example.com", string(resp.User.Email))
-	assert.Equal(t, "newuser", resp.User.Username)
-	assert.NotEqual(t, uuid.Nil, uuid.UUID(resp.User.UserId))
-	assert.Equal(t, testSessionUUID1, uuid.UUID(resp.SessionToken))
+	assert.NotEqual(t, uuid.Nil, uuid.UUID(resp.VerificationToken))
+	assert.NotNil(t, emailRepo.reg)
+	assert.Equal(t, "new@example.com", emailRepo.reg.Email)
+	assert.Equal(t, "newuser", emailRepo.reg.Username)
+	assert.NotEmpty(t, emailRepo.reg.PasswordHash)
 
 	mockUserRepo.AssertExpectations(t)
-	mockSessionRepo.AssertExpectations(t)
 }
 
 func TestAuthHandler_SignUp_InvalidJSON(t *testing.T) {
@@ -158,7 +217,7 @@ func TestAuthHandler_SignUp_InvalidJSON(t *testing.T) {
 	rec := httptest.NewRecorder()
 	ctx := e.NewContext(req, rec)
 
-	err := NewAuthHandler(service.NewAuthService(mockUserRepo, mockSessionRepo)).SignUp(ctx)
+	err := NewAuthHandler(service.NewAuthService(mockUserRepo, mockSessionRepo, nil, nil, nil, config.EmailRegistrationConfig{})).SignUp(ctx)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
@@ -199,7 +258,7 @@ func TestAuthHandler_SignUp_MissingFields(t *testing.T) {
 			rec := httptest.NewRecorder()
 			ctx := e.NewContext(req, rec)
 
-			err := NewAuthHandler(service.NewAuthService(mockUserRepo, mockSessionRepo)).SignUp(ctx)
+			err := NewAuthHandler(service.NewAuthService(mockUserRepo, mockSessionRepo, nil, nil, nil, config.EmailRegistrationConfig{})).SignUp(ctx)
 
 			assert.NoError(t, err)
 			assert.Equal(t, http.StatusBadRequest, rec.Code)
@@ -226,7 +285,7 @@ func TestAuthHandler_SignUp_EmailConflict(t *testing.T) {
 	rec := httptest.NewRecorder()
 	ctx := e.NewContext(req, rec)
 
-	err := NewAuthHandler(service.NewAuthService(mockUserRepo, mockSessionRepo)).SignUp(ctx)
+	err := NewAuthHandler(service.NewAuthService(mockUserRepo, mockSessionRepo, nil, nil, nil, config.EmailRegistrationConfig{})).SignUp(ctx)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusConflict, rec.Code)
@@ -254,7 +313,7 @@ func TestAuthHandler_SignUp_UsernameConflict(t *testing.T) {
 	rec := httptest.NewRecorder()
 	ctx := e.NewContext(req, rec)
 
-	err := NewAuthHandler(service.NewAuthService(mockUserRepo, mockSessionRepo)).SignUp(ctx)
+	err := NewAuthHandler(service.NewAuthService(mockUserRepo, mockSessionRepo, nil, nil, nil, config.EmailRegistrationConfig{})).SignUp(ctx)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusConflict, rec.Code)
@@ -266,24 +325,25 @@ func TestAuthHandler_SignUp_UsernameConflict(t *testing.T) {
 	mockUserRepo.AssertExpectations(t)
 }
 
-func TestAuthHandler_SignUp_CreateUserError(t *testing.T) {
+func TestAuthHandler_SignUp_RegistrationCreateError(t *testing.T) {
 	e := echo.New()
 	mockUserRepo := new(MockUserRepository)
 	mockSessionRepo := new(MockSessionRepository)
+	emailRepo := &stubEmailRegRepo{createErr: errors.New("db error")}
 
 	reqBody := api.SignUpRequest{Email: "new@example.com", Username: "newuser", Password: "pass"}
 	reqJSON, _ := json.Marshal(reqBody)
 
 	mockUserRepo.On("ExistsUserByEmail", mock.Anything, "new@example.com").Return(false, nil)
 	mockUserRepo.On("ExistsUserByUsername", mock.Anything, "newuser").Return(false, nil)
-	mockUserRepo.On("CreateUser", mock.Anything, mock.Anything).Return(errors.New("db error"))
 
 	req := httptest.NewRequest(http.MethodPost, "/api/signup", bytes.NewBuffer(reqJSON))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	ctx := e.NewContext(req, rec)
 
-	err := NewAuthHandler(service.NewAuthService(mockUserRepo, mockSessionRepo)).SignUp(ctx)
+	svc := service.NewAuthService(mockUserRepo, mockSessionRepo, emailRepo, nil, stubMailer{}, config.EmailRegistrationConfig{})
+	err := NewAuthHandler(svc).SignUp(ctx)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusInternalServerError, rec.Code)
@@ -295,39 +355,141 @@ func TestAuthHandler_SignUp_CreateUserError(t *testing.T) {
 	mockUserRepo.AssertExpectations(t)
 }
 
-func TestAuthHandler_SignUp_CreateSessionError(t *testing.T) {
+func TestAuthHandler_SignUp_MailerError(t *testing.T) {
 	e := echo.New()
 	mockUserRepo := new(MockUserRepository)
 	mockSessionRepo := new(MockSessionRepository)
+	emailRepo := &stubEmailRegRepo{}
 
 	reqBody := api.SignUpRequest{Email: "new@example.com", Username: "newuser", Password: "pass"}
 	reqJSON, _ := json.Marshal(reqBody)
 
 	mockUserRepo.On("ExistsUserByEmail", mock.Anything, "new@example.com").Return(false, nil)
 	mockUserRepo.On("ExistsUserByUsername", mock.Anything, "newuser").Return(false, nil)
-	mockUserRepo.On("CreateUser", mock.Anything, mock.Anything).Return(nil).Run(func(args mock.Arguments) {
-		u := args.Get(1).(*models.User)
-		u.ID = testUserUUID1
-	})
-	mockSessionRepo.On("CreateSession", mock.Anything, mock.Anything).Return(errors.New("session db error"))
 
 	req := httptest.NewRequest(http.MethodPost, "/api/signup", bytes.NewBuffer(reqJSON))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	ctx := e.NewContext(req, rec)
 
-	err := NewAuthHandler(service.NewAuthService(mockUserRepo, mockSessionRepo)).SignUp(ctx)
+	svc := service.NewAuthService(mockUserRepo, mockSessionRepo, emailRepo, nil, stubMailer{err: errors.New("smtp down")}, config.EmailRegistrationConfig{})
+	err := NewAuthHandler(svc).SignUp(ctx)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusInternalServerError, rec.Code)
+	// The verification email failed, so no pending registration is persisted.
+	assert.Nil(t, emailRepo.reg)
 
-	var resp api.Error
+	mockUserRepo.AssertExpectations(t)
+}
+
+func TestAuthHandler_SignUpVerify_Success(t *testing.T) {
+	e := echo.New()
+	mockUserRepo := new(MockUserRepository)
+	mockSessionRepo := new(MockSessionRepository)
+
+	const code = "123456"
+	codeHash, _ := bcrypt.GenerateFromPassword([]byte(code), bcrypt.MinCost)
+	pwHash, _ := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.MinCost)
+	regID := uuid.New()
+	emailRepo := &stubEmailRegRepo{reg: &models.EmailRegistration{
+		ID:           regID,
+		Email:        "new@example.com",
+		Username:     "newuser",
+		PasswordHash: string(pwHash),
+		CodeHash:     string(codeHash),
+		ExpiresAt:    time.Now().Add(10 * time.Minute),
+	}}
+
+	mockUserRepo.On("CreateUser", mock.Anything, mock.MatchedBy(func(u *models.User) bool {
+		return u.Email == "new@example.com" && u.Username == "newuser"
+	})).Return(nil).Run(func(args mock.Arguments) {
+		args.Get(1).(*models.User).ID = testUserUUID1
+	})
+	mockSessionRepo.On("CreateSession", mock.Anything, mock.MatchedBy(func(s *models.Session) bool {
+		return s.UserID == testUserUUID1
+	})).Return(nil).Run(func(args mock.Arguments) {
+		args.Get(1).(*models.Session).ID = testSessionUUID1
+	})
+
+	reqJSON, _ := json.Marshal(api.SignUpVerifyRequest{VerificationToken: regID, Code: code})
+	req := httptest.NewRequest(http.MethodPost, "/api/signup/verify", bytes.NewBuffer(reqJSON))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	ctx := e.NewContext(req, rec)
+
+	svc := service.NewAuthService(
+		mockUserRepo, mockSessionRepo, emailRepo, stubOAuthRepo{}, stubMailer{},
+		config.EmailRegistrationConfig{},
+	)
+	err := NewAuthHandler(svc).SignUpVerify(ctx)
+
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusCreated, rec.Code)
+
+	var resp api.AuthResponse
 	json.Unmarshal(rec.Body.Bytes(), &resp)
-	assert.Equal(t, "internal_error", resp.Error.Code)
-	assert.Contains(t, resp.Error.Message, "session")
+	assert.Equal(t, "new@example.com", string(resp.User.Email))
+	assert.Equal(t, testSessionUUID1, uuid.UUID(resp.SessionToken))
 
 	mockUserRepo.AssertExpectations(t)
 	mockSessionRepo.AssertExpectations(t)
+}
+
+func TestAuthHandler_SignUpVerify_WrongCode(t *testing.T) {
+	e := echo.New()
+	mockUserRepo := new(MockUserRepository)
+	mockSessionRepo := new(MockSessionRepository)
+
+	codeHash, _ := bcrypt.GenerateFromPassword([]byte("123456"), bcrypt.MinCost)
+	regID := uuid.New()
+	emailRepo := &stubEmailRegRepo{reg: &models.EmailRegistration{
+		ID:        regID,
+		CodeHash:  string(codeHash),
+		ExpiresAt: time.Now().Add(10 * time.Minute),
+	}}
+
+	reqJSON, _ := json.Marshal(api.SignUpVerifyRequest{VerificationToken: regID, Code: "000000"})
+	req := httptest.NewRequest(http.MethodPost, "/api/signup/verify", bytes.NewBuffer(reqJSON))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	ctx := e.NewContext(req, rec)
+
+	svc := service.NewAuthService(mockUserRepo, mockSessionRepo, emailRepo, nil, stubMailer{}, config.EmailRegistrationConfig{})
+	err := NewAuthHandler(svc).SignUpVerify(ctx)
+
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusUnauthorized, rec.Code)
+}
+
+func TestAuthHandler_SignUpResendCode_Success(t *testing.T) {
+	e := echo.New()
+	mockUserRepo := new(MockUserRepository)
+	mockSessionRepo := new(MockSessionRepository)
+
+	regID := uuid.New()
+	emailRepo := &stubEmailRegRepo{reg: &models.EmailRegistration{
+		ID:        regID,
+		Email:     "new@example.com",
+		Username:  "newuser",
+		ExpiresAt: time.Now().Add(time.Minute),
+	}}
+
+	reqJSON, _ := json.Marshal(api.SignUpResendRequest{VerificationToken: regID})
+	req := httptest.NewRequest(http.MethodPost, "/api/signup/resend-code", bytes.NewBuffer(reqJSON))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	ctx := e.NewContext(req, rec)
+
+	svc := service.NewAuthService(mockUserRepo, mockSessionRepo, emailRepo, nil, stubMailer{}, config.EmailRegistrationConfig{})
+	err := NewAuthHandler(svc).SignUpResendCode(ctx)
+
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, rec.Code)
+
+	var resp api.SignUpPendingResponse
+	json.Unmarshal(rec.Body.Bytes(), &resp)
+	assert.Equal(t, regID, uuid.UUID(resp.VerificationToken))
 }
 
 // === SignIn ===
@@ -375,7 +537,7 @@ func TestAuthHandler_SignIn_SuccessWithEmail(t *testing.T) {
 	rec := httptest.NewRecorder()
 	ctx := e.NewContext(req, rec)
 
-	err := NewAuthHandler(service.NewAuthService(mockUserRepo, mockSessionRepo)).SignIn(ctx)
+	err := NewAuthHandler(service.NewAuthService(mockUserRepo, mockSessionRepo, nil, nil, nil, config.EmailRegistrationConfig{})).SignIn(ctx)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, rec.Code)
@@ -422,7 +584,7 @@ func TestAuthHandler_SignIn_SuccessWithUsername(t *testing.T) {
 	rec := httptest.NewRecorder()
 	ctx := e.NewContext(req, rec)
 
-	err := NewAuthHandler(service.NewAuthService(mockUserRepo, mockSessionRepo)).SignIn(ctx)
+	err := NewAuthHandler(service.NewAuthService(mockUserRepo, mockSessionRepo, nil, nil, nil, config.EmailRegistrationConfig{})).SignIn(ctx)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, rec.Code)
@@ -446,7 +608,7 @@ func TestAuthHandler_SignIn_InvalidJSON(t *testing.T) {
 	rec := httptest.NewRecorder()
 	ctx := e.NewContext(req, rec)
 
-	err := NewAuthHandler(service.NewAuthService(mockUserRepo, mockSessionRepo)).SignIn(ctx)
+	err := NewAuthHandler(service.NewAuthService(mockUserRepo, mockSessionRepo, nil, nil, nil, config.EmailRegistrationConfig{})).SignIn(ctx)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
@@ -465,7 +627,7 @@ func TestAuthHandler_SignIn_MissingPassword(t *testing.T) {
 	rec := httptest.NewRecorder()
 	ctx := e.NewContext(req, rec)
 
-	err := NewAuthHandler(service.NewAuthService(mockUserRepo, mockSessionRepo)).SignIn(ctx)
+	err := NewAuthHandler(service.NewAuthService(mockUserRepo, mockSessionRepo, nil, nil, nil, config.EmailRegistrationConfig{})).SignIn(ctx)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
@@ -489,7 +651,7 @@ func TestAuthHandler_SignIn_MissingEmailAndUsername(t *testing.T) {
 	rec := httptest.NewRecorder()
 	ctx := e.NewContext(req, rec)
 
-	err := NewAuthHandler(service.NewAuthService(mockUserRepo, mockSessionRepo)).SignIn(ctx)
+	err := NewAuthHandler(service.NewAuthService(mockUserRepo, mockSessionRepo, nil, nil, nil, config.EmailRegistrationConfig{})).SignIn(ctx)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
@@ -514,7 +676,7 @@ func TestAuthHandler_SignIn_UserNotFound(t *testing.T) {
 	rec := httptest.NewRecorder()
 	ctx := e.NewContext(req, rec)
 
-	err := NewAuthHandler(service.NewAuthService(mockUserRepo, mockSessionRepo)).SignIn(ctx)
+	err := NewAuthHandler(service.NewAuthService(mockUserRepo, mockSessionRepo, nil, nil, nil, config.EmailRegistrationConfig{})).SignIn(ctx)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
@@ -549,7 +711,7 @@ func TestAuthHandler_SignIn_WrongPassword(t *testing.T) {
 	rec := httptest.NewRecorder()
 	ctx := e.NewContext(req, rec)
 
-	err := NewAuthHandler(service.NewAuthService(mockUserRepo, mockSessionRepo)).SignIn(ctx)
+	err := NewAuthHandler(service.NewAuthService(mockUserRepo, mockSessionRepo, nil, nil, nil, config.EmailRegistrationConfig{})).SignIn(ctx)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
@@ -576,7 +738,7 @@ func TestAuthHandler_SignIn_DatabaseError(t *testing.T) {
 	rec := httptest.NewRecorder()
 	ctx := e.NewContext(req, rec)
 
-	err := NewAuthHandler(service.NewAuthService(mockUserRepo, mockSessionRepo)).SignIn(ctx)
+	err := NewAuthHandler(service.NewAuthService(mockUserRepo, mockSessionRepo, nil, nil, nil, config.EmailRegistrationConfig{})).SignIn(ctx)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusInternalServerError, rec.Code)
@@ -608,7 +770,7 @@ func TestAuthHandler_SignIn_CreateSessionError(t *testing.T) {
 	rec := httptest.NewRecorder()
 	ctx := e.NewContext(req, rec)
 
-	err := NewAuthHandler(service.NewAuthService(mockUserRepo, mockSessionRepo)).SignIn(ctx)
+	err := NewAuthHandler(service.NewAuthService(mockUserRepo, mockSessionRepo, nil, nil, nil, config.EmailRegistrationConfig{})).SignIn(ctx)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusInternalServerError, rec.Code)
@@ -641,7 +803,7 @@ func TestAuthHandler_GetMe_Success(t *testing.T) {
 	ctx := e.NewContext(req, rec)
 	ctx.Set(UserContextKey, testUser)
 
-	err := NewAuthHandler(service.NewAuthService(mockUserRepo, mockSessionRepo)).GetMe(ctx)
+	err := NewAuthHandler(service.NewAuthService(mockUserRepo, mockSessionRepo, nil, nil, nil, config.EmailRegistrationConfig{})).GetMe(ctx)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, rec.Code)
@@ -669,7 +831,7 @@ func TestAuthHandler_GetMe_InitialsFromUsername(t *testing.T) {
 	ctx := e.NewContext(req, rec)
 	ctx.Set(UserContextKey, testUser)
 
-	err := NewAuthHandler(service.NewAuthService(mockUserRepo, mockSessionRepo)).GetMe(ctx)
+	err := NewAuthHandler(service.NewAuthService(mockUserRepo, mockSessionRepo, nil, nil, nil, config.EmailRegistrationConfig{})).GetMe(ctx)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, rec.Code)
@@ -688,7 +850,7 @@ func TestAuthHandler_GetMe_NoUser(t *testing.T) {
 	rec := httptest.NewRecorder()
 	ctx := e.NewContext(req, rec)
 
-	err := NewAuthHandler(service.NewAuthService(mockUserRepo, mockSessionRepo)).GetMe(ctx)
+	err := NewAuthHandler(service.NewAuthService(mockUserRepo, mockSessionRepo, nil, nil, nil, config.EmailRegistrationConfig{})).GetMe(ctx)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
@@ -716,7 +878,7 @@ func TestAuthHandler_SignOut_Success(t *testing.T) {
 	ctx := e.NewContext(req, rec)
 	ctx.Set(SessionContextKey, session)
 
-	err := NewAuthHandler(service.NewAuthService(nil, mockSessionRepo)).SignOut(ctx)
+	err := NewAuthHandler(service.NewAuthService(nil, mockSessionRepo, nil, nil, nil, config.EmailRegistrationConfig{})).SignOut(ctx)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusNoContent, rec.Code)
@@ -732,7 +894,7 @@ func TestAuthHandler_SignOut_NoSession(t *testing.T) {
 	rec := httptest.NewRecorder()
 	ctx := e.NewContext(req, rec)
 
-	err := NewAuthHandler(service.NewAuthService(nil, mockSessionRepo)).SignOut(ctx)
+	err := NewAuthHandler(service.NewAuthService(nil, mockSessionRepo, nil, nil, nil, config.EmailRegistrationConfig{})).SignOut(ctx)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
@@ -758,7 +920,7 @@ func TestAuthHandler_SignOut_DeleteError(t *testing.T) {
 	ctx := e.NewContext(req, rec)
 	ctx.Set(SessionContextKey, session)
 
-	err := NewAuthHandler(service.NewAuthService(nil, mockSessionRepo)).SignOut(ctx)
+	err := NewAuthHandler(service.NewAuthService(nil, mockSessionRepo, nil, nil, nil, config.EmailRegistrationConfig{})).SignOut(ctx)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusInternalServerError, rec.Code)
@@ -818,7 +980,7 @@ func TestBuildInitials(t *testing.T) {
 				FirstName: tc.firstName,
 				LastName:  tc.lastName,
 			}
-			initials, _, err := service.NewAuthService(nil, nil).GetMe(context.Background(), user)
+			initials, _, err := service.NewAuthService(nil, nil, nil, nil, nil, config.EmailRegistrationConfig{}).GetMe(context.Background(), user)
 			assert.NoError(t, err)
 			assert.Equal(t, tc.expected, initials)
 		})

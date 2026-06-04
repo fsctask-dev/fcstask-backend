@@ -50,6 +50,22 @@ services:
     volumes:
       - postgres_replica_data:/bitnami/postgresql
 
+  telegram-bot:
+    build:
+      context: .
+      dockerfile: telegram-bot/Dockerfile
+    image: fcstask-telegram-bot
+    container_name: fcstask-telegram-bot
+    restart: unless-stopped
+    networks: [fcstask-net]
+    # The backend API runs on the host, so reach it via host.docker.internal.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      BACKEND_BASE_URL: ${BACKEND_BASE_URL:-http://host.docker.internal:8080}
+      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-}
+
   prometheus:
     image: prom/prometheus:v3.5.0
     container_name: fcstask-prometheus

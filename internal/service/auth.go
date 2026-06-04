@@ -2,29 +2,57 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
+	"math/big"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 
+	"fcstask-backend/internal/config"
+	"fcstask-backend/internal/db/model"
 	models "fcstask-backend/internal/db/model"
 	"fcstask-backend/internal/db/repo"
+	"fcstask-backend/internal/mailer"
 	"fcstask-backend/internal/metrics"
 )
 
+// AuthService owns email/password registration (with email verification) and
+// the session lifecycle (sign in / out, "me").
 type AuthService struct {
-	userRepo    repo.IUserRepo
-	sessionRepo repo.SessionRepositoryInterface
+	userRepo              repo.IUserRepo
+	sessionRepo           repo.ISessionRepository
+	emailRegistrationRepo repo.IEmailRegistrationRepo
+	oauthRepo             repo.IOAuthIdentityRepo
+
+	mailer mailer.Mailer
+
+	emailRegistrationConfig config.EmailRegistrationConfig
 
 	authMetrics    *metrics.AuthMetrics
 	sessionMetrics *metrics.SessionMetrics
 }
 
-func NewAuthService(userRepo repo.IUserRepo, sessionRepo repo.SessionRepositoryInterface) *AuthService {
-	return &AuthService{userRepo: userRepo, sessionRepo: sessionRepo}
+func NewAuthService(
+	userRepo repo.IUserRepo,
+	sessionRepo repo.ISessionRepository,
+	emailRegistrationRepo repo.IEmailRegistrationRepo,
+	oauthRepo repo.IOAuthIdentityRepo,
+	m mailer.Mailer,
+	emailRegistrationConfig config.EmailRegistrationConfig,
+) *AuthService {
+	return &AuthService{
+		userRepo:                userRepo,
+		sessionRepo:             sessionRepo,
+		emailRegistrationRepo:   emailRegistrationRepo,
+		oauthRepo:               oauthRepo,
+		mailer:                  m,
+		emailRegistrationConfig: emailRegistrationConfig,
+	}
 }
 
 func (s *AuthService) WithMetrics(auth *metrics.AuthMetrics, session *metrics.SessionMetrics) *AuthService {
@@ -37,9 +65,16 @@ type SignUpInput struct {
 	Email     string
 	Username  string
 	Password  string
-	TgUID     *int64
-	IP        string
-	UserAgent string
+	FirstName *string
+	LastName  *string
+}
+
+type SignUpVerifyInput struct {
+	Token       uuid.UUID
+	Code        string
+	MaxAttempts int
+	IP          string
+	UserAgent   string
 }
 
 type SignInInput struct {
@@ -55,7 +90,11 @@ type AuthResult struct {
 	Session *models.Session
 }
 
-func (s *AuthService) SignUp(ctx context.Context, input SignUpInput) (result *AuthResult, err error) {
+// SignUp begins an email/password registration. The user row is not created
+// yet — instead a pending EmailRegistration is stored and a verification code
+// is emailed. The caller finishes the flow via SignUpVerify. The returned
+// EmailRegistration's ID is the verification_token the client passes back.
+func (s *AuthService) SignUp(ctx context.Context, input SignUpInput) (result *model.EmailRegistration, err error) {
 	defer func() { s.authMetrics.IncSignup(authOutcomeFromError(err)) }()
 
 	if input.Username == "" || input.Password == "" || input.Email == "" {
@@ -74,32 +113,158 @@ func (s *AuthService) SignUp(ctx context.Context, input SignUpInput) (result *Au
 		return nil, Conflict("User with this username already exists")
 	}
 
-	hash, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
+	// Drop any previous outstanding registration for this email so the latest
+	// attempt wins (mirrors PasswordResetRequest's per-user cleanup).
+	if err := s.emailRegistrationRepo.DeleteByEmail(ctx, input.Email); err != nil {
+		return nil, Internal("Failed to delete previous registration", err)
+	}
+
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
 	if err != nil {
 		return nil, Internal("Failed to hash password", err)
 	}
 
-	user := &models.User{
-		Email:        input.Email,
-		Username:     input.Username,
-		PasswordHash: string(hash),
-		TgUID:        input.TgUID,
-		UserID:       uuid.New(),
+	code, err := generateCode()
+	if err != nil {
+		return nil, Internal("Failed to generate verification code", err)
+	}
+	codeHash, err := bcrypt.GenerateFromPassword([]byte(code), bcrypt.DefaultCost)
+	if err != nil {
+		return nil, Internal("Failed to hash verification code", err)
 	}
 
-	if err := s.userRepo.CreateUser(ctx, user); err != nil {
+	now := time.Now()
+	result = &models.EmailRegistration{
+		Email:        input.Email,
+		Username:     input.Username,
+		PasswordHash: string(passwordHash),
+		FirstName:    input.FirstName,
+		LastName:     input.LastName,
+		CodeHash:     string(codeHash),
+		LastSentAt:   now,
+		ExpiresAt:    now.Add(s.emailRegistrationConfig.TTL),
+	}
+	if err := mailer.SendEmailConfirmation(s.mailer, ctx, result, code); err != nil {
+		return nil, Internal("failed to send verification email", err)
+	}
+	if err := s.emailRegistrationRepo.Create(ctx, result); err != nil {
 		if col := UniqueConstraintColumn(err); col != "" {
 			return nil, Conflict("User with this " + col + " already exists")
 		}
+		return nil, Internal("failed to create registration", err)
+	}
+	return result, nil
+}
+
+// SignUpVerify finishes a registration started by SignUp: it validates the
+// emailed code, creates the user, opens a session and discards the pending
+// registration.
+func (s *AuthService) SignUpVerify(ctx context.Context, input SignUpVerifyInput) (result *AuthResult, err error) {
+	defer func() { s.authMetrics.IncVerification(authOutcomeFromError(err)) }()
+
+	reg, err := s.emailRegistrationRepo.GetByID(ctx, input.Token)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, NotFound("verification token not found")
+		}
+		return nil, Internal("Failed to get registration", err)
+	}
+
+	now := time.Now()
+	if reg.ExpiresAt.Before(now) {
+		return nil, Unauthorized("verification token has expired")
+	}
+
+	if reg.Attempts > input.MaxAttempts {
+		return nil, Unauthorized("number of attempts exceeded")
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(reg.CodeHash), []byte(input.Code)); err != nil {
+		reg.Attempts++
+		if err := s.emailRegistrationRepo.Update(ctx, reg); err != nil {
+			return nil, Internal("failed to update registration", err)
+		}
+		return nil, Unauthorized("verification codes do not match")
+	}
+
+	// Re-check uniqueness: another account may have claimed the email or
+	// username between SignUp and SignUpVerify.
+	user := &models.User{
+		Email:        reg.Email,
+		Username:     reg.Username,
+		PasswordHash: reg.PasswordHash,
+		FirstName:    reg.FirstName,
+		LastName:     reg.LastName,
+		UserID:       uuid.New(),
+	}
+	if err := s.userRepo.CreateUser(ctx, user); err != nil {
 		return nil, Internal("Failed to create user", err)
 	}
 
-	session, err := s.createSession(ctx, user.ID, input.IP, input.UserAgent)
+	identity, err := s.oauthRepo.GetByEmailRegistrationID(ctx, reg.ID)
+	if err != nil {
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, Internal("Failed to fetch identity", err)
+		} else {
+			identity.EmailRegistrationID = uuid.Nil
+			identity.UserID = user.ID
+			if err := s.oauthRepo.Update(ctx, identity); err != nil {
+				return nil, Internal("Failed to update identity", err)
+			}
+		}
+	}
+
+	if err := s.emailRegistrationRepo.Delete(ctx, reg.ID); err != nil {
+		return nil, Internal("failed to delete registration", err)
+	}
+
+	session, err := openSession(ctx, s.sessionRepo, s.sessionMetrics, user.ID, input.IP, input.UserAgent)
 	if err != nil {
 		return nil, err
 	}
 
 	return &AuthResult{User: user, Session: session}, nil
+}
+
+// SignUpResend re-issues the verification code for a pending registration,
+// identified by the verification_token returned from SignUp.
+func (s *AuthService) SignUpResend(ctx context.Context, token uuid.UUID) (result *model.EmailRegistration, err error) {
+	defer func() { s.authMetrics.IncResend(authOutcomeFromError(err)) }()
+
+	result, err = s.emailRegistrationRepo.GetByID(ctx, token)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, NotFound("verification token not found")
+		}
+		return nil, Internal("Failed to get registration", err)
+	}
+
+	now := time.Now()
+	if result.ExpiresAt.Before(now) {
+		return nil, Unauthorized("verification token has expired")
+	}
+
+	code, err := generateCode()
+	if err != nil {
+		return nil, Internal("Failed to generate verification code", err)
+	}
+	codeHash, err := bcrypt.GenerateFromPassword([]byte(code), bcrypt.DefaultCost)
+	if err != nil {
+		return nil, Internal("Failed to hash verification code", err)
+	}
+
+	result.CodeHash = string(codeHash)
+	result.LastSentAt = now
+	result.ExpiresAt = now.Add(s.emailRegistrationConfig.TTL)
+	result.Attempts = 0
+
+	if err := mailer.SendEmailConfirmation(s.mailer, ctx, result, code); err != nil {
+		return nil, Internal("failed to send verification email", err)
+	}
+	if err := s.emailRegistrationRepo.Update(ctx, result); err != nil {
+		return nil, Internal("failed to update registration", err)
+	}
+	return result, nil
 }
 
 func (s *AuthService) SignIn(ctx context.Context, input SignInInput) (result *AuthResult, err error) {
@@ -131,7 +296,7 @@ func (s *AuthService) SignIn(ctx context.Context, input SignInInput) (result *Au
 		return nil, Unauthorized("Invalid credentials")
 	}
 
-	session, err := s.createSession(ctx, user.ID, input.IP, input.UserAgent)
+	session, err := openSession(ctx, s.sessionRepo, s.sessionMetrics, user.ID, input.IP, input.UserAgent)
 	if err != nil {
 		return nil, err
 	}
@@ -158,17 +323,38 @@ func (s *AuthService) SignOut(ctx context.Context, session *models.Session) erro
 	return nil
 }
 
-func (s *AuthService) createSession(ctx context.Context, userID uuid.UUID, ip, userAgent string) (*models.Session, error) {
+// openSession creates and persists a session, recording the session metric.
+// Shared by AuthService and OAuthService.
+func openSession(
+	ctx context.Context,
+	sessionRepo repo.ISessionRepository,
+	sessionMetrics *metrics.SessionMetrics,
+	userID uuid.UUID,
+	ip, userAgent string,
+) (*models.Session, error) {
 	session := &models.Session{
 		UserID:    userID,
 		IP:        ip,
 		UserAgent: userAgent,
 	}
-	if err := s.sessionRepo.CreateSession(ctx, session); err != nil {
+	if err := sessionRepo.CreateSession(ctx, session); err != nil {
 		return nil, Internal("Failed to create session", err)
 	}
-	s.sessionMetrics.IncCreated()
+	sessionMetrics.IncCreated()
 	return session, nil
+}
+
+// errorOutcome maps a service error to a metric "outcome" label: "success" when
+// nil, otherwise the service error code (not_found, unauthorized, conflict, …).
+func errorOutcome(err error) string {
+	if err == nil {
+		return "success"
+	}
+	var se *Error
+	if errors.As(err, &se) {
+		return se.Code
+	}
+	return "internal_error"
 }
 
 func authOutcomeFromError(err error) metrics.AuthOutcome {
@@ -208,4 +394,13 @@ func buildInitials(user *models.User) string {
 		return "?"
 	}
 	return strings.ToUpper(strings.Join(parts, ""))
+}
+
+func generateCode() (string, error) {
+	max := big.NewInt(1_000_000)
+	n, err := rand.Int(rand.Reader, max)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%06d", n.Int64()), nil
 }
