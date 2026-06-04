@@ -61,12 +61,13 @@ func New(cfg *config.Config) (*App, error) {
 	adminRoleService := service.NewAdminRoleService(roleRepo, userRepo).WithMetrics(m.Admin)
 	checkerService := service.NewCheckerService(taskRepo, homeworkRepo, studentScoreRepo, deadlineRepo, courseLateRepo, roleRepo).WithMetrics(m.Checker)
 	courseLateService := service.NewCourseLatePolicy(courseLateRepo, roleRepo).WithMetrics(m.LatePolicy)
+	gradeUpdateService := service.NewGradeUpdateService(taskRepo, studentScoreRepo, roleRepo).WithMetrics(m.Admin)
 
 	adminHomeworkHandler := handler.NewAdminHomeworkHandler(adminHomeworkService)
 	adminTaskHandler := handler.NewAdminTaskHandler(adminTaskService)
 	adminRoleHandler := handler.NewAdminRoleHandler(adminRoleService)
-	checkerHandler := handler.NewCheckerHandler(checkerService)
 	courseLateHandler := handler.NewCourseLateHandler(courseLateService)
+	gradeUpdateHandler := handler.NewGradeUpdateHandler(gradeUpdateService)
 
 	apiController := controller.NewAPIController(
 		handler.NewAuthHandler(authService),
@@ -75,6 +76,7 @@ func New(cfg *config.Config) (*App, error) {
 		handler.NewCourseHandler(courseService),
 		adminHomeworkHandler,
 		handler.NewCheckerHandler(checkerService),
+		handler.NewGradeUpdateHandler(gradeUpdateService),
 	)
 
 	e.Use(metrics.EchoMiddleware(m.HTTP))
@@ -107,12 +109,14 @@ func New(cfg *config.Config) (*App, error) {
 		"/admin/courses/:courseId/roles/:roleId/permissions/:permission",
 		"/admin/super-admins",
 		"/admin/homework/:hwId/deadline",
+		"/admin/courses/:courseId/homework/:hwId/tasks/:taskId/update_grade",
 	}))
 
 	api.RegisterHandlers(e, apiController)
 	apiController.RegisterCourseRoutes(e)
 	apiController.RegisterHomeworkRoutes(e)
-	apiController.RegisterAdminRoutes(e, adminHomeworkHandler, adminTaskHandler, adminRoleHandler, checkerHandler, courseLateHandler)
+	apiController.RegisterAdminRoutes(e, adminHomeworkHandler, adminTaskHandler, adminRoleHandler, courseLateHandler, gradeUpdateHandler)
+	apiController.RegisterCheckerRoutes(e)
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 	httpServer := server.NewHTTPServer(addr, e)

@@ -49,17 +49,12 @@ func (h *CheckerHandler) SubmitGrade(c echo.Context) error {
 		return badRequest(c, "submitted_at cannot be in the future")
 	}
 
-	submittedAt := req.SubmittedAt
-	if submittedAt.IsZero() {
-		submittedAt = time.Now()
-	}
-
 	score, err := h.checkerService.SubmitGrade(c.Request().Context(), service.SubmitGradeInput{
 		StudentID:   req.StudentID,
 		TaskID:      req.TaskID,
 		CourseID:    req.CourseID,
 		Status:      req.Status,
-		SubmittedAt: submittedAt,
+		SubmittedAt: req.SubmittedAt,
 	})
 	if err != nil {
 		return serviceError(c, err)

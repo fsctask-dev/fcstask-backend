@@ -58,9 +58,6 @@ func (s *CheckerService) SubmitGrade(ctx context.Context, input SubmitGradeInput
 	if err := RequireScopedPermission(ctx, s.roleRepo, input.StudentID, input.CourseID, PermissionTaskSubmit); err != nil {
 		return nil, err
 	}
-	if input.StudentID == uuid.Nil {
-		return nil, BadRequest("student_id is required")
-	}
 	if input.TaskID == uuid.Nil {
 		return nil, BadRequest("task_id is required")
 	}

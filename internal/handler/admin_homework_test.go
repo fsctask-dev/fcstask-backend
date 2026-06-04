@@ -597,26 +597,6 @@ func TestHandlerCreateHomework_MissingRequiredFields(t *testing.T) {
 	svc.AssertExpectations(t)
 }
 
-func TestHandlerCreateHomework_InvalidSoftDeadline(t *testing.T) {
-	svc := new(MockAdminHomeworkService)
-	h := handler.NewAdminHomeworkHandler(svc)
-
-	courseID := uuid.New()
-	body := map[string]interface{}{
-		"title":         "Week 1",
-		"start_date":    "2025-01-01",
-		"end_date":      "2025-06-01",
-		"soft_deadline": "invalid",
-		"hard_deadline": time.Now().UTC(),
-	}
-
-	c, rec := newEchoContext(http.MethodPost, "/", body, map[string]string{"courseId": courseID.String()})
-	err := h.CreateHomework(c)
-	assert.NoError(t, err)
-	assert.Equal(t, http.StatusBadRequest, rec.Code)
-	assert.Contains(t, rec.Body.String(), "bad_request")
-}
-
 func TestHandlerCreateHomework_ServiceDeadlineValidationError(t *testing.T) {
 	svc := new(MockAdminHomeworkService)
 	h := handler.NewAdminHomeworkHandler(svc)

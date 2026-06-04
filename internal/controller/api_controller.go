@@ -15,6 +15,7 @@ type APIController struct {
 	courseHandler        *handler.CourseHandler
 	adminHomeworkHandler *handler.AdminHomeworkHandler
 	checkerHandler       *handler.CheckerHandler
+	gradeUpdateHandler   *handler.GradeUpdateHandler
 }
 
 func NewAPIController(
@@ -24,6 +25,7 @@ func NewAPIController(
 	courseHandler *handler.CourseHandler,
 	adminHomeworkHandler *handler.AdminHomeworkHandler,
 	checkerHandler *handler.CheckerHandler,
+	gradeUpdateHandler *handler.GradeUpdateHandler,
 ) *APIController {
 	return &APIController{
 		authHandler:          authHandler,
@@ -32,6 +34,7 @@ func NewAPIController(
 		courseHandler:        courseHandler,
 		adminHomeworkHandler: adminHomeworkHandler,
 		checkerHandler:       checkerHandler,
+		gradeUpdateHandler:   gradeUpdateHandler,
 	}
 }
 
@@ -105,8 +108,8 @@ func (c *APIController) RegisterAdminRoutes(
 	adminHomeworkHandler *handler.AdminHomeworkHandler,
 	adminTaskHandler *handler.AdminTaskHandler,
 	adminRoleHandler *handler.AdminRoleHandler,
-	checkerHandler *handler.CheckerHandler,
 	courseLateHandler *handler.CourseLateHandler,
+	gradeUpdateHandler *handler.GradeUpdateHandler,
 ) {
 	e.POST("/admin/courses/:courseId/homework", adminHomeworkHandler.CreateHomework)
 	e.GET("/admin/courses/:courseId/homework/:hwId", adminHomeworkHandler.GetHomework)
@@ -136,5 +139,5 @@ func (c *APIController) RegisterAdminRoutes(
 	e.POST("/admin/super-admins", adminRoleHandler.CreateSuperAdmin)
 
 	e.PUT("/admin/courses/:courseId/late-policy", courseLateHandler.CreateOrUpdate)
-	e.POST("/api/grades", checkerHandler.SubmitGrade)
+	e.POST("/admin/courses/:courseID/homework/:hwId/tasks/:taskId/update_grade", gradeUpdateHandler.UpdateGrade)
 }

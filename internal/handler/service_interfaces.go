@@ -46,3 +46,7 @@ type IAdminTaskService interface {
 type ICheckerService interface {
 	SubmitGrade(ctx context.Context, input service.SubmitGradeInput) (*model.StudentTaskScore, error)
 }
+
+type IGradeUpdateService interface {
+	UpdateGrade(ctx context.Context, userID uuid.UUID, input service.UpdateGradeInput) (*model.StudentTaskScore, error)
+}

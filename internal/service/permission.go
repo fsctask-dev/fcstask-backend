@@ -47,6 +47,8 @@ const (
 	PermissionSuperAdminCreate = "super_admin.create"
 	PermissionIsSuperAdmin     = "is_super_admin"
 
+	PermissionGradeUpdate = "grade.update"
+
 	PermissionLatePolicyCreate = "create.late_policy"
 )
 
@@ -133,6 +135,7 @@ func CourseAdminPermissions() []string {
 		PermissionCourseRead,
 		PermissionCourseUpdate,
 		PermissionLatePolicyCreate,
+		PermissionGradeUpdate,
 	}
 }
 
