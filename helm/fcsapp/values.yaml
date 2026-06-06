@@ -42,9 +42,11 @@ securityContext: {}
 service:
   type: ClusterIP
   port: 80
+  metricsPort: 8081
 
 container:
   port: 8080
+  metricsPort: 8081
 
 #ingress:
 #  enabled: false
@@ -131,6 +133,10 @@ config:
   session:
     ttl: "24h"
     cleanupInterval: "5s"
+
+  observability:
+    metricsAddr: ":8081"
+    dbStatsInterval: "15s"
 
 volumeMounts:
   - name: app-config
