@@ -51,6 +51,7 @@ const (
 	PermissionGradeUpdate = "grade.update"
 
 	PermissionLatePolicyCreate = "create.late_policy"
+	PermissionStatsRead = "stats.read"
 )
 
 func HasPermission(ctx context.Context, roleRepo repo.IRoleRepo, roleID uuid.UUID, permission string) (bool, error) {
@@ -137,6 +138,7 @@ func CourseAdminPermissions() []string {
 		PermissionCourseUpdate,
 		PermissionLatePolicyCreate,
 		PermissionGradeUpdate,
+		PermissionStatsRead,
 	}
 }
 
@@ -150,6 +152,7 @@ func CourseOwnerPermissions() []string {
 		PermissionCoursePermissionRemove,
 		PermissionCoursePermissionList,
 		PermissionCourseInviteRegenerate,
+		PermissionStatsRead,
 	)
 }
 
@@ -159,6 +162,7 @@ func ServiceSuperAdminPermissions() []string {
 		PermissionIsSuperAdmin,
 		PermissionCourseCreate,
 		PermissionSuperAdminCreate,
+		PermissionStatsRead,
 	}
 }
 

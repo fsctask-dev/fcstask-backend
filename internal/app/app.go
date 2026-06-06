@@ -14,6 +14,7 @@ import (
 	"fcstask-backend/internal/service"
 	"fmt"
 	"log"
+	"net/http"
 	"time"
 
 	"github.com/labstack/echo/v4"
@@ -51,6 +52,7 @@ func New(cfg *config.Config) (*App, error) {
 	deadlineRepo := repo.NewDeadlineRepository(dbClient.DB())
 	studentScoreRepo := repo.NewStudentTaskScoreRepository(dbClient.DB())
 	courseLateRepo := repo.NewCourseLatePolicy(dbClient.DB())
+	statsRepo := repo.NewStatsRepository(dbClient)
 
 	userService := service.NewUserService(userRepo)
 	authService := service.NewAuthService(userRepo, sessionRepo).WithMetrics(m.Auth, m.Session)
@@ -62,12 +64,15 @@ func New(cfg *config.Config) (*App, error) {
 	checkerService := service.NewCheckerService(taskRepo, homeworkRepo, studentScoreRepo, deadlineRepo, courseLateRepo, roleRepo).WithMetrics(m.Checker)
 	courseLateService := service.NewCourseLatePolicy(courseLateRepo, roleRepo).WithMetrics(m.LatePolicy)
 	gradeUpdateService := service.NewGradeUpdateService(taskRepo, studentScoreRepo, roleRepo).WithMetrics(m.Admin)
+	statsService := service.NewStatsService(statsRepo, roleRepo)
 
 	adminHomeworkHandler := handler.NewAdminHomeworkHandler(adminHomeworkService)
 	adminTaskHandler := handler.NewAdminTaskHandler(adminTaskService)
 	adminRoleHandler := handler.NewAdminRoleHandler(adminRoleService)
 	courseLateHandler := handler.NewCourseLateHandler(courseLateService)
 	gradeUpdateHandler := handler.NewGradeUpdateHandler(gradeUpdateService)
+
+	statsHandler := handler.NewStatsHandler(statsService)
 
 	apiController := controller.NewAPIController(
 		handler.NewAuthHandler(authService),
@@ -78,7 +83,19 @@ func New(cfg *config.Config) (*App, error) {
 		handler.NewCheckerHandler(checkerService),
 		handler.NewGradeUpdateHandler(gradeUpdateService),
 		handler.NewCourseLateHandler(courseLateService),
+		statsHandler,
 	)
+
+	e.GET("/health", func(c echo.Context) error {
+		sqlDB, err := dbClient.DB().DB()
+		if err != nil {
+			return c.JSON(http.StatusServiceUnavailable, map[string]string{"status": "error", "detail": "db connection lost"})
+		}
+		if err := sqlDB.Ping(); err != nil {
+			return c.JSON(http.StatusServiceUnavailable, map[string]string{"status": "error", "detail": "db ping failed"})
+		}
+		return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
+	})
 
 	e.Use(metrics.EchoMiddleware(m.HTTP))
 
@@ -93,8 +110,10 @@ func New(cfg *config.Config) (*App, error) {
 		"/v1/sessions",
 		"/v1/users/sessions",
 		"/api/signout",
+		"/api/stats",
 		"/api/courses",
 		"/api/courses/:courseId/scores",
+		"/api/courses/:courseId/board",
 		"/api/courses/:courseId/join",
 		"/api/courses/:courseId/invite",
 		"/api/grades",

@@ -17,6 +17,7 @@ type APIController struct {
 	checkerHandler       *handler.CheckerHandler
 	gradeUpdateHandler   *handler.GradeUpdateHandler
 	courseLateHandler    *handler.CourseLateHandler
+	statsHandler         *handler.StatsHandler
 }
 
 func NewAPIController(
@@ -28,6 +29,7 @@ func NewAPIController(
 	checkerHandler *handler.CheckerHandler,
 	gradeUpdateHandler *handler.GradeUpdateHandler,
 	courseLateHandler *handler.CourseLateHandler,
+	statsHandler *handler.StatsHandler,
 ) *APIController {
 	return &APIController{
 		authHandler:          authHandler,
@@ -38,6 +40,7 @@ func NewAPIController(
 		checkerHandler:       checkerHandler,
 		gradeUpdateHandler:   gradeUpdateHandler,
 		courseLateHandler:    courseLateHandler,
+		statsHandler:         statsHandler,
 	}
 }
 
@@ -90,6 +93,7 @@ func (c *APIController) RegisterCheckerRoutes(e *echo.Echo) {
 }
 
 func (c *APIController) RegisterCourseRoutes(e *echo.Echo) {
+	e.GET("/api/stats", c.statsHandler.GetStats)
 	e.GET("/api/courses", c.courseHandler.GetCourses)
 	e.POST("/api/courses", c.courseHandler.CreateCourse)
 	e.GET("/api/courses/public", c.courseHandler.GetPublicCourses)

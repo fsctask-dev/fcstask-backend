@@ -64,17 +64,17 @@ func (m *mockCourseRepo) GetCourseInfo(ctx context.Context, courseID uuid.UUID) 
 func (m *mockCourseRepo) GetCourses(ctx context.Context) ([]model.Course, error) {
 	return nil, nil
 }
-func (m *mockCourseRepo) GetLeaderboard(ctx context.Context, courseID uuid.UUID) ([]model.LeaderboardEntry, error) {
+func (m *mockCourseRepo) GetLeaderboard(ctx context.Context, courseID string) ([]model.LeaderboardEntry, error) {
 	args := m.Called(ctx, courseID)
 	return args.Get(0).([]model.LeaderboardEntry), args.Error(1)
 }
 func (m *mockCourseRepo) UpdateInviteCode(ctx context.Context, courseID uuid.UUID, code *string) error {
-    args := m.Called(ctx, courseID, code)
-    return args.Error(0)
+	args := m.Called(ctx, courseID, code)
+	return args.Error(0)
 }
 
 func (m *mockCourseRepo) GetPublicCourses(ctx context.Context) ([]model.Course, error) {
-    return nil, nil
+	return nil, nil
 }
 
 type mockRoleRepo struct {
@@ -406,7 +406,7 @@ func TestGetCourseBoard_Public(t *testing.T) {
 	courseRepo.On("GetCourseByID", mock.Anything, "pub").Return(course, nil)
 	roleRepo.On("GetRoleIDByUserAndCourse", mock.Anything, user.ID, course.ID).Return(roleID, nil)
 	roleRepo.On("HasPermission", mock.Anything, roleID, service.PermissionCourseRead).Return(true, nil)
-	courseRepo.On("GetCourseBoard", mock.Anything, "pub").Return(nil, false, nil)
+	courseRepo.On("GetCourseBoard", mock.Anything, "pub", user.ID).Return(nil, false, nil)
 
 	c := makeContext(e, user, map[string]string{"courseId": "pub"})
 	err := handler.GetCourseBoard(c)
@@ -421,16 +421,48 @@ func TestGetScores_Success(t *testing.T) {
 	courseID := uuid.New()
 	course := &model.Course{ID: courseID, Name: "Go", Type: model.CourseTypePrivate}
 
+	hwID := uuid.New()
+	task1 := uuid.New()
+	task2 := uuid.New()
 	entries := []model.LeaderboardEntry{
-		{Username: "alice", TotalScore: 30, Tasks: map[uuid.UUID]int{uuid.New(): 10, uuid.New(): 20}, Rank: 1},
-		{Username: "bob", TotalScore: 20, Tasks: map[uuid.UUID]int{uuid.New(): 20}, Rank: 2},
+		{
+			Username:   "alice",
+			TotalScore: 30,
+			Homeworks: []model.HomeworkScore{
+				{
+					HomeworkID:    hwID,
+					HomeworkTitle: "Week 1",
+					TotalScore:    30,
+					Tasks: []model.TaskScore{
+						{TaskID: task1, Title: "Task 1", Score: 10},
+						{TaskID: task2, Title: "Task 2", Score: 20},
+					},
+				},
+			},
+			Rank: 1,
+		},
+		{
+			Username:   "bob",
+			TotalScore: 20,
+			Homeworks: []model.HomeworkScore{
+				{
+					HomeworkID:    hwID,
+					HomeworkTitle: "Week 1",
+					TotalScore:    20,
+					Tasks: []model.TaskScore{
+						{TaskID: task1, Title: "Task 1", Score: 20},
+					},
+				},
+			},
+			Rank: 2,
+		},
 	}
 
 	courseRepo.On("GetCourseByID", mock.Anything, courseID.String()).Return(course, nil)
 	roleRepo.On("GetRoleIDByUserAndCourse", mock.Anything, user.ID, courseID).Return(roleID, nil)
-	roleRepo.On("HasPermission", mock.Anything, roleID, service.PermissionCourseRead).Return(true, nil)      // GetCourse
-	roleRepo.On("HasPermission", mock.Anything, roleID, service.PermissionLeaderboardRead).Return(true, nil) // GetLeaderboard
-	courseRepo.On("GetLeaderboard", mock.Anything, courseID).Return(entries, nil)
+	roleRepo.On("HasPermission", mock.Anything, roleID, service.PermissionCourseRead).Return(true, nil)
+	roleRepo.On("HasPermission", mock.Anything, roleID, service.PermissionLeaderboardRead).Return(true, nil)
+	courseRepo.On("GetLeaderboard", mock.Anything, courseID.String()).Return(entries, nil)
 
 	c := makeContext(e, user, map[string]string{"courseId": courseID.String()})
 	err := handler.GetScores(c)
@@ -444,6 +476,12 @@ func TestGetScores_Success(t *testing.T) {
 	assert.Equal(t, "alice", resp[0].Username)
 	assert.Equal(t, 30, resp[0].TotalScore)
 	assert.Equal(t, 1, resp[0].Rank)
+	assert.Len(t, resp[0].Homeworks, 1)
+	assert.Equal(t, "Week 1", resp[0].Homeworks[0].HomeworkTitle)
+	assert.Equal(t, 30, resp[0].Homeworks[0].TotalScore)
+	assert.Len(t, resp[0].Homeworks[0].Tasks, 2)
+	assert.Equal(t, "Task 1", resp[0].Homeworks[0].Tasks[0].Title)
+	assert.Equal(t, 10, resp[0].Homeworks[0].Tasks[0].Score)
 }
 
 func TestGetScores_Forbidden(t *testing.T) {
@@ -474,7 +512,7 @@ func TestGetScores_Empty(t *testing.T) {
 	roleRepo.On("GetRoleIDByUserAndCourse", mock.Anything, user.ID, courseID).Return(roleID, nil)
 	roleRepo.On("HasPermission", mock.Anything, roleID, service.PermissionCourseRead).Return(true, nil)
 	roleRepo.On("HasPermission", mock.Anything, roleID, service.PermissionLeaderboardRead).Return(true, nil)
-	courseRepo.On("GetLeaderboard", mock.Anything, courseID).Return([]model.LeaderboardEntry{}, nil)
+	courseRepo.On("GetLeaderboard", mock.Anything, courseID.String()).Return([]model.LeaderboardEntry{}, nil)
 
 	c := makeContext(e, user, map[string]string{"courseId": courseID.String()})
 	err := handler.GetScores(c)
@@ -487,6 +525,21 @@ func TestGetScores_Empty(t *testing.T) {
 	assert.Empty(t, resp)
 }
 
+func TestGetCourseBoard_Private_Forbidden(t *testing.T) {
+	handler, e, courseRepo, roleRepo := setupTest()
+	user := newTestUser()
+	course := &model.Course{ID: uuid.New(), Name: "Priv", Type: model.CourseTypePrivate}
+
+	courseRepo.On("GetCourseByID", mock.Anything, "priv").Return(course, nil)
+	roleRepo.On("GetRoleIDByUserAndCourse", mock.Anything, user.ID, course.ID).Return(uuid.Nil, gorm.ErrRecordNotFound)
+	roleRepo.On("GetRoleIDByUserAndCourse", mock.Anything, user.ID, uuid.Nil).Return(uuid.Nil, gorm.ErrRecordNotFound)
+
+	c := makeContext(e, user, map[string]string{"courseId": "priv"})
+	err := handler.GetCourseBoard(c)
+
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusForbidden, c.Response().Status)
+}
 func parseDate(s string) *time.Time {
 	t, _ := time.Parse("2006-01-02", s)
 	return &t

@@ -76,16 +76,18 @@ func TestHandlerCreateTask_Success(t *testing.T) {
 	h := handler.NewAdminTaskHandler(svc)
 
 	hwID := uuid.New()
+	title := "Test Task"
 	repoURL := "https://github.com/test/repo"
 	taskURL := "https://test.com/task"
 	Score := 100
 
 	body := map[string]interface{}{
+		"title":    title,
 		"repo_url": repoURL,
 		"task_url": taskURL,
 		"score":    Score,
 	}
-	expected := &model.Task{TaskID: uuid.New(), HwID: hwID, RepoURL: &repoURL, TaskURL: &taskURL}
+	expected := &model.Task{TaskID: uuid.New(), HwID: hwID, Title: title, RepoURL: &repoURL, TaskURL: &taskURL}
 
 	c, rec := newEchoContextMultiParam(http.MethodPost, "/", body,
 		[]string{"courseId", "hwId"},
@@ -93,6 +95,7 @@ func TestHandlerCreateTask_Success(t *testing.T) {
 	)
 	svc.On("CreateTask", mock.Anything, mock.Anything, service.CreateTaskInput{
 		HwID:    hwID,
+		Title:   &title,
 		RepoURL: repoURL,
 		TaskURL: taskURL,
 		Score:   Score,
@@ -121,7 +124,7 @@ func TestHandlerCreateTask_HomeworkNotFound(t *testing.T) {
 
 	hwID := uuid.New()
 	courseID := uuid.New()
-	body := map[string]interface{}{"repo_url": "https://github.com/test/repo"}
+	body := map[string]interface{}{"title": "Test", "repo_url": "https://github.com/test/repo"}
 
 	c, rec := newEchoContextMultiParam(http.MethodPost, "/", body,
 		[]string{"courseId", "hwId"},
@@ -271,18 +274,21 @@ func TestHandlerUpdateTask_Success(t *testing.T) {
 	h := handler.NewAdminTaskHandler(svc)
 
 	taskID := uuid.New()
+	newTitle := "Updated Task"
 	newRepo := "https://github.com/test/new-repo"
 	newTask := "https://test.com/new-task"
 	newScore := 200
 	body := map[string]interface{}{
+		"title":    newTitle,
 		"repo_url": newRepo,
 		"task_url": newTask,
 		"score":    newScore,
 	}
-	expected := &model.Task{TaskID: taskID, RepoURL: &newRepo, TaskURL: &newTask}
+	expected := &model.Task{TaskID: taskID, Title: newTitle, RepoURL: &newRepo, TaskURL: &newTask}
 
 	c, rec := newEchoContext(http.MethodPatch, "/", body, map[string]string{"taskId": taskID.String()})
 	svc.On("UpdateTask", mock.Anything, mock.Anything, taskID, service.UpdateTaskInput{
+		Title:   &newTitle,
 		RepoURL: newRepo,
 		TaskURL: newTask,
 		Score:   newScore,
@@ -310,7 +316,7 @@ func TestHandlerUpdateTask_NotFound(t *testing.T) {
 	h := handler.NewAdminTaskHandler(svc)
 
 	taskID := uuid.New()
-	body := map[string]interface{}{"repo_url": "https://github.com/test/repo"}
+	body := map[string]interface{}{"title": "Test", "repo_url": "https://github.com/test/repo"}
 
 	c, rec := newEchoContext(http.MethodPatch, "/", body, map[string]string{"taskId": taskID.String()})
 	svc.On("UpdateTask", mock.Anything, mock.Anything, taskID, mock.Anything).Return(nil, service.NotFound("Task not found"))

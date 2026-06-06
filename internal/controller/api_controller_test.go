@@ -183,31 +183,73 @@ func (r *controllerCourseRepo) GetCourseBoard(ctx context.Context, courseID stri
 	return nil, false, nil
 }
 
-func (r *controllerCourseRepo) GetCourseInfo(ctx context.Context, courseID uuid.UUID) (*models.CourseInfo, error) {
-	for _, c := range r.courses {
-		if c.ID == courseID || c.Slug == courseID.String() {
-			return &models.CourseInfo{Course: c, Homeworks: []models.HomeworkWithTasks{}}, nil
-		}
-	}
-	return nil, nil
-}
-
-func (r *controllerCourseRepo) GetLeaderboard(ctx context.Context, courseID uuid.UUID) ([]models.LeaderboardEntry, error) {
+func (r *controllerCourseRepo) GetLeaderboard(ctx context.Context, courseID string) ([]models.LeaderboardEntry, error) {
 	return nil, nil
 }
 
 func (r *controllerCourseRepo) UpdateInviteCode(ctx context.Context, courseID uuid.UUID, code *string) error {
-    return nil
+	return nil
+}
+
+func (r *controllerCourseRepo) GetCourseInfo(ctx context.Context, courseID uuid.UUID) (*models.CourseInfo, error) {
+	return nil, nil
 }
 
 func (r *controllerCourseRepo) GetPublicCourses(ctx context.Context) ([]models.Course, error) {
-    var courses []models.Course
-    for _, course := range r.courses {
-        if course.Type == models.CourseTypePublic {
-            courses = append(courses, course)
-        }
-    }
-    return courses, nil
+	var courses []models.Course
+	for _, course := range r.courses {
+		if course.Type == models.CourseTypePublic {
+			courses = append(courses, course)
+		}
+	}
+	return courses, nil
+}
+
+type controllerRoleRepo struct{}
+
+func (r *controllerRoleRepo) AssignRoleWithPermissions(ctx context.Context, role *models.UserRole, permissions []string) error {
+	return nil
+}
+func (r *controllerRoleRepo) RevokeRoleWithPermissions(ctx context.Context, userID, courseID, roleID uuid.UUID) error {
+	return nil
+}
+func (r *controllerRoleRepo) GetByCourseID(ctx context.Context, courseID uuid.UUID) ([]models.UserRole, error) {
+	return nil, nil
+}
+func (r *controllerRoleRepo) GetRoleIDByUserAndCourse(ctx context.Context, userID, courseID uuid.UUID) (uuid.UUID, error) {
+	return uuid.New(), nil
+}
+func (r *controllerRoleRepo) RoleBelongsToCourse(ctx context.Context, roleID, courseID uuid.UUID) (bool, error) {
+	return true, nil
+}
+func (r *controllerRoleRepo) HasPermission(ctx context.Context, roleID uuid.UUID, permission string) (bool, error) {
+	return true, nil
+}
+func (r *controllerRoleRepo) AddPermission(ctx context.Context, perm *models.CourseAdminPermission) error {
+	return nil
+}
+func (r *controllerRoleRepo) AddPermissions(ctx context.Context, roleID uuid.UUID, permissions []string) error {
+	return nil
+}
+func (r *controllerRoleRepo) RemovePermission(ctx context.Context, roleID uuid.UUID, permission string) error {
+	return nil
+}
+func (r *controllerRoleRepo) RemovePermissions(ctx context.Context, roleID uuid.UUID, permissions []string) error {
+	return nil
+}
+func (r *controllerRoleRepo) GetPermissions(ctx context.Context, roleID uuid.UUID) ([]models.CourseAdminPermission, error) {
+	return nil, nil
+}
+
+type controllerStatsRepo struct{}
+
+func (r *controllerStatsRepo) GetStats(ctx context.Context) (*models.PlatformStats, error) {
+	return &models.PlatformStats{
+		TotalCourses:   1,
+		PublicCourses:  1,
+		PrivateCourses: 0,
+		TotalUsers:     1,
+	}, nil
 }
 
 func newTestController(userRepo *controllerUserRepo, sessionRepo *controllerSessionRepo, courseRepo *controllerCourseRepo) *APIController {
@@ -215,6 +257,9 @@ func newTestController(userRepo *controllerUserRepo, sessionRepo *controllerSess
 	authService := service.NewAuthService(userRepo, sessionRepo)
 	sessionService := service.NewSessionService(sessionRepo)
 	courseService := service.NewCourseService(courseRepo, nil, nil)
+	roleRepo := &controllerRoleRepo{}
+	statsService := service.NewStatsService(&controllerStatsRepo{}, roleRepo)
+	statsHandler := handler.NewStatsHandler(statsService)
 
 	return NewAPIController(
 		handler.NewAuthHandler(authService),
@@ -224,6 +269,7 @@ func newTestController(userRepo *controllerUserRepo, sessionRepo *controllerSess
 		nil,
 		nil,
 		nil,
+		statsHandler,
 	)
 }
 
