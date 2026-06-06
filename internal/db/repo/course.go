@@ -168,7 +168,7 @@ func (r *CourseRepository) GetCourseBoard(ctx context.Context, courseID string, 
 
 	var tasks []models.Task
 	if err := r.rw.ReadDB().WithContext(ctx).
-		Where("hw_id IN ?", hwIDs).
+		Where("hw_id IN ? AND is_public = true", hwIDs).
 		Find(&tasks).Error; err != nil {
 		return nil, false, err
 	}
