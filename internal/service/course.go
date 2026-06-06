@@ -132,7 +132,7 @@ func (s *CourseService) CreateCourse(ctx context.Context, userID uuid.UUID, inpu
 		return nil, Internal("Failed to create course", err)
 	}
 
-	if _, err := EnsureUserRoleWithPermissions(ctx, s.RoleRepo, userID, created.ID, CourseAdminPermissions()); err != nil {
+	if _, err := EnsureUserRoleWithPermissions(ctx, s.RoleRepo, userID, created.ID, CourseOwnerPermissions()); err != nil {
 		return nil, Internal("Failed to assign admin permissions", err)
 	}
 
@@ -384,10 +384,7 @@ func validateCreateCourse(input CourseInput) error {
 func IsValidCourseStatus(status string) bool {
 	valid := map[string]bool{
 		"created":          true,
-		"hidden":           true,
 		"in_progress":      true,
-		"all_tasks_issued": true,
-		"doreshka":         true,
 		"finished":         true,
 	}
 	return valid[status]

@@ -26,6 +26,19 @@ func (m *MockAdminRoleService) CreateSuperAdmin(ctx context.Context, userID uuid
 	return args.Get(0).(*model.UserRole), args.Error(1)
 }
 
+func (m *MockAdminRoleService) GrantCourseCreatePermission(ctx context.Context, userID uuid.UUID, targetUserID uuid.UUID) (*model.UserRole, error) {
+    args := m.Called(ctx, userID, targetUserID)
+    if args.Get(0) == nil {
+        return nil, args.Error(1)
+    }
+    return args.Get(0).(*model.UserRole), args.Error(1)
+}
+
+func (m *MockAdminRoleService) RevokeCourseCreatePermission(ctx context.Context, userID uuid.UUID, targetUserID uuid.UUID) error {
+    args := m.Called(ctx, userID, targetUserID)
+    return args.Error(0)
+}
+
 func (m *MockAdminRoleService) AssignCourseAdmin(ctx context.Context, userID uuid.UUID, input service.AssignCourseAdminInput) (*model.UserRole, error) {
 	args := m.Called(ctx, userID, input)
 	if args.Get(0) == nil {

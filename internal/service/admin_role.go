@@ -101,6 +101,51 @@ func (s *AdminRoleService) CreateSuperAdmin(ctx context.Context, userID uuid.UUI
 	return role, err
 }
 
+func (s *AdminRoleService) GrantCourseCreatePermission(ctx context.Context, userID uuid.UUID, targetUserID uuid.UUID) (*model.UserRole, error) {
+    if targetUserID == uuid.Nil {
+        return nil, BadRequest("user_id is required")
+    }
+
+    if err := RequireScopedPermission(ctx, s.roleRepo, userID, uuid.Nil, PermissionCourseCreateGrant); err != nil {
+        return nil, err
+    }
+
+    if _, err := s.userRepo.GetUserByID(ctx, targetUserID); err != nil {
+        return nil, NotFound("User not found")
+    }
+
+    // если у пользователя нет глобальной роли, создаст ее и запишет право
+    // если есть, добавит course.create к существующей роли
+    role, err := EnsureUserRoleWithPermissions(ctx, s.roleRepo, targetUserID, uuid.Nil, []string{PermissionCourseCreate})
+    if err != nil {
+        return nil, Internal("Failed to grant course create permission", err)
+    }
+
+    return role, nil
+}
+
+func (s *AdminRoleService) RevokeCourseCreatePermission(ctx context.Context, userID uuid.UUID, targetUserID uuid.UUID) error {
+    if targetUserID == uuid.Nil {
+        return BadRequest("user_id is required")
+    }
+
+    if err := RequireScopedPermission(ctx, s.roleRepo, userID, uuid.Nil, PermissionCourseCreateGrant); err != nil {
+        return err
+    }
+
+    roleID, err := s.roleRepo.GetRoleIDByUserAndCourse(ctx, targetUserID, uuid.Nil)
+    if err != nil {
+        return NotFound("User does not have a global role or course.create permission")
+    }
+
+	// удалит только право course.create
+    if err := RevokeRolePermissions(ctx, s.roleRepo, roleID, []string{PermissionCourseCreate}); err != nil {
+        return Internal("Failed to revoke course create permission", err)
+    }
+
+    return nil
+}
+
 func (s *AdminRoleService) RevokeCourseAdmin(ctx context.Context, userID uuid.UUID, input RevokeCourseAdminInput) (err error) {
 	defer func() { s.adminMetrics.IncAction(metrics.AdminActionRevokeRole, adminOutcome(err)) }()
 

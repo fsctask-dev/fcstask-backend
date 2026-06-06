@@ -103,6 +103,7 @@ func New(cfg *config.Config) (*App, error) {
 		"/admin/courses/:courseId/roles/:roleId/permissions",
 		"/admin/courses/:courseId/roles/:roleId/permissions/:permission",
 		"/admin/super-admins",
+		"/admin/users/:userId/grant-course-create",
 		"/admin/homework/:hwId/deadline",
 	}))
 

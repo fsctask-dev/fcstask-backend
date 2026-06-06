@@ -34,6 +34,10 @@ type CreateSuperAdminRequest struct {
 	UserID uuid.UUID `json:"user_id"`
 }
 
+type GrantCourseCreateRequest struct {
+    UserID uuid.UUID `json:"user_id"`
+}
+
 // POST /admin/super-admins
 func (h *AdminRoleHandler) CreateSuperAdmin(c echo.Context) error {
 	user, ok := c.Get(UserContextKey).(*model.User)
@@ -54,6 +58,45 @@ func (h *AdminRoleHandler) CreateSuperAdmin(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusCreated, userRole)
+}
+
+// POST /admin/users/:userId/grant-course-create
+func (h *AdminRoleHandler) GrantCourseCreatePermission(c echo.Context) error {
+    user, ok := c.Get(UserContextKey).(*model.User)
+    if !ok || user == nil {
+        return unauthorized(c, "User not found")
+    }
+
+    targetUserID, err := uuid.Parse(c.Param("userId"))
+    if err != nil {
+        return badRequest(c, "Invalid user ID")
+    }
+
+    userRole, err := h.roleService.GrantCourseCreatePermission(c.Request().Context(), user.ID, targetUserID)
+    if err != nil {
+        return serviceError(c, err)
+    }
+
+    return c.JSON(http.StatusCreated, userRole)
+}
+
+// DELETE /admin/users/:userId/grant-course-create
+func (h *AdminRoleHandler) RevokeCourseCreatePermission(c echo.Context) error {
+    user, ok := c.Get(UserContextKey).(*model.User)
+    if !ok || user == nil {
+        return unauthorized(c, "User not found")
+    }
+
+    targetUserID, err := uuid.Parse(c.Param("userId"))
+    if err != nil {
+        return badRequest(c, "Invalid user ID")
+    }
+
+    if err := h.roleService.RevokeCourseCreatePermission(c.Request().Context(), user.ID, targetUserID); err != nil {
+        return serviceError(c, err)
+    }
+
+    return c.NoContent(http.StatusNoContent)
 }
 
 // POST /admin/courses/:courseId/roles

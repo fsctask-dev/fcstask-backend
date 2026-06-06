@@ -25,6 +25,8 @@ type IAdminHomeworkService interface {
 type IAdminRoleService interface {
 	CreateSuperAdmin(ctx context.Context, userID uuid.UUID, input service.CreateSuperAdminInput) (*model.UserRole, error)
 	AssignCourseAdmin(ctx context.Context, userID uuid.UUID, input service.AssignCourseAdminInput) (*model.UserRole, error)
+	GrantCourseCreatePermission(ctx context.Context, userID uuid.UUID, targetUserID uuid.UUID) (*model.UserRole, error)
+    RevokeCourseCreatePermission(ctx context.Context, userID uuid.UUID, targetUserID uuid.UUID) error
 	RevokeCourseAdmin(ctx context.Context, userID uuid.UUID, input service.RevokeCourseAdminInput) error
 	RemoveCourseParticipant(ctx context.Context, userID uuid.UUID, input service.RemoveCourseParticipantInput) error
 	ListUserRoles(ctx context.Context, userID, courseID uuid.UUID) ([]model.UserRole, error)

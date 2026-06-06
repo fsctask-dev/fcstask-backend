@@ -127,4 +127,6 @@ func (c *APIController) RegisterAdminRoutes(
 	e.DELETE("/admin/courses/:courseId/roles/:roleId/permissions/:permission", adminRoleHandler.RemovePermission)
 	e.GET("/admin/courses/:courseId/roles/:roleId/permissions", adminRoleHandler.ListPermissions)
 	e.POST("/admin/super-admins", adminRoleHandler.CreateSuperAdmin)
+	e.POST("/admin/users/:userId/grant-course-create", adminRoleHandler.GrantCourseCreatePermission)
+    e.DELETE("/admin/users/:userId/grant-course-create", adminRoleHandler.RevokeCourseCreatePermission)
 }
