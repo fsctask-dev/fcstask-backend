@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sort"
+	"time"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -21,7 +22,7 @@ type CourseRepositoryInterface interface {
 	DeleteCourse(ctx context.Context, courseID string) error
 	GetCourseBoard(ctx context.Context, courseID string, userID uuid.UUID) (*models.TaskBoardSummary, bool, error)
 	GetCourseInfo(ctx context.Context, courseID uuid.UUID) (*models.CourseInfo, error)
-	GetLeaderboard(ctx context.Context, courseID uuid.UUID) ([]models.LeaderboardEntry, error)
+	GetLeaderboard(ctx context.Context, courseID string) ([]models.LeaderboardEntry, error)
 	UpdateInviteCode(ctx context.Context, courseID uuid.UUID, code *string) error
 	GetPublicCourses(ctx context.Context) ([]models.Course, error)
 }
@@ -43,13 +44,13 @@ func (r *CourseRepository) GetCourses(ctx context.Context) ([]models.Course, err
 }
 
 func (r *CourseRepository) GetPublicCourses(ctx context.Context) ([]models.Course, error) {
-    var courses []models.Course
-    if err := r.rw.ReadDB().WithContext(ctx).
-        Where("type = ?", models.CourseTypePublic).
-        Find(&courses).Error; err != nil {
-        return nil, err
-    }
-    return courses, nil
+	var courses []models.Course
+	if err := r.rw.ReadDB().WithContext(ctx).
+		Where("type = ?", models.CourseTypePublic).
+		Find(&courses).Error; err != nil {
+		return nil, err
+	}
+	return courses, nil
 }
 
 func (r *CourseRepository) GetCoursesByUserID(ctx context.Context, userID uuid.UUID, status string) ([]models.Course, error) {
@@ -126,7 +127,151 @@ func (r *CourseRepository) DeleteCourse(ctx context.Context, courseID string) er
 }
 
 func (r *CourseRepository) GetCourseBoard(ctx context.Context, courseID string, userID uuid.UUID) (*models.TaskBoardSummary, bool, error) {
-	return nil, false, nil
+	courseUUID, err := uuid.Parse(courseID)
+	var course models.Course
+	if err != nil {
+		if err := r.rw.ReadDB().WithContext(ctx).First(&course, "slug = ?", courseID).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil, false, nil
+			}
+			return nil, false, err
+		}
+	} else {
+		if err := r.rw.ReadDB().WithContext(ctx).First(&course, "id = ?", courseUUID).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil, false, nil
+			}
+			return nil, false, err
+		}
+	}
+
+	var homeworks []models.Homework
+	if err := r.rw.ReadDB().WithContext(ctx).
+		Where("course_id = ? AND is_public = true", course.ID).
+		Order("position ASC").
+		Find(&homeworks).Error; err != nil {
+		return nil, false, err
+	}
+
+	if len(homeworks) == 0 {
+		return &models.TaskBoardSummary{
+			CourseName:   course.Name,
+			CourseStatus: course.Status,
+			Groups:       []models.BoardGroup{},
+		}, true, nil
+	}
+
+	hwIDs := make([]uuid.UUID, len(homeworks))
+	for i, hw := range homeworks {
+		hwIDs[i] = hw.HwID
+	}
+
+	var tasks []models.Task
+	if err := r.rw.ReadDB().WithContext(ctx).
+		Where("hw_id IN ? AND is_public = true", hwIDs).
+		Find(&tasks).Error; err != nil {
+		return nil, false, err
+	}
+	tasksByHW := make(map[uuid.UUID][]models.Task)
+	for _, t := range tasks {
+		tasksByHW[t.HwID] = append(tasksByHW[t.HwID], t)
+	}
+
+	var deadlines []models.Deadline
+	if err := r.rw.ReadDB().WithContext(ctx).
+		Where("homework_id IN ?", hwIDs).
+		Find(&deadlines).Error; err != nil {
+		return nil, false, err
+	}
+	deadlinesByHW := make(map[uuid.UUID][]models.Deadline)
+	for _, dl := range deadlines {
+		if dl.HomeworkID != uuid.Nil {
+			deadlinesByHW[dl.HomeworkID] = append(deadlinesByHW[dl.HomeworkID], dl)
+		}
+	}
+
+	type taskScore struct {
+		TaskID uuid.UUID
+		Score  int
+	}
+	var scores []taskScore
+	if err := r.rw.ReadDB().WithContext(ctx).
+		Model(&models.StudentTaskScore{}).
+		Select("task_id, score").
+		Where("student_id = ? AND course_id = ?", userID, course.ID).
+		Find(&scores).Error; err != nil {
+		return nil, false, err
+	}
+	scoreMap := make(map[uuid.UUID]int)
+	for _, s := range scores {
+		scoreMap[s.TaskID] = s.Score
+	}
+
+	summary := &models.TaskBoardSummary{
+		CourseName:   course.Name,
+		CourseStatus: course.Status,
+		Groups:       make([]models.BoardGroup, 0, len(homeworks)),
+	}
+
+	totalMax := 0
+	totalSolved := 0
+
+	for _, hw := range homeworks {
+		group := models.BoardGroup{
+			ID:        hw.HwID.String(),
+			Name:      hw.Title,
+			IsSpecial: hw.IsPublic,
+			StartedAt: formatTime(hw.StartDate),
+			EndsAt:    formatTime(hw.EndDate),
+			Deadlines: make([]models.BoardDeadline, 0),
+			Tasks:     make([]models.BoardTask, 0),
+		}
+
+		for _, dl := range deadlinesByHW[hw.HwID] {
+			group.Deadlines = append(group.Deadlines, models.BoardDeadline{
+				ID:      dl.ID.String(),
+				Label:   dl.Title,
+				DueAt:   dl.DueDate.Format(time.RFC3339),
+				Status:  deadlineStatus(dl.DueDate),
+				Percent: 0,
+			})
+		}
+
+		for _, task := range tasksByHW[hw.HwID] {
+			scoreCfg := 0
+			if task.Score != nil {
+				scoreCfg = *task.Score
+			}
+			earned := scoreMap[task.TaskID]
+
+			stats := 0.0
+			if scoreCfg > 0 {
+				stats = float64(earned) / float64(scoreCfg)
+			}
+
+			group.Tasks = append(group.Tasks, models.BoardTask{
+				ID:          task.TaskID.String(),
+				Name:        task.Title,
+				Score:       scoreCfg,
+				ScoreEarned: earned,
+				Stats:       stats,
+				URL:         stringPtrValue(task.TaskURL),
+			})
+
+			totalMax += scoreCfg
+			totalSolved += earned
+		}
+
+		summary.Groups = append(summary.Groups, group)
+	}
+
+	summary.MaxScore = totalMax
+	summary.SolvedScore = totalSolved
+	if totalMax > 0 {
+		summary.SolvedPercent = (totalSolved * 100) / totalMax
+	}
+
+	return summary, true, nil
 }
 
 func (r *CourseRepository) GetCourseInfo(ctx context.Context, courseID uuid.UUID) (*models.CourseInfo, error) {
@@ -166,9 +311,9 @@ func (r *CourseRepository) GetCourseInfo(ctx context.Context, courseID uuid.UUID
 	}
 
 	deadlinesByHwID := make(map[uuid.UUID][]models.Deadline)
-		for _, d := range allDeadlines {
-    		deadlinesByHwID[d.HomeworkID] = append(deadlinesByHwID[d.HomeworkID], d)
-		}
+	for _, d := range allDeadlines {
+		deadlinesByHwID[d.HomeworkID] = append(deadlinesByHwID[d.HomeworkID], d)
+	}
 
 	details := make([]models.HomeworkWithTasks, len(homeworks))
 	for i, hw := range homeworks {
@@ -180,27 +325,50 @@ func (r *CourseRepository) GetCourseInfo(ctx context.Context, courseID uuid.UUID
 	}
 
 	return &models.CourseInfo{
-		Course:          course,
-		Homeworks:       details,
+		Course:    course,
+		Homeworks: details,
 	}, nil
 }
 
-func (r *CourseRepository) GetLeaderboard(ctx context.Context, courseID uuid.UUID) ([]models.LeaderboardEntry, error) {
+func (r *CourseRepository) GetLeaderboard(ctx context.Context, courseID string) ([]models.LeaderboardEntry, error) {
+	courseUUID, err := uuid.Parse(courseID)
+	var course models.Course
+	if err != nil {
+		if err := r.rw.ReadDB().WithContext(ctx).First(&course, "slug = ?", courseID).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil, nil
+			}
+			return nil, err
+		}
+	} else {
+		if err := r.rw.ReadDB().WithContext(ctx).First(&course, "id = ?", courseUUID).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil, nil
+			}
+			return nil, err
+		}
+	}
+
 	type taskScoreRow struct {
-		UserID   uuid.UUID
-		Username string
-		TaskID   uuid.UUID
-		Score    int
+		UserID        uuid.UUID
+		Username      string
+		TaskID        uuid.UUID
+		TaskTitle     string
+		Score         int
+		HomeworkID    uuid.UUID
+		HomeworkTitle string
 	}
 	var rows []taskScoreRow
-	err := r.rw.ReadDB().WithContext(ctx).
+	err = r.rw.ReadDB().WithContext(ctx).
 		Model(&models.UserRole{}).
-		Select("u.id AS user_id, u.username, sts.task_id, COALESCE(sts.score, 0) AS score").
+		Select("u.id AS user_id, u.username, sts.task_id, t.title AS task_title, COALESCE(sts.score, 0) AS score, hw.hw_id AS homework_id, hw.title AS homework_title").
 		Joins("JOIN users u ON u.id = user_roles.user_id").
 		Joins("JOIN course_admin_permissions cap ON cap.role_id = user_roles.role_id AND cap.permission = ?", "task.submit").
 		Joins("LEFT JOIN student_task_scores sts ON sts.student_id = user_roles.user_id AND sts.course_id = user_roles.course_id").
-		Where("user_roles.course_id = ?", courseID).
-		Order("u.username ASC, sts.task_id ASC").
+		Joins("LEFT JOIN tasks t ON t.task_id = sts.task_id AND t.is_public = true").
+		Joins("LEFT JOIN homework hw ON hw.hw_id = t.hw_id AND hw.is_public = true").
+		Where("user_roles.course_id = ?", course.ID).
+		Order("u.username ASC, hw.position ASC, sts.task_id ASC").
 		Scan(&rows).Error
 	if err != nil {
 		return nil, err
@@ -209,7 +377,7 @@ func (r *CourseRepository) GetLeaderboard(ctx context.Context, courseID uuid.UUI
 	type userScores struct {
 		Username   string
 		TotalScore int
-		Tasks      map[uuid.UUID]int
+		Homeworks  []models.HomeworkScore
 	}
 	userMap := make(map[uuid.UUID]*userScores)
 	var userOrder []uuid.UUID
@@ -218,14 +386,35 @@ func (r *CourseRepository) GetLeaderboard(ctx context.Context, courseID uuid.UUI
 		us, ok := userMap[row.UserID]
 		if !ok {
 			us = &userScores{
-				Username: row.Username,
-				Tasks:    make(map[uuid.UUID]int),
+				Username:  row.Username,
+				Homeworks: make([]models.HomeworkScore, 0),
 			}
 			userMap[row.UserID] = us
 			userOrder = append(userOrder, row.UserID)
 		}
 		if row.TaskID != uuid.Nil {
-			us.Tasks[row.TaskID] = row.Score
+			var hw *models.HomeworkScore
+			for i := range us.Homeworks {
+				if us.Homeworks[i].HomeworkID == row.HomeworkID {
+					hw = &us.Homeworks[i]
+					break
+				}
+			}
+			if hw == nil {
+				us.Homeworks = append(us.Homeworks, models.HomeworkScore{
+					HomeworkID:    row.HomeworkID,
+					HomeworkTitle: row.HomeworkTitle,
+					Tasks:         make([]models.TaskScore, 0),
+				})
+				hw = &us.Homeworks[len(us.Homeworks)-1]
+			}
+
+			hw.Tasks = append(hw.Tasks, models.TaskScore{
+				TaskID: row.TaskID,
+				Title:  row.TaskTitle,
+				Score:  row.Score,
+			})
+			hw.TotalScore += row.Score
 			us.TotalScore += row.Score
 		}
 	}
@@ -236,7 +425,7 @@ func (r *CourseRepository) GetLeaderboard(ctx context.Context, courseID uuid.UUI
 		entries = append(entries, models.LeaderboardEntry{
 			Username:   us.Username,
 			TotalScore: us.TotalScore,
-			Tasks:      us.Tasks,
+			Homeworks:  us.Homeworks,
 		})
 	}
 	sort.Slice(entries, func(i, j int) bool {
@@ -249,9 +438,34 @@ func (r *CourseRepository) GetLeaderboard(ctx context.Context, courseID uuid.UUI
 	return entries, nil
 }
 
+func formatTime(t *time.Time) string {
+	if t == nil {
+		return ""
+	}
+	return t.Format(time.RFC3339)
+}
+
+func stringPtrValue(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+func deadlineStatus(dueDate time.Time) string {
+	now := time.Now()
+	if dueDate.Before(now) {
+		return "expired"
+	}
+	if dueDate.Before(now.Add(24 * time.Hour)) {
+		return "urgent"
+	}
+	return "active"
+}
+
 func (r *CourseRepository) UpdateInviteCode(ctx context.Context, courseID uuid.UUID, code *string) error {
-    return r.rw.WriteDB().WithContext(ctx).
-        Model(&models.Course{}).
-        Where("id = ?", courseID).
-        Update("invite_code", code).Error
+	return r.rw.WriteDB().WithContext(ctx).
+		Model(&models.Course{}).
+		Where("id = ?", courseID).
+		Update("invite_code", code).Error
 }

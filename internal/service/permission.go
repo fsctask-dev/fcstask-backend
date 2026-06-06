@@ -131,6 +131,7 @@ func CourseAdminPermissions() []string {
 		PermissionTaskScoreUpdate,
 		PermissionCourseRead,
 		PermissionCourseUpdate,
+
 	}
 }
 

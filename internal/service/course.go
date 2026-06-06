@@ -18,7 +18,7 @@ type CourseService struct {
 	CourseRepo       repo.CourseRepositoryInterface
 	RoleRepo         repo.IRoleRepo
 	StudentScoreRepo repo.IStudentTaskScoreRepo
-  
+
 	courseMetrics *metrics.CourseMetrics
 }
 
@@ -288,6 +288,7 @@ func (s *CourseService) GetLeaderboard(ctx context.Context, userID uuid.UUID, co
 	if courseID == "" {
 		return nil, BadRequest("course_id is required")
 	}
+
 	course, err := s.GetCourse(ctx, userID, courseID)
 	if err != nil {
 		return nil, err
@@ -295,7 +296,7 @@ func (s *CourseService) GetLeaderboard(ctx context.Context, userID uuid.UUID, co
 	if err := RequireScopedPermission(ctx, s.RoleRepo, userID, course.ID, PermissionLeaderboardRead); err != nil {
 		return nil, err
 	}
-	entries, err := s.CourseRepo.GetLeaderboard(ctx, course.ID)
+	entries, err := s.CourseRepo.GetLeaderboard(ctx, courseID)
 	if err != nil {
 		return nil, Internal("Failed to get leaderboard", err)
 	}

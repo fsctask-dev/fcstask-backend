@@ -19,12 +19,14 @@ func NewAdminTaskHandler(taskService IAdminTaskService) *AdminTaskHandler {
 }
 
 type CreateTaskRequest struct {
+	Title   *string `json:"title"`
 	RepoURL *string `json:"repo_url"`
 	TaskURL *string `json:"task_url"`
 	Score   *int    `json:"score"`
 }
 
 type UpdateTaskRequest struct {
+	Title   *string `json:"title"`
 	RepoURL *string `json:"repo_url"`
 	TaskURL *string `json:"task_url"`
 	Score   *int    `json:"score"`
@@ -58,6 +60,10 @@ func (h *AdminTaskHandler) CreateTask(c echo.Context) error {
 	input := service.CreateTaskInput{
 		HwID: hwID,
 	}
+	if req.Title != nil {
+		input.Title = req.Title
+	}
+
 	if req.RepoURL != nil {
 		input.RepoURL = *req.RepoURL
 	}
@@ -132,6 +138,10 @@ func (h *AdminTaskHandler) UpdateTask(c echo.Context) error {
 	}
 
 	input := service.UpdateTaskInput{}
+	if req.Title != nil {
+		input.Title = req.Title
+	}
+
 	if req.RepoURL != nil {
 		input.RepoURL = *req.RepoURL
 	}

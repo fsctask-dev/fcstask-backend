@@ -104,6 +104,7 @@ func TestCreateTask_Success(t *testing.T) {
 	userID := uuid.New()
 
 	hwID := uuid.New()
+	title := "Test Task"
 	repoURL := "https://github.com/test/repo"
 	taskURL := "https://test.com/task"
 	Score := 100
@@ -111,6 +112,7 @@ func TestCreateTask_Success(t *testing.T) {
 	hwRepo.On("GetByID", ctx, hwID).Return(&model.Homework{HwID: hwID, CourseID: uuid.New()}, nil)
 	taskRepo.On("Create", ctx, mock.MatchedBy(func(task *model.Task) bool {
 		return task.HwID == hwID &&
+			task.Title == title &&
 			*task.RepoURL == repoURL &&
 			*task.TaskURL == taskURL &&
 			*task.Score == Score
@@ -118,6 +120,7 @@ func TestCreateTask_Success(t *testing.T) {
 
 	result, err := svc.CreateTask(ctx, userID, service.CreateTaskInput{
 		HwID:    hwID,
+		Title:   &title,
 		RepoURL: repoURL,
 		TaskURL: taskURL,
 		Score:   Score,
@@ -126,6 +129,7 @@ func TestCreateTask_Success(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, result)
 	assert.Equal(t, hwID, result.HwID)
+	assert.Equal(t, title, result.Title)
 	assert.Equal(t, repoURL, *result.RepoURL)
 	assert.Equal(t, taskURL, *result.TaskURL)
 	assert.Equal(t, Score, *result.Score)
@@ -155,8 +159,10 @@ func TestCreateTask_HomeworkNotFound(t *testing.T) {
 
 	hwID := uuid.New()
 	hwRepo.On("GetByID", ctx, hwID).Return(nil, assert.AnError)
+	title := "first"
 
 	result, err := svc.CreateTask(ctx, uuid.New(), service.CreateTaskInput{
+		Title:   &title,
 		HwID:    hwID,
 		RepoURL: "https://github.com/test/repo",
 		TaskURL: "https://test.com/task",
@@ -176,8 +182,10 @@ func TestCreateTask_RepoError(t *testing.T) {
 	hwID := uuid.New()
 	hwRepo.On("GetByID", ctx, hwID).Return(&model.Homework{HwID: hwID, CourseID: uuid.New()}, nil)
 	taskRepo.On("Create", ctx, mock.AnythingOfType("*model.Task")).Return(assert.AnError)
+	title := "first"
 
 	result, err := svc.CreateTask(ctx, uuid.New(), service.CreateTaskInput{
+		Title:   &title,
 		HwID:    hwID,
 		RepoURL: "https://github.com/test/repo",
 		Score:   100,
@@ -199,8 +207,10 @@ func TestCreateTask_NilURLs(t *testing.T) {
 	taskRepo.On("Create", ctx, mock.MatchedBy(func(task *model.Task) bool {
 		return task.HwID == hwID && task.RepoURL == nil && task.TaskURL == nil
 	})).Return(nil)
+	title := "first"
 
 	result, err := svc.CreateTask(ctx, uuid.New(), service.CreateTaskInput{
+		Title: &title,
 		HwID:  hwID,
 		Score: 100,
 	})
@@ -220,7 +230,7 @@ func TestGetTask_Success(t *testing.T) {
 
 	taskID := uuid.New()
 	hwID := uuid.New()
-	expected := &model.Task{TaskID: taskID, HwID: hwID}
+	expected := &model.Task{TaskID: taskID, HwID: hwID, Title: "Test"}
 	taskRepo.On("GetByID", ctx, taskID).Return(expected, nil)
 	hwRepo.On("GetByID", ctx, hwID).Return(&model.Homework{HwID: hwID, CourseID: uuid.New()}, nil)
 
@@ -263,8 +273,8 @@ func TestListTasks_Success(t *testing.T) {
 
 	hwID := uuid.New()
 	expectedTasks := []model.Task{
-		{TaskID: uuid.New(), HwID: hwID},
-		{TaskID: uuid.New(), HwID: hwID},
+		{TaskID: uuid.New(), HwID: hwID, Title: "Task 1"},
+		{TaskID: uuid.New(), HwID: hwID, Title: "Task 2"},
 	}
 
 	hwRepo.On("GetByID", ctx, hwID).Return(&model.Homework{HwID: hwID, CourseID: uuid.New()}, nil)
@@ -329,6 +339,8 @@ func TestUpdateTask_Success(t *testing.T) {
 
 	taskID := uuid.New()
 	hwID := uuid.New()
+	oldTitle := "Old Task"
+	newTitle := "Updated Task"
 	oldRepoURL := "https://github.com/test/old-repo"
 	oldTaskURL := "https://test.com/old-task"
 	newRepoURL := "https://github.com/test/updated-repo"
@@ -339,6 +351,7 @@ func TestUpdateTask_Success(t *testing.T) {
 	existingTask := &model.Task{
 		TaskID:  taskID,
 		HwID:    hwID,
+		Title:   oldTitle,
 		RepoURL: &oldRepoURL,
 		TaskURL: &oldTaskURL,
 		Score:   &oldTaskScore,
@@ -347,10 +360,14 @@ func TestUpdateTask_Success(t *testing.T) {
 	taskRepo.On("GetByID", ctx, taskID).Return(existingTask, nil)
 	hwRepo.On("GetByID", ctx, hwID).Return(&model.Homework{HwID: hwID, CourseID: uuid.New()}, nil)
 	taskRepo.On("Update", ctx, mock.MatchedBy(func(task *model.Task) bool {
-		return *task.RepoURL == newRepoURL && *task.TaskURL == newTaskURL && *task.Score == newTaskScore
+		return task.Title == newTitle &&
+			*task.RepoURL == newRepoURL &&
+			*task.TaskURL == newTaskURL &&
+			*task.Score == newTaskScore
 	})).Return(nil)
 
 	result, err := svc.UpdateTask(ctx, userID, taskID, service.UpdateTaskInput{
+		Title:   &newTitle,
 		RepoURL: newRepoURL,
 		TaskURL: newTaskURL,
 		Score:   newTaskScore,
@@ -358,6 +375,7 @@ func TestUpdateTask_Success(t *testing.T) {
 
 	assert.NoError(t, err)
 	assert.NotNil(t, result)
+	assert.Equal(t, newTitle, result.Title)
 	assert.Equal(t, newRepoURL, *result.RepoURL)
 	assert.Equal(t, newTaskURL, *result.TaskURL)
 	assert.Equal(t, newTaskScore, *result.Score)
@@ -378,6 +396,7 @@ func TestUpdateTask_PartialUpdate(t *testing.T) {
 	existingTask := &model.Task{
 		TaskID:  taskID,
 		HwID:    hwID,
+		Title:   "Old",
 		RepoURL: &oldRepoURL,
 		TaskURL: &oldTaskURL,
 	}
@@ -422,7 +441,7 @@ func TestUpdateTask_UpdateError(t *testing.T) {
 
 	taskID := uuid.New()
 	hwID := uuid.New()
-	existingTask := &model.Task{TaskID: taskID, HwID: hwID}
+	existingTask := &model.Task{TaskID: taskID, HwID: hwID, Title: "Test"}
 
 	taskRepo.On("GetByID", ctx, taskID).Return(existingTask, nil)
 	hwRepo.On("GetByID", ctx, hwID).Return(&model.Homework{HwID: hwID, CourseID: uuid.New()}, nil)
@@ -551,7 +570,7 @@ func TestDeleteTask_Success(t *testing.T) {
 
 	taskID := uuid.New()
 	hwID := uuid.New()
-	taskRepo.On("GetByID", ctx, taskID).Return(&model.Task{TaskID: taskID, HwID: hwID}, nil)
+	taskRepo.On("GetByID", ctx, taskID).Return(&model.Task{TaskID: taskID, HwID: hwID, Title: "Test"}, nil)
 	hwRepo.On("GetByID", ctx, hwID).Return(&model.Homework{HwID: hwID, CourseID: uuid.New()}, nil)
 	taskRepo.On("Delete", ctx, taskID).Return(nil)
 
@@ -591,7 +610,7 @@ func TestDeleteTask_DeleteError(t *testing.T) {
 
 	taskID := uuid.New()
 	hwID := uuid.New()
-	taskRepo.On("GetByID", ctx, taskID).Return(&model.Task{TaskID: taskID, HwID: hwID}, nil)
+	taskRepo.On("GetByID", ctx, taskID).Return(&model.Task{TaskID: taskID, HwID: hwID, Title: "Test"}, nil)
 	hwRepo.On("GetByID", ctx, hwID).Return(&model.Homework{HwID: hwID, CourseID: uuid.New()}, nil)
 	taskRepo.On("Delete", ctx, taskID).Return(assert.AnError)
 
@@ -610,7 +629,7 @@ func TestSetScore_Success(t *testing.T) {
 	hwID := uuid.New()
 	score := 250
 
-	taskRepo.On("GetByID", ctx, taskID).Return(&model.Task{TaskID: taskID, HwID: hwID}, nil).Twice()
+	taskRepo.On("GetByID", ctx, taskID).Return(&model.Task{TaskID: taskID, HwID: hwID, Title: "Test"}, nil).Twice()
 	hwRepo.On("GetByID", ctx, hwID).Return(&model.Homework{HwID: hwID, CourseID: uuid.New()}, nil)
 	taskRepo.On("SetScore", ctx, taskID, score).Return(nil)
 
@@ -677,7 +696,7 @@ func TestSetScore_SetScoreError(t *testing.T) {
 
 	taskID := uuid.New()
 	hwID := uuid.New()
-	taskRepo.On("GetByID", ctx, taskID).Return(&model.Task{TaskID: taskID, HwID: hwID}, nil)
+	taskRepo.On("GetByID", ctx, taskID).Return(&model.Task{TaskID: taskID, HwID: hwID, Title: "Test"}, nil)
 	hwRepo.On("GetByID", ctx, hwID).Return(&model.Homework{HwID: hwID, CourseID: uuid.New()}, nil)
 	taskRepo.On("SetScore", ctx, taskID, 100).Return(assert.AnError)
 
