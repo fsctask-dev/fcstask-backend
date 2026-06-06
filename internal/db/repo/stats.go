@@ -4,6 +4,7 @@ import (
 	"context"
 	"fcstask-backend/internal/db"
 	models "fcstask-backend/internal/db/model"
+	"fmt"
 )
 
 type StatsRepositoryInterface interface {
@@ -21,19 +22,23 @@ func NewStatsRepository(rw db.ReadWriter) *StatsRepository {
 func (r *StatsRepository) GetStats(ctx context.Context) (*models.PlatformStats, error) {
 	var stats models.PlatformStats
 
-	// Всего курсов
-	r.rw.ReadDB().WithContext(ctx).Model(&models.Course{}).Count(&stats.TotalCourses)
+	if err := r.rw.ReadDB().WithContext(ctx).Model(&models.Course{}).Count(&stats.TotalCourses).Error; err != nil {
+		return nil, fmt.Errorf("failed to count total courses: %w", err)
+	}
 
-	// Публичных
-	r.rw.ReadDB().WithContext(ctx).Model(&models.Course{}).
-		Where("type = ?", models.CourseTypePublic).Count(&stats.PublicCourses)
+	if err := r.rw.ReadDB().WithContext(ctx).Model(&models.Course{}).
+		Where("type = ?", models.CourseTypePublic).Count(&stats.PublicCourses).Error; err != nil {
+		return nil, fmt.Errorf("failed to count public courses: %w", err)
+	}
 
-	// Приватных
-	r.rw.ReadDB().WithContext(ctx).Model(&models.Course{}).
-		Where("type = ?", models.CourseTypePrivate).Count(&stats.PrivateCourses)
+	if err := r.rw.ReadDB().WithContext(ctx).Model(&models.Course{}).
+		Where("type = ?", models.CourseTypePrivate).Count(&stats.PrivateCourses).Error; err != nil {
+		return nil, fmt.Errorf("failed to count private courses: %w", err)
+	}
 
-	// Пользователей
-	r.rw.ReadDB().WithContext(ctx).Model(&models.User{}).Count(&stats.TotalUsers)
+	if err := r.rw.ReadDB().WithContext(ctx).Model(&models.User{}).Count(&stats.TotalUsers).Error; err != nil {
+		return nil, fmt.Errorf("failed to count users: %w", err)
+	}
 
 	return &stats, nil
 }

@@ -133,6 +133,7 @@ func CourseAdminPermissions() []string {
 		PermissionTaskScoreUpdate,
 		PermissionCourseRead,
 		PermissionCourseUpdate,
+		PermissionStatsRead,
 	}
 }
 
@@ -146,6 +147,7 @@ func CourseOwnerPermissions() []string {
 		PermissionCoursePermissionRemove,
 		PermissionCoursePermissionList,
 		PermissionCourseInviteRegenerate,
+		PermissionStatsRead,
 	)
 }
 
