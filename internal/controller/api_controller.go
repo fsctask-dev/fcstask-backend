@@ -14,6 +14,7 @@ type APIController struct {
 	sessionHandler       *handler.SessionHandler
 	courseHandler        *handler.CourseHandler
 	adminHomeworkHandler *handler.AdminHomeworkHandler
+	statsHandler         *handler.StatsHandler
 }
 
 func NewAPIController(
@@ -22,6 +23,7 @@ func NewAPIController(
 	sessionHandler *handler.SessionHandler,
 	courseHandler *handler.CourseHandler,
 	adminHomeworkHandler *handler.AdminHomeworkHandler,
+	statsHandler *handler.StatsHandler,
 ) *APIController {
 	return &APIController{
 		authHandler:          authHandler,
@@ -29,6 +31,7 @@ func NewAPIController(
 		sessionHandler:       sessionHandler,
 		courseHandler:        courseHandler,
 		adminHomeworkHandler: adminHomeworkHandler,
+		statsHandler:         statsHandler,
 	}
 }
 
@@ -77,6 +80,7 @@ func (c *APIController) GetUsersWithSessions(ctx echo.Context, params api.GetUse
 }
 
 func (c *APIController) RegisterCourseRoutes(e *echo.Echo) {
+	e.GET("/api/stats", c.statsHandler.GetStats)
 	e.GET("/api/courses", c.courseHandler.GetCourses)
 	e.POST("/api/courses", c.courseHandler.CreateCourse)
 	e.GET("/api/courses/public", c.courseHandler.GetPublicCourses)
