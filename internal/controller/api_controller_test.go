@@ -269,6 +269,7 @@ func newTestController(userRepo *controllerUserRepo, sessionRepo *controllerSess
 		nil,
 		nil,
 		nil,
+		nil,
 		statsHandler,
 	)
 }
