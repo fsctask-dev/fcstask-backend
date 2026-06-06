@@ -191,11 +191,6 @@ func (r *controllerCourseRepo) UpdateInviteCode(ctx context.Context, courseID uu
 	return nil
 }
 
-
-func (r *controllerCourseRepo) UpdateInviteCode(ctx context.Context, courseID uuid.UUID, code *string) error {
-	return nil
-}
-
 func (r *controllerCourseRepo) GetCourseInfo(ctx context.Context, courseID uuid.UUID) (*models.CourseInfo, error) {
 	return nil, nil
 }
