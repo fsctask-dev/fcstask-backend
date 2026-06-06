@@ -76,11 +76,24 @@ type TaskBoardSummary struct {
 	Groups        []BoardGroup `json:"groups"`
 }
 
+type TaskScore struct {
+	TaskID uuid.UUID `json:"task_id"`
+	Title  string    `json:"title"`
+	Score  int       `json:"score"`
+}
+
+type HomeworkScore struct {
+	HomeworkID    uuid.UUID   `json:"homework_id"`
+	HomeworkTitle string      `json:"homework_title"`
+	TotalScore    int         `json:"total_score"`
+	Tasks         []TaskScore `json:"tasks"`
+}
+
 type LeaderboardEntry struct {
-	Username   string            `json:"username"`
-	TotalScore int               `json:"totalScore"`
-	Rank       int               `json:"rank"`
-	Tasks      map[uuid.UUID]int `json:"tasks"`
+	Username   string          `json:"username"`
+	TotalScore int             `json:"totalScore"`
+	Homeworks  []HomeworkScore `json:"homeworks"`
+	Rank       int             `json:"rank"`
 }
 
 type HomeworkWithTasks struct {

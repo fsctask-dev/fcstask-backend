@@ -104,6 +104,7 @@ func New(cfg *config.Config) (*App, error) {
 		"/api/stats",
 		"/api/courses",
 		"/api/courses/:courseId/scores",
+		"/api/courses/:courseId/board",
 		"/api/courses/:courseId/join",
 		"/api/courses/:courseId/invite",
 		"/admin/courses/:courseId/homework",

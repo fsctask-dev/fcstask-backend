@@ -33,12 +33,14 @@ func (s *AdminTaskService) WithMetrics(m *metrics.AdminMetrics) *AdminTaskServic
 
 type CreateTaskInput struct {
 	HwID    uuid.UUID
+	Title   *string
 	RepoURL string
 	TaskURL string
 	Score   int
 }
 
 type UpdateTaskInput struct {
+	Title   *string
 	RepoURL string
 	TaskURL string
 	Score   int
@@ -60,6 +62,9 @@ func (s *AdminTaskService) CreateTask(ctx context.Context, userID uuid.UUID, inp
 	if input.HwID == uuid.Nil {
 		return nil, BadRequest("homework_id is required")
 	}
+	if input.Title == nil || *input.Title == "" {
+		return nil, BadRequest("title is required")
+	}
 
 	hw, err := s.homeworkRepo.GetByID(ctx, input.HwID)
 	if err != nil {
@@ -76,7 +81,9 @@ func (s *AdminTaskService) CreateTask(ctx context.Context, userID uuid.UUID, inp
 	task = &model.Task{
 		HwID:  input.HwID,
 		Score: &input.Score,
+		Title: *input.Title,
 	}
+
 	if input.RepoURL != "" {
 		task.RepoURL = stringPtr(input.RepoURL)
 	}
@@ -144,6 +151,13 @@ func (s *AdminTaskService) UpdateTask(ctx context.Context, userID, taskID uuid.U
 	}
 	if err = RequireScopedPermission(ctx, s.roleRepo, userID, hw.CourseID, PermissionTaskUpdate); err != nil {
 		return nil, err
+	}
+
+	if input.Title != nil {
+		if *input.Title == "" {
+			return nil, BadRequest("title cannot be empty")
+		}
+		task.Title = *input.Title
 	}
 
 	if input.RepoURL != "" {

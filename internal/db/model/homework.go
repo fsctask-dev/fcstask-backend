@@ -8,8 +8,9 @@ import (
 )
 
 type Task struct {
-	TaskID   uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"task_id"`
-	HwID     uuid.UUID `gorm:"type:uuid;not null;index" json:"hw_id"`
+	TaskID  uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"task_id"`
+	HwID    uuid.UUID `gorm:"type:uuid;not null;index" json:"hw_id"`
+	Title   string    `gorm:"type:varchar(255);not null" json:"title"`
 	IsPublic *bool     `gorm:"type:bool;default:false" json:"is_public,omitempty"`
 	RepoURL  *string   `gorm:"type:varchar(500)" json:"repo_url,omitempty"`
 	TaskURL  *string   `gorm:"type:varchar(255);uniqueIndex" json:"task_url,omitempty"`
