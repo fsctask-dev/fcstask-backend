@@ -1,0 +1,24 @@
+replicaCount: 2
+
+config:
+  database:
+    host: "postgres-postgresql-primary.postgres.svc.cluster.local"
+    database: "postgres"
+    replicas:
+      - host: "postgres-postgresql-read.postgres.svc.cluster.local"
+        port: 5432
+        database: "postgres"
+        sslMode: "disable"
+
+ingress:
+  hosts:
+    - host: fcs-task.turbomuza.ru
+      paths:
+        - path: /api
+          pathType: Prefix
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 80

@@ -1,0 +1,18 @@
+replicaCount: 2
+
+config:
+  database:
+    host: "postgres-dev-postgresql-primary.postgres-dev.svc.cluster.local"
+    database: "postgres"
+    replicas:
+      - host: "postgres-dev-postgresql-read.postgres-dev.svc.cluster.local"
+        port: 5432
+        database: "postgres"
+        sslMode: "disable"
+
+ingress:
+  hosts:
+    - host: fcs-task-dev.turbomuza.ru
+      paths:
+        - path: /api
+          pathType: Prefix
