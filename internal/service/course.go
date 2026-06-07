@@ -52,11 +52,11 @@ func (s *CourseService) GetCourses(ctx context.Context, userID uuid.UUID, status
 }
 
 func (s *CourseService) GetPublicCourses(ctx context.Context) ([]models.Course, error) {
-    courses, err := s.CourseRepo.GetPublicCourses(ctx)
-    if err != nil {
-        return nil, Internal("Failed to get public courses", err)
-    }
-    return courses, nil
+	courses, err := s.CourseRepo.GetPublicCourses(ctx)
+	if err != nil {
+		return nil, Internal("Failed to get public courses", err)
+	}
+	return courses, nil
 }
 
 func (s *CourseService) GetCourse(ctx context.Context, userID uuid.UUID, courseID string) (*models.Course, error) {
@@ -66,6 +66,17 @@ func (s *CourseService) GetCourse(ctx context.Context, userID uuid.UUID, courseI
 	}
 	if course == nil {
 		return nil, NotFound("course not found")
+	}
+
+	if isHiddenCourse(course) {
+		allowed, err := HasScopedPermission(ctx, s.RoleRepo, userID, course.ID, PermissionCourseHiddenRead)
+		if err != nil {
+			return nil, Internal("Failed to check permissions", err)
+		}
+		if !allowed {
+			return nil, NotFound("course not found")
+		}
+		return course, nil
 	}
 
 	if course.Type == models.CourseTypePublic {
@@ -255,6 +266,12 @@ func (s *CourseService) JoinCourse(ctx context.Context, userID uuid.UUID, course
 	if course == nil {
 		return NotFound("course not found")
 	}
+	if isHiddenCourse(course) {
+		return NotFound("course not found")
+	}
+	if isFinishedCourse(course) {
+		return Forbidden("course is finished")
+	}
 
 	already, err := HasScopedPermission(ctx, s.RoleRepo, userID, course.ID, PermissionCourseRead)
 	if err != nil {
@@ -407,6 +424,14 @@ func IsValidCourseStatus(status string) bool {
 		"finished":    true,
 	}
 	return valid[status]
+}
+
+func isHiddenCourse(course *models.Course) bool {
+	return course != nil && course.Status == "hidden"
+}
+
+func isFinishedCourse(course *models.Course) bool {
+	return course != nil && course.Status == "finished"
 }
 
 func IsValidCourseType(courseType models.CourseType) bool {

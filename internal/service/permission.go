@@ -33,6 +33,7 @@ const (
 
 	PermissionLeaderboardRead = "leaderboard.read"
 	PermissionCourseRead      = "course.read"
+	PermissionCourseHiddenRead = "course.hidden.read"
 
 	PermissionCourseRoleAssign = "course.roles.assign"
 	PermissionCourseRoleRevoke = "course.roles.revoke"
@@ -133,6 +134,7 @@ func CourseAdminPermissions() []string {
 		PermissionTaskDelete,
 		PermissionTaskScoreUpdate,
 		PermissionCourseRead,
+		PermissionCourseHiddenRead,
 		PermissionCourseUpdate,
 		PermissionStatsRead,
 	}
