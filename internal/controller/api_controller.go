@@ -95,14 +95,11 @@ func (c *APIController) RegisterCheckerRoutes(e *echo.Echo) {
 func (c *APIController) RegisterCourseRoutes(e *echo.Echo) {
 	e.GET("/api/stats", c.statsHandler.GetStats)
 	e.GET("/api/courses", c.courseHandler.GetCourses)
-	e.POST("/api/courses", c.courseHandler.CreateCourse)
 	e.GET("/api/courses/public", c.courseHandler.GetPublicCourses)
 	e.GET("/api/courses/:courseId", c.courseHandler.GetCourse)
-	e.PUT("/api/courses/:courseId", c.courseHandler.UpdateCourse)
 	e.GET("/api/courses/:courseId/board", c.courseHandler.GetCourseBoard)
 	e.GET("/api/courses/:courseId/scores", c.courseHandler.GetScores)
 	e.POST("/api/courses/:courseId/join", c.courseHandler.JoinCourse)
-	e.POST("/api/courses/:courseId/invite", c.courseHandler.RegenerateInviteCode)
 }
 
 func (c *APIController) RegisterHomeworkRoutes(e *echo.Echo) {
@@ -120,6 +117,9 @@ func (c *APIController) RegisterAdminRoutes(
 	courseLateHandler *handler.CourseLateHandler,
 	gradeUpdateHandler *handler.GradeUpdateHandler,
 ) {
+	e.POST("/admin/courses/create", c.courseHandler.CreateCourse)
+	e.PUT("/admin/courses/:courseId/update", c.courseHandler.UpdateCourse)
+	e.POST("/admin/courses/:courseId/invite", c.courseHandler.RegenerateInviteCode)
 	e.POST("/admin/courses/:courseId/homework", adminHomeworkHandler.CreateHomework)
 	e.GET("/admin/courses/:courseId/homework/:hwId", adminHomeworkHandler.GetHomework)
 	e.GET("/admin/courses/:courseId/homework", adminHomeworkHandler.ListHomework)
