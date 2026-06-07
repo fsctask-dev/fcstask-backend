@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
@@ -39,16 +40,18 @@ type PublishHomeworkRequest struct {
 }
 
 type SetDeadlineRequest struct {
-	CourseID    string  `json:"course_id"`
-	Title       string  `json:"title"`
-	Description *string `json:"description"`
-	DueDate     string  `json:"due_date"`
+	CourseID     string     `json:"course_id"`
+	Title        string     `json:"title"`
+	Description  *string    `json:"description"`
+	SoftDeadline *time.Time `json:"soft_deadline"`
+	HardDeadline time.Time  `json:"hard_deadline"`
 }
 
 type UpdateDeadlineRequest struct {
-	Title       *string `json:"title"`
-	Description *string `json:"description"`
-	DueDate     *string `json:"due_date"`
+	Title        *string    `json:"title"`
+	Description  *string    `json:"description"`
+	SoftDeadline *time.Time `json:"soft_deadline"`
+	HardDeadline *time.Time `json:"hard_deadline"`
 }
 
 // POST /admin/courses/:courseId/homework
@@ -228,8 +231,7 @@ func (h *AdminHomeworkHandler) GetDeadlineByHomeworkID(c echo.Context) error {
 	if err != nil {
 		return serviceError(c, err)
 	}
-
-	return c.JSON(http.StatusOK, deadline.DueDate.Format("2006-01-02"))
+	return c.JSON(http.StatusOK, deadline)
 }
 
 // PUT /admin/courses/:courseId/homework/:hwId/deadline
@@ -270,11 +272,12 @@ func (h *AdminHomeworkHandler) SetDeadline(c echo.Context) error {
 	assignedBy = &user.ID
 
 	input := service.SetDeadlineInput{
-		CourseID:   courseID,
-		HomeworkID: hwID,
-		Title:      req.Title,
-		DueDate:    req.DueDate,
-		AssignedBy: assignedBy,
+		CourseID:     courseID,
+		HomeworkID:   hwID,
+		Title:        req.Title,
+		AssignedBy:   assignedBy,
+		SoftDeadline: *req.SoftDeadline,
+		HardDeadline: req.HardDeadline,
 	}
 	if req.Description != nil {
 		input.Description = *req.Description
@@ -312,8 +315,11 @@ func (h *AdminHomeworkHandler) UpdateDeadline(c echo.Context) error {
 	if req.Description != nil {
 		input.Description = *req.Description
 	}
-	if req.DueDate != nil {
-		input.DueDate = *req.DueDate
+	if req.SoftDeadline != nil && !req.SoftDeadline.IsZero() {
+		input.SoftDeadline = *req.SoftDeadline
+	}
+	if req.HardDeadline != nil && !req.HardDeadline.IsZero() {
+		input.HardDeadline = *req.HardDeadline
 	}
 
 	deadline, err := h.homeworkService.UpdateDeadline(c.Request().Context(), user.ID, deadlineID, input)

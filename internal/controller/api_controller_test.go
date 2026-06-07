@@ -267,6 +267,9 @@ func newTestController(userRepo *controllerUserRepo, sessionRepo *controllerSess
 		handler.NewSessionHandler(sessionService, userService),
 		handler.NewCourseHandler(courseService),
 		nil,
+		nil,
+		nil,
+		nil,
 		statsHandler,
 	)
 }
@@ -381,7 +384,7 @@ func TestAPIController_RegisterAdminRoutes_CreateCourse(t *testing.T) {
 		&controllerSessionRepo{},
 		&controllerCourseRepo{courses: map[string]models.Course{}},
 	)
-	controller.RegisterAdminRoutes(e, nil, nil, nil)
+	controller.RegisterAdminRoutes(e, nil, nil, nil, nil, nil)
 
 	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
@@ -425,7 +428,7 @@ func TestAPIController_RegisterAdminRoutes_RegenerateInviteCode(t *testing.T) {
 			},
 		}},
 	)
-	controller.RegisterAdminRoutes(e, nil, nil, nil)
+	controller.RegisterAdminRoutes(e, nil, nil, nil, nil, nil)
 
 	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {

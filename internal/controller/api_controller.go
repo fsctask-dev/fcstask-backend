@@ -14,6 +14,9 @@ type APIController struct {
 	sessionHandler       *handler.SessionHandler
 	courseHandler        *handler.CourseHandler
 	adminHomeworkHandler *handler.AdminHomeworkHandler
+	checkerHandler       *handler.CheckerHandler
+	gradeUpdateHandler   *handler.GradeUpdateHandler
+	courseLateHandler    *handler.CourseLateHandler
 	statsHandler         *handler.StatsHandler
 }
 
@@ -23,6 +26,9 @@ func NewAPIController(
 	sessionHandler *handler.SessionHandler,
 	courseHandler *handler.CourseHandler,
 	adminHomeworkHandler *handler.AdminHomeworkHandler,
+	checkerHandler *handler.CheckerHandler,
+	gradeUpdateHandler *handler.GradeUpdateHandler,
+	courseLateHandler *handler.CourseLateHandler,
 	statsHandler *handler.StatsHandler,
 ) *APIController {
 	return &APIController{
@@ -31,6 +37,9 @@ func NewAPIController(
 		sessionHandler:       sessionHandler,
 		courseHandler:        courseHandler,
 		adminHomeworkHandler: adminHomeworkHandler,
+		checkerHandler:       checkerHandler,
+		gradeUpdateHandler:   gradeUpdateHandler,
+		courseLateHandler:    courseLateHandler,
 		statsHandler:         statsHandler,
 	}
 }
@@ -79,6 +88,10 @@ func (c *APIController) GetUsersWithSessions(ctx echo.Context, params api.GetUse
 	return c.sessionHandler.GetUsersWithSessions(ctx, params)
 }
 
+func (c *APIController) RegisterCheckerRoutes(e *echo.Echo) {
+	e.POST("/api/grades", c.checkerHandler.SubmitGrade)
+}
+
 func (c *APIController) RegisterCourseRoutes(e *echo.Echo) {
 	e.GET("/api/stats", c.statsHandler.GetStats)
 	e.GET("/api/courses", c.courseHandler.GetCourses)
@@ -101,6 +114,8 @@ func (c *APIController) RegisterAdminRoutes(
 	adminHomeworkHandler *handler.AdminHomeworkHandler,
 	adminTaskHandler *handler.AdminTaskHandler,
 	adminRoleHandler *handler.AdminRoleHandler,
+	courseLateHandler *handler.CourseLateHandler,
+	gradeUpdateHandler *handler.GradeUpdateHandler,
 ) {
 	e.POST("/admin/courses/create", c.courseHandler.CreateCourse)
 	e.PUT("/admin/courses/:courseId/update", c.courseHandler.UpdateCourse)
@@ -131,4 +146,7 @@ func (c *APIController) RegisterAdminRoutes(
 	e.DELETE("/admin/courses/:courseId/roles/:roleId/permissions/:permission", adminRoleHandler.RemovePermission)
 	e.GET("/admin/courses/:courseId/roles/:roleId/permissions", adminRoleHandler.ListPermissions)
 	e.POST("/admin/super-admins", adminRoleHandler.CreateSuperAdmin)
+
+	e.PUT("/admin/courses/:courseId/late-policy", courseLateHandler.CreateOrUpdate)
+	e.POST("/admin/courses/:courseID/homework/:hwId/tasks/:taskId/update_grade", gradeUpdateHandler.UpdateGrade)
 }

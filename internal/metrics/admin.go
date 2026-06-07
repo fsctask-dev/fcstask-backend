@@ -27,6 +27,7 @@ const (
 	AdminActionRevokePermission  AdminAction = "revoke_permission"
 	AdminActionPromoteSuperAdmin AdminAction = "promote_super_admin"
 	AdminActionDemoteSuperAdmin  AdminAction = "demote_super_admin"
+	AdminActionUpdateGrade       AdminAction = "update_grade"
 )
 
 type AdminOutcome string

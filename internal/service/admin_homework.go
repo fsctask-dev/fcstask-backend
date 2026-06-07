@@ -15,7 +15,6 @@ type AdminHomeworkService struct {
 	homeworkRepo repo.IHomeworkRepo
 	deadlineRepo repo.IDeadlineRepo
 	roleRepo     repo.IRoleRepo
-
 	adminMetrics *metrics.AdminMetrics
 }
 
@@ -50,18 +49,20 @@ type UpdateHomeworkInput struct {
 }
 
 type SetDeadlineInput struct {
-	CourseID    uuid.UUID
-	HomeworkID  uuid.UUID
-	Title       string
-	Description string
-	DueDate     string // RFC3339
-	AssignedBy  *uuid.UUID
+	CourseID     uuid.UUID
+	HomeworkID   uuid.UUID
+	Title        string
+	Description  string
+	SoftDeadline time.Time
+	HardDeadline time.Time
+	AssignedBy   *uuid.UUID
 }
 
 type UpdateDeadlineInput struct {
-	Title       string
-	Description string
-	DueDate     string // RFC3339
+	Title        string
+	Description  string
+	SoftDeadline time.Time
+	HardDeadline time.Time
 }
 
 func (s *AdminHomeworkService) CreateHomework(ctx context.Context, userID uuid.UUID, input CreateHomeworkInput) (hw *model.Homework, err error) {
@@ -260,10 +261,11 @@ func (s *AdminHomeworkService) SetDeadline(ctx context.Context, userID uuid.UUID
 	if input.Title == "" {
 		return nil, BadRequest("title is required")
 	}
-
-	dueDate, err := time.Parse(time.RFC3339, input.DueDate)
-	if err != nil {
-		return nil, BadRequest("due date must be in RFC3339 format")
+	if input.HardDeadline.IsZero() {
+		return nil, BadRequest("hard_deadline is required")
+	}
+	if input.SoftDeadline.IsZero() {
+		input.SoftDeadline = input.HardDeadline
 	}
 
 	hw, err := s.homeworkRepo.GetByID(ctx, input.HomeworkID)
@@ -275,12 +277,13 @@ func (s *AdminHomeworkService) SetDeadline(ctx context.Context, userID uuid.UUID
 	}
 
 	deadline = &model.Deadline{
-		Title:       input.Title,
-		Description: stringPtr(input.Description),
-		CourseID:    input.CourseID,
-		DueDate:     dueDate,
-		AssignedBy:  input.AssignedBy,
-		HomeworkID:  input.HomeworkID,
+		Title:        input.Title,
+		Description:  stringPtr(input.Description),
+		CourseID:     input.CourseID,
+		AssignedBy:   input.AssignedBy,
+		HomeworkID:   input.HomeworkID,
+		SoftDeadline: input.SoftDeadline,
+		HardDeadline: input.HardDeadline,
 	}
 
 	if err := s.deadlineRepo.Create(ctx, deadline); err != nil {
@@ -332,14 +335,12 @@ func (s *AdminHomeworkService) UpdateDeadline(ctx context.Context, userID, deadl
 	if input.Description != "" {
 		deadline.Description = stringPtr(input.Description)
 	}
-	if input.DueDate != "" {
-		dueDate, err := time.Parse(time.RFC3339, input.DueDate)
-		if err != nil {
-			return nil, BadRequest("due date must be in RFC3339 format")
-		}
-		deadline.DueDate = dueDate
+	if !input.SoftDeadline.IsZero() {
+		deadline.SoftDeadline = input.SoftDeadline
 	}
-
+	if !input.HardDeadline.IsZero() {
+		deadline.HardDeadline = input.HardDeadline
+	}
 	if err := s.deadlineRepo.Update(ctx, deadline); err != nil {
 		return nil, Internal("Failed to update deadline", err)
 	}

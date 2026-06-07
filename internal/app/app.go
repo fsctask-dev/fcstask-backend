@@ -51,6 +51,7 @@ func New(cfg *config.Config) (*App, error) {
 	taskRepo := repo.NewTaskRepository(dbClient.DB())
 	deadlineRepo := repo.NewDeadlineRepository(dbClient.DB())
 	studentScoreRepo := repo.NewStudentTaskScoreRepository(dbClient.DB())
+	courseLateRepo := repo.NewCourseLatePolicy(dbClient.DB())
 	statsRepo := repo.NewStatsRepository(dbClient)
 
 	userService := service.NewUserService(userRepo)
@@ -60,11 +61,16 @@ func New(cfg *config.Config) (*App, error) {
 	adminHomeworkService := service.NewAdminHomeworkService(homeworkRepo, deadlineRepo, roleRepo).WithMetrics(m.Admin)
 	adminTaskService := service.NewAdminTaskService(taskRepo, homeworkRepo, roleRepo).WithMetrics(m.Admin)
 	adminRoleService := service.NewAdminRoleService(roleRepo, userRepo).WithMetrics(m.Admin)
+	checkerService := service.NewCheckerService(taskRepo, homeworkRepo, studentScoreRepo, deadlineRepo, courseLateRepo, roleRepo).WithMetrics(m.Checker)
+	courseLateService := service.NewCourseLatePolicy(courseLateRepo, roleRepo).WithMetrics(m.LatePolicy)
+	gradeUpdateService := service.NewGradeUpdateService(taskRepo, homeworkRepo, studentScoreRepo, roleRepo).WithMetrics(m.Admin)
 	statsService := service.NewStatsService(statsRepo, roleRepo)
 
 	adminHomeworkHandler := handler.NewAdminHomeworkHandler(adminHomeworkService)
 	adminTaskHandler := handler.NewAdminTaskHandler(adminTaskService)
 	adminRoleHandler := handler.NewAdminRoleHandler(adminRoleService)
+	courseLateHandler := handler.NewCourseLateHandler(courseLateService)
+	gradeUpdateHandler := handler.NewGradeUpdateHandler(gradeUpdateService)
 
 	statsHandler := handler.NewStatsHandler(statsService)
 
@@ -74,6 +80,9 @@ func New(cfg *config.Config) (*App, error) {
 		handler.NewSessionHandler(sessionService, userService),
 		handler.NewCourseHandler(courseService),
 		adminHomeworkHandler,
+		handler.NewCheckerHandler(checkerService),
+		handler.NewGradeUpdateHandler(gradeUpdateService),
+		handler.NewCourseLateHandler(courseLateService),
 		statsHandler,
 	)
 
@@ -102,6 +111,7 @@ func New(cfg *config.Config) (*App, error) {
 		"/v1/users/sessions",
 		"/api/signout",
 		"/api/stats",
+    "/api/grades",
 		"/api/courses",
 		"/api/courses/:courseId/scores",
 		"/api/courses/:courseId/board",
@@ -118,6 +128,8 @@ func New(cfg *config.Config) (*App, error) {
 		"/admin/courses/:courseId/homework/:hwId/tasks/:taskId",
 		"/admin/courses/:courseId/homework/:hwId/tasks/:taskId/publish",
 		"/admin/courses/:courseId/homework/:hwId/tasks/:taskId/score",
+		"/admin/courses/:courseId/homework/:hwId/tasks/:taskId/update_grade",
+		"/admin/courses/:courseId/late-policy",
 		"/admin/courses/:courseId/roles",
 		"/admin/courses/:courseId/participants",
 		"/admin/courses/:courseId/roles/:roleId/permissions",
@@ -129,7 +141,8 @@ func New(cfg *config.Config) (*App, error) {
 	api.RegisterHandlers(e, apiController)
 	apiController.RegisterCourseRoutes(e)
 	apiController.RegisterHomeworkRoutes(e)
-	apiController.RegisterAdminRoutes(e, adminHomeworkHandler, adminTaskHandler, adminRoleHandler)
+	apiController.RegisterAdminRoutes(e, adminHomeworkHandler, adminTaskHandler, adminRoleHandler, courseLateHandler, gradeUpdateHandler)
+	apiController.RegisterCheckerRoutes(e)
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 	httpServer := server.NewHTTPServer(addr, e)

@@ -39,11 +39,13 @@ func (c *Course) BeforeCreate(tx *gorm.DB) error {
 }
 
 type BoardDeadline struct {
-	ID      string  `json:"id"`
-	Label   string  `json:"label"`
-	Percent float64 `json:"percent"`
-	DueAt   string  `json:"dueAt"`
-	Status  string  `json:"status"`
+	ID           string  `json:"id"`
+	Label        string  `json:"label"`
+	Percent      float64 `json:"percent"`
+	SoftStatus   string  `json:"status"`
+	HardStatus   string  `json:"hard_status"`
+	SoftDeadline string  `json:"soft_deadline"`
+	HardDeadline string  `json:"hard_deadline"`
 }
 
 type BoardTask struct {
@@ -103,6 +105,6 @@ type HomeworkWithTasks struct {
 }
 
 type CourseInfo struct {
-	Course          `json:",inline"`
-	Homeworks       []HomeworkWithTasks `json:"homework"`
+	Course    `json:",inline"`
+	Homeworks []HomeworkWithTasks `json:"homework"`
 }

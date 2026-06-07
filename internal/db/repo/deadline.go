@@ -45,7 +45,7 @@ func (r *DeadlineRepository) GetByCourseID(ctx context.Context, courseID uuid.UU
 	var deadlines []model.Deadline
 	err := r.db.WithContext(ctx).
 		Where("course_id = ?", courseID).
-		Order("due_date ASC").
+		Order("hard_deadline ASC").
 		Find(&deadlines).Error
 	if err != nil {
 		return nil, err
