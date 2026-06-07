@@ -48,7 +48,10 @@ func (m *mockCourseRepo) UpdateCourse(ctx context.Context, courseID string, cour
 }
 
 func (m *mockCourseRepo) DeleteCourse(ctx context.Context, courseID string) error { return nil }
-func (m *mockCourseRepo) GetCourses(ctx context.Context) ([]models.Course, error) { return nil, nil }
+func (m *mockCourseRepo) GetCourses(ctx context.Context) ([]models.Course, error) {
+	args := m.Called(ctx)
+	return args.Get(0).([]models.Course), args.Error(1)
+}
 func (m *mockCourseRepo) GetCourseBoard(ctx context.Context, courseID string, userID uuid.UUID) (*models.TaskBoardSummary, bool, error) {
 	args := m.Called(ctx, courseID, userID)
 
@@ -362,6 +365,34 @@ func TestJoinCourse_AlreadyParticipant(t *testing.T) {
 	assert.Equal(t, "conflict", svcErr.Code)
 }
 
+func TestJoinCourse_Finished_Forbidden(t *testing.T) {
+	svc, cRepo, _ := setupService()
+	userID := uuid.New()
+	courseID := uuid.New()
+	course := &models.Course{ID: courseID, Type: models.CourseTypePublic, Status: "finished"}
+
+	cRepo.On("GetCourseByID", mock.Anything, courseID.String()).Return(course, nil)
+
+	err := svc.JoinCourse(context.Background(), userID, courseID.String(), "")
+
+	svcErr := err.(*Error)
+	assert.Equal(t, "forbidden", svcErr.Code)
+}
+
+func TestJoinCourse_Hidden_NotFound(t *testing.T) {
+	svc, cRepo, _ := setupService()
+	userID := uuid.New()
+	courseID := uuid.New()
+	course := &models.Course{ID: courseID, Type: models.CourseTypePublic, Status: "hidden"}
+
+	cRepo.On("GetCourseByID", mock.Anything, courseID.String()).Return(course, nil)
+
+	err := svc.JoinCourse(context.Background(), userID, courseID.String(), "")
+
+	svcErr := err.(*Error)
+	assert.Equal(t, "not_found", svcErr.Code)
+}
+
 func TestGetCourse_Public_NoPermissionCheck(t *testing.T) {
 	svc, cRepo, _ := setupService()
 	userID := uuid.Nil // неавторизованный
@@ -401,6 +432,67 @@ func TestGetCourse_Private_NoPermission(t *testing.T) {
 	_, err := svc.GetCourse(context.Background(), userID, "priv")
 	svcErr := err.(*Error)
 	assert.Equal(t, "forbidden", svcErr.Code)
+}
+
+func TestGetCourse_Hidden_NoAccess(t *testing.T) {
+	svc, cRepo, rRepo := setupService()
+	userID := uuid.New()
+	course := &models.Course{ID: uuid.New(), Name: "Hidden", Status: "hidden", Type: models.CourseTypePublic}
+
+	cRepo.On("GetCourseByID", mock.Anything, "hidden").Return(course, nil)
+	rRepo.On("GetRoleIDByUserAndCourse", mock.Anything, userID, course.ID).Return(uuid.New(), nil)
+	rRepo.On("HasPermission", mock.Anything, mock.Anything, PermissionCourseHiddenRead).Return(false, nil)
+	rRepo.On("GetRoleIDByUserAndCourse", mock.Anything, userID, uuid.Nil).Return(uuid.Nil, gorm.ErrRecordNotFound)
+
+	_, err := svc.GetCourse(context.Background(), userID, "hidden")
+
+	svcErr := err.(*Error)
+	assert.Equal(t, "not_found", svcErr.Code)
+}
+
+func TestGetCourse_Hidden_AdminVisible(t *testing.T) {
+	svc, cRepo, rRepo := setupService()
+	userID := uuid.New()
+	roleID := uuid.New()
+	course := &models.Course{ID: uuid.New(), Name: "Hidden", Status: "hidden", Type: models.CourseTypePublic}
+
+	cRepo.On("GetCourseByID", mock.Anything, "hidden").Return(course, nil)
+	rRepo.On("GetRoleIDByUserAndCourse", mock.Anything, userID, course.ID).Return(roleID, nil)
+	rRepo.On("HasPermission", mock.Anything, roleID, PermissionCourseHiddenRead).Return(true, nil)
+
+	result, err := svc.GetCourse(context.Background(), userID, "hidden")
+	assert.NoError(t, err)
+	assert.Equal(t, "Hidden", result.Name)
+}
+
+func TestGetCourses_Success(t *testing.T) {
+	svc, cRepo, _ := setupService()
+	userID := uuid.New()
+	courses := []models.Course{
+		{ID: uuid.New(), Name: "Visible", Status: "created"},
+		{ID: uuid.New(), Name: "Hidden", Status: "hidden"},
+	}
+
+	cRepo.On("GetCoursesByUserID", mock.Anything, userID, "").Return(courses, nil)
+
+	result, err := svc.GetCourses(context.Background(), userID, "")
+
+	assert.NoError(t, err)
+	assert.Len(t, result, 2)
+	assert.Equal(t, courses, result)
+}
+
+func TestGetPublicCourses_Success(t *testing.T) {
+	svc, cRepo, _ := setupService()
+	cRepo.On("GetPublicCourses", mock.Anything).Return([]models.Course{
+		{ID: uuid.New(), Name: "Visible", Status: "created", Type: models.CourseTypePublic},
+	}, nil)
+
+	result, err := svc.GetPublicCourses(context.Background())
+
+	assert.NoError(t, err)
+	assert.Len(t, result, 1)
+	assert.Equal(t, "Visible", result[0].Name)
 }
 
 func TestGetCourseBoard_Success(t *testing.T) {
