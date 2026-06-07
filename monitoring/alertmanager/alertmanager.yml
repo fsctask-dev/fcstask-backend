@@ -11,4 +11,4 @@ route:
 receivers:
   - name: "fcstask-monitor-bot"
     webhook_configs:
-      - url: "https://fcstask-monitor-bot.ru.tuna.am/webhook/alerts"
+      - url: "http://132.243.119.165:8080/webhook/alerts"
