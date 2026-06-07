@@ -103,6 +103,7 @@ func New(cfg *config.Config) (*App, error) {
 		"/api/signout",
 		"/api/stats",
 		"/api/courses",
+		"/api/courses/:courseId",
 		"/api/courses/:courseId/scores",
 		"/api/courses/:courseId/board",
 		"/api/courses/:courseId/join",
