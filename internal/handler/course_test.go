@@ -263,7 +263,7 @@ func TestCreateCourse_Success(t *testing.T) {
 	user := newTestUser()
 	roleID := uuid.New()
 	input := model.Course{
-		ID: uuid.New(), Name: "New", Slug: "new", Status: "created",
+		ID: uuid.New(), Name: "New", Slug: "new", Status: "in_progress",
 		Type: model.CourseTypePrivate, URL: "/course/new",
 	}
 
@@ -274,7 +274,7 @@ func TestCreateCourse_Success(t *testing.T) {
 	roleRepo.On("GetRoleIDByUserAndCourse", mock.Anything, user.ID, input.ID).Return(uuid.Nil, gorm.ErrRecordNotFound)
 	roleRepo.On("AssignRoleWithPermissions", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
-	body := `{"name":"New","slug":"new","status":"created","startDate":"2026-01-01","endDate":"2026-02-01","repoTemplate":"git@t","description":"d"}`
+	body := `{"name":"New","slug":"new","status":"in_progress","startDate":"2026-01-01","endDate":"2026-02-01","repoTemplate":"git@t","description":"d"}`
 	c := jsonContext(e, http.MethodPost, user, []byte(body))
 
 	err := handler.CreateCourse(c)
@@ -292,7 +292,7 @@ func TestCreateCourse_Conflict(t *testing.T) {
 	roleRepo.On("HasPermission", mock.Anything, roleID, service.PermissionCourseCreate).Return(true, nil)
 	courseRepo.On("GetCourseByID", mock.Anything, "dup").Return(existing, nil)
 
-	body := `{"name":"Dup","slug":"dup","status":"created","startDate":"2026-01-01","endDate":"2026-02-01","repoTemplate":"git@t","description":"d"}`
+	body := `{"name":"Dup","slug":"dup","status":"in_progress","startDate":"2026-01-01","endDate":"2026-02-01","repoTemplate":"git@t","description":"d"}`
 	c := jsonContext(e, http.MethodPost, user, []byte(body))
 
 	err := handler.CreateCourse(c)
@@ -321,7 +321,7 @@ func TestUpdateCourse_Success(t *testing.T) {
 	user := newTestUser()
 	roleID := uuid.New()
 	course := &model.Course{
-		ID: uuid.New(), Name: "Old", Slug: "old", Status: "created",
+		ID: uuid.New(), Name: "Old", Slug: "old", Status: "in_progress",
 		Type: model.CourseTypePrivate, StartDate: parseDate("2026-01-01"), EndDate: parseDate("2026-02-01"),
 	}
 

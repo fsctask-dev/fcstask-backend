@@ -418,7 +418,6 @@ func validateCreateCourse(input CourseInput) error {
 
 func IsValidCourseStatus(status string) bool {
 	valid := map[string]bool{
-		"created":     true,
 		"hidden":      true,
 		"in_progress": true,
 		"finished":    true,
