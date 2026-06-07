@@ -75,7 +75,7 @@ func (h *CourseHandler) GetCourse(ctx echo.Context) error {
 	return ctx.JSON(http.StatusOK, info)
 }
 
-// POST /admin/course/create
+// POST /admin/courses/create
 func (h *CourseHandler) CreateCourse(ctx echo.Context) error {
 	user, ok := ctx.Get(UserContextKey).(*model.User)
 	if !ok || user == nil {
@@ -95,7 +95,7 @@ func (h *CourseHandler) CreateCourse(ctx echo.Context) error {
 	return ctx.JSON(http.StatusCreated, course)
 }
 
-// PATCH /admin/course/update
+// PUT /admin/courses/:courseId/update
 func (h *CourseHandler) UpdateCourse(ctx echo.Context) error {
 	user, ok := ctx.Get(UserContextKey).(*model.User)
 	if !ok || user == nil {
@@ -165,7 +165,7 @@ func (h *CourseHandler) GetScores(ctx echo.Context) error {
 	return ctx.JSON(http.StatusOK, entries)
 }
 
-// POST /api/courses/:courseId/invite
+// POST /admin/courses/:courseId/invite
 func (h *CourseHandler) RegenerateInviteCode(ctx echo.Context) error {
 	user, ok := ctx.Get(UserContextKey).(*model.User)
 	if !ok || user == nil {
