@@ -95,6 +95,24 @@ func (s *CourseService) GetCourseInfo(ctx context.Context, userID uuid.UUID, cou
 	return info, nil
 }
 
+func (s *CourseService) CheckPermissions(ctx context.Context, userID uuid.UUID, courseID string, permissions []string) (map[string]bool, error) {
+    course, err := s.GetCourse(ctx, userID, courseID)
+    if err != nil {
+        return nil, err
+    }
+
+    result := make(map[string]bool, len(permissions))
+    for _, perm := range permissions {
+        allowed, err := HasScopedPermission(ctx, s.RoleRepo, userID, course.ID, perm)
+        if err != nil {
+            return nil, Internal("Failed to check permission '"+perm+"'", err)
+        }
+        result[perm] = allowed
+    }
+
+    return result, nil
+}
+
 func (s *CourseService) CreateCourse(ctx context.Context, userID uuid.UUID, input CourseInput) (*models.Course, error) {
 	if err := RequireScopedPermission(ctx, s.RoleRepo, userID, uuid.Nil, PermissionCourseCreate); err != nil {
 		return nil, err
@@ -383,6 +401,7 @@ func validateCreateCourse(input CourseInput) error {
 
 func IsValidCourseStatus(status string) bool {
 	valid := map[string]bool{
+		"created":     true,
 		"hidden":      true,
 		"in_progress": true,
 		"finished":    true,

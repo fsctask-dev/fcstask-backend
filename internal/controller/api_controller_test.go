@@ -205,11 +205,61 @@ func (r *controllerCourseRepo) GetPublicCourses(ctx context.Context) ([]models.C
 	return courses, nil
 }
 
+type controllerRoleRepo struct{}
+
+func (r *controllerRoleRepo) AssignRoleWithPermissions(ctx context.Context, role *models.UserRole, permissions []string) error {
+	return nil
+}
+func (r *controllerRoleRepo) RevokeRoleWithPermissions(ctx context.Context, userID, courseID, roleID uuid.UUID) error {
+	return nil
+}
+func (r *controllerRoleRepo) GetByCourseID(ctx context.Context, courseID uuid.UUID) ([]models.UserRole, error) {
+	return nil, nil
+}
+func (r *controllerRoleRepo) GetRoleIDByUserAndCourse(ctx context.Context, userID, courseID uuid.UUID) (uuid.UUID, error) {
+	return uuid.New(), nil
+}
+func (r *controllerRoleRepo) RoleBelongsToCourse(ctx context.Context, roleID, courseID uuid.UUID) (bool, error) {
+	return true, nil
+}
+func (r *controllerRoleRepo) HasPermission(ctx context.Context, roleID uuid.UUID, permission string) (bool, error) {
+	return true, nil
+}
+func (r *controllerRoleRepo) AddPermission(ctx context.Context, perm *models.CourseAdminPermission) error {
+	return nil
+}
+func (r *controllerRoleRepo) AddPermissions(ctx context.Context, roleID uuid.UUID, permissions []string) error {
+	return nil
+}
+func (r *controllerRoleRepo) RemovePermission(ctx context.Context, roleID uuid.UUID, permission string) error {
+	return nil
+}
+func (r *controllerRoleRepo) RemovePermissions(ctx context.Context, roleID uuid.UUID, permissions []string) error {
+	return nil
+}
+func (r *controllerRoleRepo) GetPermissions(ctx context.Context, roleID uuid.UUID) ([]models.CourseAdminPermission, error) {
+	return nil, nil
+}
+
+type controllerStatsRepo struct{}
+
+func (r *controllerStatsRepo) GetStats(ctx context.Context) (*models.PlatformStats, error) {
+	return &models.PlatformStats{
+		TotalCourses:   1,
+		PublicCourses:  1,
+		PrivateCourses: 0,
+		TotalUsers:     1,
+	}, nil
+}
+
 func newTestController(userRepo *controllerUserRepo, sessionRepo *controllerSessionRepo, courseRepo *controllerCourseRepo) *APIController {
 	userService := service.NewUserService(userRepo)
 	authService := service.NewAuthService(userRepo, sessionRepo)
 	sessionService := service.NewSessionService(sessionRepo)
-	courseService := service.NewCourseService(courseRepo, nil, nil)
+	roleRepo := &controllerRoleRepo{}
+	courseService := service.NewCourseService(courseRepo, roleRepo, nil)
+	statsService := service.NewStatsService(&controllerStatsRepo{}, roleRepo)
+	statsHandler := handler.NewStatsHandler(statsService)
 
 	return NewAPIController(
 		handler.NewAuthHandler(authService),
@@ -217,6 +267,7 @@ func newTestController(userRepo *controllerUserRepo, sessionRepo *controllerSess
 		handler.NewSessionHandler(sessionService, userService),
 		handler.NewCourseHandler(courseService),
 		nil,
+		statsHandler,
 	)
 }
 
@@ -313,6 +364,81 @@ func TestAPIController_RegisterCourseRoutes(t *testing.T) {
 	assert.NoError(t, json.Unmarshal(rec.Body.Bytes(), &courses))
 	assert.Len(t, courses, 1)
 	assert.Equal(t, "go", courses[0].Slug)
+}
+
+func TestAPIController_RegisterAdminRoutes_CreateCourse(t *testing.T) {
+	e := echo.New()
+	userRepo := &controllerUserRepo{
+		user: &models.User{
+			ID:       uuid.New(),
+			Email:    "admin@example.com",
+			Username: "admin",
+			UserID:   uuid.New(),
+		},
+	}
+	controller := newTestController(
+		userRepo,
+		&controllerSessionRepo{},
+		&controllerCourseRepo{courses: map[string]models.Course{}},
+	)
+	controller.RegisterAdminRoutes(e, nil, nil, nil)
+
+	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			c.Set("user", userRepo.user)
+			return next(c)
+		}
+	})
+
+	body := []byte(`{"name":"New","slug":"new","status":"created","startDate":"2026-01-01","endDate":"2026-02-01","repoTemplate":"git@test/new.git","description":"desc"}`)
+	req := httptest.NewRequest(http.MethodPost, "/admin/courses/create", bytes.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusCreated, rec.Code)
+}
+
+func TestAPIController_RegisterAdminRoutes_RegenerateInviteCode(t *testing.T) {
+	e := echo.New()
+	userRepo := &controllerUserRepo{
+		user: &models.User{
+			ID:       uuid.New(),
+			Email:    "owner@example.com",
+			Username: "owner",
+			UserID:   uuid.New(),
+		},
+	}
+	courseID := uuid.New()
+	code := "secret"
+	controller := newTestController(
+		userRepo,
+		&controllerSessionRepo{},
+		&controllerCourseRepo{courses: map[string]models.Course{
+			courseID.String(): {
+				ID:         courseID,
+				Name:       "Private",
+				Slug:       "private",
+				Status:     "created",
+				Type:       models.CourseTypePrivate,
+				InviteCode: &code,
+			},
+		}},
+	)
+	controller.RegisterAdminRoutes(e, nil, nil, nil)
+
+	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			c.Set("user", userRepo.user)
+			return next(c)
+		}
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/courses/"+courseID.String()+"/invite", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
 }
 
 func TestAPIController_SignIn(t *testing.T) {
