@@ -20,6 +20,7 @@ func NewAdminRoleHandler(roleService IAdminRoleService) *AdminRoleHandler {
 
 type AssignCourseAdminRequest struct {
 	UserID uuid.UUID `json:"user_id"`
+    Role     string    `json:"role,omitempty"`   // дефолтный админ или owner
 }
 
 type RevokeCourseAdminRequest struct {
@@ -119,6 +120,7 @@ func (h *AdminRoleHandler) AssignCourseAdmin(c echo.Context) error {
 	userRole, err := h.roleService.AssignCourseAdmin(c.Request().Context(), user.ID, service.AssignCourseAdminInput{
 		UserID:   req.UserID,
 		CourseID: courseID,
+		Role:     req.Role,
 	})
 	if err != nil {
 		return serviceError(c, err)

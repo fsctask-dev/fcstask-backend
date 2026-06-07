@@ -32,6 +32,7 @@ func (s *AdminRoleService) WithMetrics(m *metrics.AdminMetrics) *AdminRoleServic
 type AssignCourseAdminInput struct {
 	UserID   uuid.UUID
 	CourseID uuid.UUID
+	Role     string
 }
 
 type RevokeCourseAdminInput struct {
@@ -55,32 +56,43 @@ type CreateSuperAdminInput struct {
 }
 
 func (s *AdminRoleService) AssignCourseAdmin(ctx context.Context, userID uuid.UUID, input AssignCourseAdminInput) (role *model.UserRole, err error) {
-	defer func() { s.adminMetrics.IncAction(metrics.AdminActionAssignRole, adminOutcome(err)) }()
+    defer func() { s.adminMetrics.IncAction(metrics.AdminActionAssignRole, adminOutcome(err)) }()
 
-	if input.UserID == uuid.Nil || input.CourseID == uuid.Nil {
-		return nil, BadRequest("user_id or course_id is required")
-	}
-	if err = RequireScopedPermission(ctx, s.roleRepo, userID, input.CourseID, PermissionCourseRoleAssign); err != nil {
-		return nil, err
-	}
+    if input.UserID == uuid.Nil || input.CourseID == uuid.Nil {
+        return nil, BadRequest("user_id or course_id is required")
+    }
+    if err = RequireScopedPermission(ctx, s.roleRepo, userID, input.CourseID, PermissionCourseRoleAssign); err != nil {
+        return nil, err
+    }
 
-	if _, err = s.userRepo.GetUserByID(ctx, input.UserID); err != nil {
-		return nil, NotFound("User not found")
-	}
+    if _, err = s.userRepo.GetUserByID(ctx, input.UserID); err != nil {
+        return nil, NotFound("User not found")
+    }
 
-	roleID, err := s.roleRepo.GetRoleIDByUserAndCourse(ctx, input.UserID, input.CourseID)
-	if err != nil {
-		return nil, NotFound("User is not a course participant")
-	}
-	if err = GrantRolePermissions(ctx, s.roleRepo, roleID, CourseAdminPermissions()); err != nil {
-		return nil, err
-	}
+    switch input.Role {
+    case "owner":
+        // создаст роль если нет, выдаёт полный набор прав
+        role, err = EnsureUserRoleWithPermissions(ctx, s.roleRepo, input.UserID, input.CourseID, CourseOwnerPermissions())
+        if err != nil {
+            return nil, Internal("Failed to assign owner permissions", err)
+        }
+        return role, nil
 
-	return &model.UserRole{
-		UserID:   input.UserID,
-		CourseID: input.CourseID,
-		RoleID:   roleID,
-	}, nil
+    default:
+        // "admin" или "" требует участника, добавляет админ-права
+        roleID, err := s.roleRepo.GetRoleIDByUserAndCourse(ctx, input.UserID, input.CourseID)
+        if err != nil {
+            return nil, NotFound("User is not a course participant")
+        }
+        if err = GrantRolePermissions(ctx, s.roleRepo, roleID, CourseAdminPermissions()); err != nil {
+            return nil, err
+        }
+        return &model.UserRole{
+            UserID:   input.UserID,
+            CourseID: input.CourseID,
+            RoleID:   roleID,
+        }, nil
+    }
 }
 
 func (s *AdminRoleService) CreateSuperAdmin(ctx context.Context, userID uuid.UUID, input CreateSuperAdminInput) (role *model.UserRole, err error) {

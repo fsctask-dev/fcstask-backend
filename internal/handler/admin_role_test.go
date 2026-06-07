@@ -95,6 +95,7 @@ func TestHandlerAssignCourseAdmin_Success(t *testing.T) {
 
 	body := map[string]interface{}{
 		"user_id": userID.String(),
+		"role":    "admin",
 	}
 	roleID := uuid.New()
 	expected := &model.UserRole{UserID: userID, CourseID: courseID, RoleID: roleID}
@@ -103,6 +104,7 @@ func TestHandlerAssignCourseAdmin_Success(t *testing.T) {
 	svc.On("AssignCourseAdmin", mock.Anything, mock.Anything, service.AssignCourseAdminInput{
 		UserID:   userID,
 		CourseID: courseID,
+		Role:     "admin",
 	}).Return(expected, nil)
 
 	err := h.AssignCourseAdmin(c)
