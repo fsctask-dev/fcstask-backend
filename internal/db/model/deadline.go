@@ -19,8 +19,8 @@ type Deadline struct {
 	CreatedAt    time.Time      `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt    time.Time      `gorm:"autoUpdateTime" json:"updated_at"`
 	DeletedAt    gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
-	SoftDeadline time.Time      `gorm:"type:timestamp" json:"soft_deadline"`
-	HardDeadline time.Time      `gorm:"type:timestamp" json:"hard_deadline"`
+	SoftDeadline time.Time      `gorm:"type:timestamtz" json:"soft_deadline"`
+	HardDeadline time.Time      `gorm:"type:timestamptz" json:"hard_deadline"`
 }
 
 func (d *Deadline) BeforeCreate(tx *gorm.DB) error {

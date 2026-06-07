@@ -40,11 +40,11 @@ type PublishHomeworkRequest struct {
 }
 
 type SetDeadlineRequest struct {
-	CourseID     string    `json:"course_id"`
-	Title        string    `json:"title"`
-	Description  *string   `json:"description"`
-	SoftDeadline time.Time `json:"soft_deadline"`
-	HardDeadline time.Time `json:"hard_deadline"`
+	CourseID     string     `json:"course_id"`
+	Title        string     `json:"title"`
+	Description  *string    `json:"description"`
+	SoftDeadline *time.Time `json:"soft_deadline"`
+	HardDeadline time.Time  `json:"hard_deadline"`
 }
 
 type UpdateDeadlineRequest struct {
@@ -276,7 +276,7 @@ func (h *AdminHomeworkHandler) SetDeadline(c echo.Context) error {
 		HomeworkID:   hwID,
 		Title:        req.Title,
 		AssignedBy:   assignedBy,
-		SoftDeadline: req.SoftDeadline,
+		SoftDeadline: *req.SoftDeadline,
 		HardDeadline: req.HardDeadline,
 	}
 	if req.Description != nil {

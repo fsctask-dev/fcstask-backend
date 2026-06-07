@@ -148,7 +148,7 @@ func (s *CheckerService) applyLatePolicy(ctx context.Context, taskID uuid.UUID, 
 		return int(float64(baseScore) * factor)
 
 	case model.PolicyTypeStep:
-		daysLate := int(submittedAt.Sub(soft).Hours()/24) + 1
+		daysLate := int(submittedAt.Sub(soft).Hours() / 24)
 		factor := 1.0 - float64(daysLate)**policy.StepPercent
 		if factor < 0 {
 			factor = 0
