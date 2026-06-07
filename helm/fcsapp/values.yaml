@@ -7,37 +7,13 @@ replicaCount: 2
 image:
   repository: andrewlimit/fcsapp
   pullPolicy: IfNotPresent
-  # Overrides the image tag whose default is the chart appVersion.
   tag: ""
 
-imagePullSecrets: []
-nameOverride: ""
-fullnameOverride: ""
-
 serviceAccount:
-  # Specifies whether a service account should be created
   create: true
-  # Automatically mount a ServiceAccount's API credentials?
   automount: true
-  # Annotations to add to the service account
   annotations: {}
-  # The name of the service account to use.
-  # If not set and create is true, a name is generated using the fullname template
   name: ""
-
-podAnnotations: {}
-podLabels: {}
-
-podSecurityContext: {}
-  # fsGroup: 2000
-
-securityContext: {}
-  # capabilities:
-  #   drop:
-  #   - ALL
-  # readOnlyRootFilesystem: true
-  # runAsNonRoot: true
-  # runAsUser: 1000
 
 service:
   type: ClusterIP
@@ -48,33 +24,6 @@ container:
   port: 8080
   metricsPort: 8081
 
-#ingress:
-#  enabled: false
-#  className: ""
-#  annotations: {}
-#    # kubernetes.io/ingress.class: nginx
-#    # kubernetes.io/tls-acme: "true"
-#  hosts:
-#    - host: chart-example.local
-#      paths:
-#        - path: /
-#          pathType: ImplementationSpecific
-#  tls: []
-#  #  - secretName: chart-example-tls
-#  #    hosts:
-#  #      - chart-example.local
-
-resources: {}
-  # We usually recommend not to specify default resources and to leave this as a conscious
-  # choice for the user. This also increases chances charts run on environments with little
-  # resources, such as Minikube. If you do want to specify resources, uncomment the following
-  # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
-  # limits:
-  #   cpu: 100m
-  #   memory: 128Mi
-  # requests:
-  #   cpu: 100m
-  #   memory: 128Mi
 
 livenessProbe:
   tcpSocket:
@@ -97,13 +46,6 @@ autoscaling:
   minReplicas: 2
   maxReplicas: 100
   targetCPUUtilizationPercentage: 80
-  # targetMemoryUtilizationPercentage: 80
-
-nodeSelector: {}
-
-tolerations: []
-
-affinity: {}
 
 config:
   server:
@@ -112,23 +54,13 @@ config:
     shutdownTimeout: "5s"
 
   database:
-    host: "postgres-dev-postgresql-primary.postgres-dev.svc.cluster.local"
     port: 5432
-    username: "postgres"
-    password: ""
-    database: "postgres"
     sslMode: "disable"
     maxOpenConns: 25
     maxIdleConns: 25
     connMaxLifetime: "5m"
     pingTimeout: "5s"
-    replicas:
-      - host: "postgres-replica"
-        port: 5432
-        username: "postgres"
-        password: ""
-        database: "fcstask"
-        sslMode: "disable"
+    replicas: []
 
   session:
     ttl: "24h"
@@ -153,9 +85,5 @@ ingress:
   enabled: true
   className: nginx
   annotations: {}
-  hosts:
-    - host: fcs-task-dev.turbomuza.ru
-      paths:
-        - path: /api
-          pathType: Prefix
+  hosts: []
   tls: []

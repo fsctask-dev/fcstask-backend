@@ -67,27 +67,21 @@ jobs:
 
       - name: Deploy to test
         env:
-          DB_HOST: postgres-dev-postgresql-primary.postgres-dev.svc.cluster.local
-          DB_REPLICA_HOST: postgres-dev-postgresql-read.postgres-dev.svc.cluster.local
-          DB_PORT: '5432'
-          DB_NAME: ${{ secrets.DB_NAME }}
+          IMAGE_REPOSITORY: ${{ secrets.DOCKER_REGISTRY_USER }}/${{ env.IMAGE_NAME }}
+          IMAGE_TAG: ${{ needs.build-and-push.outputs.short_sha }}
+
           DB_USERNAME: ${{ secrets.DB_USERNAME }}
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
         run: |
           helm upgrade --install fcsapp ./helm/fcsapp \
             --namespace ${{ env.K8S_NAMESPACE_TEST }} \
-            --set image.repository=${{ secrets.DOCKER_REGISTRY_USER }}/${{ env.IMAGE_NAME }} \
-            --set image.tag=${{ needs.build-and-push.outputs.short_sha }} \
-            --set config.database.host="$DB_HOST" \
-            --set config.database.port="$DB_PORT" \
+            -f ./helm/fcsapp/values-test.yaml \
+            --set image.repository="$IMAGE_REPOSITORY" \
+            --set image.tag="$IMAGE_TAG" \
             --set config.database.username="$DB_USERNAME" \
             --set config.database.password="$DB_PASSWORD" \
-            --set config.database.database="$DB_NAME" \
-            --set config.database.replicas[0].host="$DB_REPLICA_HOST" \
-            --set config.database.replicas[0].port="$DB_PORT" \
             --set config.database.replicas[0].username="$DB_USERNAME" \
             --set config.database.replicas[0].password="$DB_PASSWORD" \
-            --set config.database.replicas[0].database="$DB_NAME" \
             --wait
 
   deploy-prod-to-k8s:
@@ -95,7 +89,7 @@ jobs:
       - build-and-push
       - deploy-test-to-k8s
 
-    if: needs.build-and-push.outputs.is_release_branch == 'true'
+    if: startsWith(github.ref, 'refs/heads/release/')
 
     runs-on: self-hosted
     environment: prod
@@ -123,27 +117,18 @@ jobs:
           IMAGE_REPOSITORY: ${{ secrets.DOCKER_REGISTRY_USER }}/${{ env.IMAGE_NAME }}
           IMAGE_TAG: ${{ needs.build-and-push.outputs.short_sha }}
 
-          DB_HOST: postgres-prod-postgresql-primary.postgres-prod.svc.cluster.local
-          DB_REPLICA_HOST: postgres-prod-postgresql-read.postgres-prod.svc.cluster.local
-          DB_PORT: "5432"
-
           DB_USERNAME: ${{ secrets.PROD_DB_USERNAME }}
           DB_PASSWORD: ${{ secrets.PROD_DB_PASSWORD }}
-          DB_NAME: ${{ secrets.PROD_DB_NAME }}
         run: |
           helm upgrade --install fcsapp ./helm/fcsapp \
             --namespace ${{ env.K8S_NAMESPACE_PROD }} \
+            -f ./helm/fcsapp/values-prod.yaml \
             --set image.repository="$IMAGE_REPOSITORY" \
             --set image.tag="$IMAGE_TAG" \
-            --set config.database.host="$DB_HOST" \
-            --set config.database.port="$DB_PORT" \
             --set config.database.username="$DB_USERNAME" \
             --set config.database.password="$DB_PASSWORD" \
-            --set config.database.database="$DB_NAME" \
-            --set config.database.replicas[0].host="$DB_REPLICA_HOST" \
-            --set config.database.replicas[0].port="$DB_PORT" \
             --set config.database.replicas[0].username="$DB_USERNAME" \
             --set config.database.replicas[0].password="$DB_PASSWORD" \
-            --set config.database.replicas[0].database="$DB_NAME" \
             --wait \
-            --timeout 5m
+            --timeout 5m \
+            --atomic
