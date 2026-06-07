@@ -256,8 +256,8 @@ func newTestController(userRepo *controllerUserRepo, sessionRepo *controllerSess
 	userService := service.NewUserService(userRepo)
 	authService := service.NewAuthService(userRepo, sessionRepo)
 	sessionService := service.NewSessionService(sessionRepo)
-	courseService := service.NewCourseService(courseRepo, nil, nil)
 	roleRepo := &controllerRoleRepo{}
+	courseService := service.NewCourseService(courseRepo, roleRepo, nil)
 	statsService := service.NewStatsService(&controllerStatsRepo{}, roleRepo)
 	statsHandler := handler.NewStatsHandler(statsService)
 

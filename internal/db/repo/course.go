@@ -46,7 +46,7 @@ func (r *CourseRepository) GetCourses(ctx context.Context) ([]models.Course, err
 func (r *CourseRepository) GetPublicCourses(ctx context.Context) ([]models.Course, error) {
 	var courses []models.Course
 	if err := r.rw.ReadDB().WithContext(ctx).
-		Where("type = ?", models.CourseTypePublic).
+		Where("type = ? AND status <> ?", models.CourseTypePublic, "hidden").
 		Find(&courses).Error; err != nil {
 		return nil, err
 	}
@@ -54,20 +54,21 @@ func (r *CourseRepository) GetPublicCourses(ctx context.Context) ([]models.Cours
 }
 
 func (r *CourseRepository) GetCoursesByUserID(ctx context.Context, userID uuid.UUID, status string) ([]models.Course, error) {
-	var courseIDs []uuid.UUID
-	if err := r.rw.ReadDB().WithContext(ctx).
-		Model(&models.UserRole{}).
-		Where("user_id = ?", userID).
-		Pluck("course_id", &courseIDs).Error; err != nil {
-		return nil, err
-	}
 	var courses []models.Course
-	if len(courseIDs) == 0 {
-		return courses, nil
-	}
-	query := r.rw.ReadDB().WithContext(ctx).Where("id IN ?", courseIDs)
+	query := r.rw.ReadDB().WithContext(ctx).
+		Model(&models.Course{}).
+		Distinct("courses.*").
+		Joins("LEFT JOIN user_roles ur ON ur.course_id = courses.id AND ur.user_id = ?", userID).
+		Joins("LEFT JOIN course_admin_permissions hidden_perm ON hidden_perm.role_id = ur.role_id AND hidden_perm.permission = ?", "course.hidden.read").
+		Joins("LEFT JOIN user_roles global_ur ON global_ur.user_id = ? AND global_ur.course_id = ?", userID, uuid.Nil).
+		Joins("LEFT JOIN course_admin_permissions super_perm ON super_perm.role_id = global_ur.role_id AND super_perm.permission = ?", "is_super_admin").
+		Where(`
+			(ur.user_id IS NOT NULL AND (courses.status <> ? OR hidden_perm.role_id IS NOT NULL))
+			OR
+			(courses.status = ? AND super_perm.role_id IS NOT NULL)
+		`, "hidden", "hidden")
 	if status != "" {
-		query = query.Where("status = ?", status)
+		query = query.Where("courses.status = ?", status)
 	}
 	if err := query.Find(&courses).Error; err != nil {
 		return nil, err
