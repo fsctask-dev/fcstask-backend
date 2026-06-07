@@ -20,13 +20,19 @@ func NewGradeUpdateHandler(svc IGradeUpdateService) *GradeUpdateHandler {
 
 type GradeUpdateRequest struct {
 	StudentID uuid.UUID `json:"studentId"`
-	TaskID    uuid.UUID `json:"taskId"`
-	CourseID  uuid.UUID `json:"courseId"`
 	Score     *int      `json:"score"`
 }
 
 // POST /admin/courses/:courseId/homework/:hwId/tasks/:taskId/update_grade
 func (h *GradeUpdateHandler) UpdateGrade(c echo.Context) error {
+	courseID, err := uuid.Parse(c.Param("course_id"))
+	if err != nil {
+		return badRequest(c, "invalid course_id")
+	}
+	taskID, err := uuid.Parse(c.Param("task_id"))
+	if err != nil {
+		return badRequest(c, "invalid task_id")
+	}
 	var req GradeUpdateRequest
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
@@ -40,20 +46,14 @@ func (h *GradeUpdateHandler) UpdateGrade(c echo.Context) error {
 	if req.StudentID == uuid.Nil {
 		return badRequest(c, "invalid student id")
 	}
-	if req.CourseID == uuid.Nil {
-		return badRequest(c, "invalid course id")
-	}
-	if req.TaskID == uuid.Nil {
-		return badRequest(c, "invalid task id")
-	}
 	if req.Score == nil {
 		return badRequest(c, "invalid score")
 	}
 
 	score, err := h.gradeUpdateService.UpdateGrade(c.Request().Context(), user.ID, service.UpdateGradeInput{
 		StudentID: req.StudentID,
-		TaskID:    req.TaskID,
-		CourseID:  req.CourseID,
+		TaskID:    taskID,
+		CourseID:  courseID,
 		Score:     req.Score,
 	})
 	if err != nil {

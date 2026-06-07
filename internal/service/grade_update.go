@@ -10,13 +10,6 @@ import (
 	"github.com/google/uuid"
 )
 
-type GradeUpdateService struct {
-	taskRepo     repo.ITaskRepo
-	scoreRepo    repo.IStudentTaskScoreRepo
-	roleRepo     repo.IRoleRepo
-	adminMetrics *metrics.AdminMetrics
-}
-
 type UpdateGradeInput struct {
 	StudentID uuid.UUID `json:"student_id"`
 	TaskID    uuid.UUID `json:"task_id"`
@@ -30,15 +23,25 @@ func (s *GradeUpdateService) WithMetrics(m *metrics.AdminMetrics) *GradeUpdateSe
 	return s
 }
 
+type GradeUpdateService struct {
+	taskRepo     repo.ITaskRepo
+	homeworkRepo repo.IHomeworkRepo
+	scoreRepo    repo.IStudentTaskScoreRepo
+	roleRepo     repo.IRoleRepo
+	adminMetrics *metrics.AdminMetrics
+}
+
 func NewGradeUpdateService(
 	taskRepo repo.ITaskRepo,
+	homeworkRepo repo.IHomeworkRepo,
 	scoreRepo repo.IStudentTaskScoreRepo,
 	roleRepo repo.IRoleRepo,
 ) *GradeUpdateService {
 	return &GradeUpdateService{
-		taskRepo:  taskRepo,
-		scoreRepo: scoreRepo,
-		roleRepo:  roleRepo,
+		taskRepo:     taskRepo,
+		homeworkRepo: homeworkRepo,
+		scoreRepo:    scoreRepo,
+		roleRepo:     roleRepo,
 	}
 }
 
@@ -61,6 +64,26 @@ func (s *GradeUpdateService) UpdateGrade(ctx context.Context, userID uuid.UUID, 
 	}
 	if *input.Score < 0 {
 		return nil, BadRequest("score must be 0 or higher")
+	}
+
+	task, err := s.taskRepo.GetByID(ctx, input.TaskID)
+	if err != nil {
+		return nil, NotFound("task not found")
+	}
+	hw, err := s.homeworkRepo.GetByID(ctx, task.HwID)
+	if err != nil {
+		return nil, NotFound("homework not found")
+	}
+	if hw.CourseID != input.CourseID {
+		return nil, BadRequest("task does not belong to the specified course")
+	}
+
+	isMember, err := HasScopedPermission(ctx, s.roleRepo, input.StudentID, input.CourseID, PermissionCourseRead)
+	if err != nil {
+		return nil, Internal("failed to check student membership", err)
+	}
+	if !isMember {
+		return nil, BadRequest("student is not a member of this course")
 	}
 
 	score = &model.StudentTaskScore{

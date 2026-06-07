@@ -53,7 +53,6 @@ type SetDeadlineInput struct {
 	HomeworkID   uuid.UUID
 	Title        string
 	Description  string
-	DueDate      string // RFC3339
 	SoftDeadline time.Time
 	HardDeadline time.Time
 	AssignedBy   *uuid.UUID
@@ -62,7 +61,6 @@ type SetDeadlineInput struct {
 type UpdateDeadlineInput struct {
 	Title        string
 	Description  string
-	DueDate      string // RFC3339
 	SoftDeadline time.Time
 	HardDeadline time.Time
 }
@@ -263,17 +261,11 @@ func (s *AdminHomeworkService) SetDeadline(ctx context.Context, userID uuid.UUID
 	if input.Title == "" {
 		return nil, BadRequest("title is required")
 	}
-
-	dueDate, err := time.Parse(time.RFC3339, input.DueDate)
-	if err != nil {
-		return nil, BadRequest("due date must be in RFC3339 format")
-	}
-
-	if input.SoftDeadline.IsZero() {
-		return nil, BadRequest("soft_deadline is required")
-	}
 	if input.HardDeadline.IsZero() {
 		return nil, BadRequest("hard_deadline is required")
+	}
+	if input.SoftDeadline.IsZero() {
+		input.SoftDeadline = input.HardDeadline
 	}
 
 	hw, err := s.homeworkRepo.GetByID(ctx, input.HomeworkID)
@@ -288,7 +280,6 @@ func (s *AdminHomeworkService) SetDeadline(ctx context.Context, userID uuid.UUID
 		Title:        input.Title,
 		Description:  stringPtr(input.Description),
 		CourseID:     input.CourseID,
-		DueDate:      dueDate,
 		AssignedBy:   input.AssignedBy,
 		HomeworkID:   input.HomeworkID,
 		SoftDeadline: input.SoftDeadline,
@@ -343,13 +334,6 @@ func (s *AdminHomeworkService) UpdateDeadline(ctx context.Context, userID, deadl
 	}
 	if input.Description != "" {
 		deadline.Description = stringPtr(input.Description)
-	}
-	if input.DueDate != "" {
-		dueDate, err := time.Parse(time.RFC3339, input.DueDate)
-		if err != nil {
-			return nil, BadRequest("due date must be in RFC3339 format")
-		}
-		deadline.DueDate = dueDate
 	}
 	if !input.SoftDeadline.IsZero() {
 		deadline.SoftDeadline = input.SoftDeadline

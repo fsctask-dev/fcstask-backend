@@ -229,11 +229,13 @@ func (r *CourseRepository) GetCourseBoard(ctx context.Context, courseID string, 
 
 		for _, dl := range deadlinesByHW[hw.HwID] {
 			group.Deadlines = append(group.Deadlines, models.BoardDeadline{
-				ID:      dl.ID.String(),
-				Label:   dl.Title,
-				DueAt:   dl.DueDate.Format(time.RFC3339),
-				Status:  deadlineStatus(dl.DueDate),
-				Percent: 0,
+				ID:           dl.ID.String(),
+				Label:        dl.Title,
+				SoftDeadline: dl.SoftDeadline,
+				HardDeadline: dl.HardDeadline,
+				SoftStatus:   deadlineStatus(dl.SoftDeadline),
+				HardStatus:   deadlineStatus(dl.HardDeadline),
+				Percent:      0,
 			})
 		}
 
@@ -301,7 +303,11 @@ func (r *CourseRepository) GetCourseInfo(ctx context.Context, courseID uuid.UUID
 	}
 
 	var allDeadlines []models.Deadline
-	if err := r.rw.ReadDB().WithContext(ctx).Joins("JOIN homework h ON h.hw_id = deadlines.homework_id").Where("deadlines.course_id = ? AND h.is_public = ?", courseID, true).Order("due_date ASC").Find(&allDeadlines).Error; err != nil {
+	if err := r.rw.ReadDB().WithContext(ctx).
+		Joins("JOIN homework h ON h.hw_id = deadlines.homework_id").
+		Where("deadlines.course_id = ? AND h.is_public = ?", courseID, true).
+		Order("hard_deadline ASC").
+		Find(&allDeadlines).Error; err != nil {
 		return nil, err
 	}
 

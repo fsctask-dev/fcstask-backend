@@ -81,7 +81,10 @@ func validateCourseLateInput(in CourseLateInput) error {
 		if in.HardDeadlineScore < 0 || in.HardDeadlineScore > 1 {
 			return BadRequest("hard_deadline_score must be between 0.0 and 1.0")
 		}
-		if 1-in.SoftPenalty > in.HardDeadlineScore {
+		if in.SoftPenalty < 0 || in.SoftPenalty > 1 {
+			return BadRequest("soft_penalty must be between 0.0 and 1.0")
+		}
+		if 1-in.SoftPenalty < in.HardDeadlineScore {
 			return BadRequest("soft_deadline_score must be higher than or equal to hard_deadline_score")
 		}
 	case model.PolicyTypeStep:

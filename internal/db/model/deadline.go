@@ -13,7 +13,6 @@ type Deadline struct {
 	Description  *string        `gorm:"type:text" json:"description,omitempty"`
 	CourseID     uuid.UUID      `gorm:"type:uuid;not null;index" json:"course_id"`
 	Course       Course         `gorm:"foreignKey:CourseID;constraint:OnDelete:CASCADE" json:"course"`
-	DueDate      time.Time      `gorm:"type:timestamp;not null" json:"due_date"`
 	AssignedBy   *uuid.UUID     `gorm:"type:uuid;index" json:"assigned_by,omitempty"`
 	Assignee     *User          `gorm:"foreignKey:AssignedBy;constraint:OnDelete:SET NULL" json:"assignee,omitempty"`
 	HomeworkID   uuid.UUID      `gorm:"type:uuid;not null;index" json:"homework_id,omitempty"`

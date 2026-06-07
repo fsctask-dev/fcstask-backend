@@ -63,7 +63,7 @@ func New(cfg *config.Config) (*App, error) {
 	adminRoleService := service.NewAdminRoleService(roleRepo, userRepo).WithMetrics(m.Admin)
 	checkerService := service.NewCheckerService(taskRepo, homeworkRepo, studentScoreRepo, deadlineRepo, courseLateRepo, roleRepo).WithMetrics(m.Checker)
 	courseLateService := service.NewCourseLatePolicy(courseLateRepo, roleRepo).WithMetrics(m.LatePolicy)
-	gradeUpdateService := service.NewGradeUpdateService(taskRepo, studentScoreRepo, roleRepo).WithMetrics(m.Admin)
+	gradeUpdateService := service.NewGradeUpdateService(taskRepo, homeworkRepo, studentScoreRepo, roleRepo).WithMetrics(m.Admin)
 	statsService := service.NewStatsService(statsRepo, roleRepo)
 
 	adminHomeworkHandler := handler.NewAdminHomeworkHandler(adminHomeworkService)
