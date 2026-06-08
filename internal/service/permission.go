@@ -44,10 +44,11 @@ const (
 	PermissionCoursePermissionList   = "course.permissions.list"
 	PermissionCourseInviteRegenerate = "course.invite.regenerate"
 
-	PermissionCourseCreate     = "course.create"
-	PermissionCourseUpdate     = "course.update"
-	PermissionSuperAdminCreate = "super_admin.create"
-	PermissionIsSuperAdmin     = "is_super_admin"
+	PermissionCourseCreateGrant = "course.create.grant"
+	PermissionCourseCreate      = "course.create"
+	PermissionCourseUpdate      = "course.update"
+	PermissionSuperAdminCreate  = "super_admin.create"
+	PermissionIsSuperAdmin      = "is_super_admin"
 
 	PermissionStatsRead = "stats.read"
 )
@@ -158,6 +159,7 @@ func ServiceSuperAdminPermissions() []string {
 	return []string{
 		PermissionIsSuperAdmin,
 		PermissionCourseCreate,
+		PermissionCourseCreateGrant, // суперадмин выдает course.create другому пользователю
 		PermissionSuperAdminCreate,
 		PermissionStatsRead,
 	}

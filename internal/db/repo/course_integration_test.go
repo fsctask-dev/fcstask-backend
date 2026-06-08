@@ -33,6 +33,7 @@ func migrateCourseAccessModels(t *testing.T, client *db.Client) {
 	t.Helper()
 	tx := client.WriteDB().Session(&gorm.Session{})
 	tx.Config.IgnoreRelationshipsWhenMigrating = true
+	tx.Migrator().DropTable(&model.Course{}, &model.UserRole{}, &model.CourseAdminPermission{})
 	if err := tx.AutoMigrate(&model.Course{}, &model.UserRole{}, &model.CourseAdminPermission{}); err != nil {
 		t.Fatalf("AutoMigrate course access models: %v", err)
 	}
@@ -87,7 +88,7 @@ func TestCourseRepository_GetPublicCourses_HidesHidden(t *testing.T) {
 		ID:     visibleID,
 		Name:   "Visible Public",
 		Slug:   "visible-public-" + visibleID.String(),
-		Status: "created",
+		Status: "in_progress",
 		Type:   model.CourseTypePublic,
 		URL:    "/course/visible-public",
 	})
@@ -143,7 +144,7 @@ func TestCourseRepository_GetCoursesByUserID_HiddenRequiresPermission(t *testing
 		ID:     visibleID,
 		Name:   "Visible Course",
 		Slug:   "visible-course-" + visibleID.String(),
-		Status: "created",
+		Status: "in_progress",
 		Type:   model.CourseTypePrivate,
 		URL:    "/course/visible-course",
 	})

@@ -334,7 +334,7 @@ func TestAPIController_RegisterCourseRoutes(t *testing.T) {
 				ID:           uuid.New(),
 				Name:         "Go",
 				Slug:         "go",
-				Status:       "created",
+				Status:       "in_progress",
 				Type:         models.CourseTypePublic,
 				StartDate:    controllerCourseDate("2026-01-01"),
 				EndDate:      controllerCourseDate("2026-02-01"),
@@ -390,7 +390,7 @@ func TestAPIController_RegisterAdminRoutes_CreateCourse(t *testing.T) {
 		}
 	})
 
-	body := []byte(`{"name":"New","slug":"new","status":"created","startDate":"2026-01-01","endDate":"2026-02-01","repoTemplate":"git@test/new.git","description":"desc"}`)
+	body := []byte(`{"name":"New","slug":"new","status":"in_progress","startDate":"2026-01-01","endDate":"2026-02-01","repoTemplate":"git@test/new.git","description":"desc"}`)
 	req := httptest.NewRequest(http.MethodPost, "/admin/courses/create", bytes.NewReader(body))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec := httptest.NewRecorder()
@@ -419,7 +419,7 @@ func TestAPIController_RegisterAdminRoutes_RegenerateInviteCode(t *testing.T) {
 				ID:         courseID,
 				Name:       "Private",
 				Slug:       "private",
-				Status:     "created",
+				Status:     "in_progress",
 				Type:       models.CourseTypePrivate,
 				InviteCode: &code,
 			},

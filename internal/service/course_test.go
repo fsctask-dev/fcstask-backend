@@ -137,7 +137,7 @@ func setupService() (*CourseService, *mockCourseRepo, *mockRoleRepo) {
 
 func validInput() CourseInput {
 	return CourseInput{
-		Name: "Test", Slug: "test", Status: "created",
+		Name: "Test", Slug: "test", Status: "in_progress",
 		StartDate: "2026-01-01", EndDate: "2026-02-01",
 		RepoTemplate: "git@t", Description: "desc",
 	}
@@ -246,7 +246,7 @@ func TestUpdateCourse_Success(t *testing.T) {
 	courseID := uuid.New().String()
 	existing := &models.Course{
 		ID: uuid.MustParse(courseID), Name: "Old", Slug: "old",
-		Status: "created", Type: models.CourseTypePrivate,
+		Status: "in_progress", Type: models.CourseTypePrivate,
 		StartDate: parseDate("2026-01-01"), EndDate: parseDate("2026-02-01"),
 	}
 
@@ -469,7 +469,7 @@ func TestGetCourses_Success(t *testing.T) {
 	svc, cRepo, _ := setupService()
 	userID := uuid.New()
 	courses := []models.Course{
-		{ID: uuid.New(), Name: "Visible", Status: "created"},
+		{ID: uuid.New(), Name: "Visible", Status: "in_progress"},
 		{ID: uuid.New(), Name: "Hidden", Status: "hidden"},
 	}
 
@@ -485,7 +485,7 @@ func TestGetCourses_Success(t *testing.T) {
 func TestGetPublicCourses_Success(t *testing.T) {
 	svc, cRepo, _ := setupService()
 	cRepo.On("GetPublicCourses", mock.Anything).Return([]models.Course{
-		{ID: uuid.New(), Name: "Visible", Status: "created", Type: models.CourseTypePublic},
+		{ID: uuid.New(), Name: "Visible", Status: "in_progress", Type: models.CourseTypePublic},
 	}, nil)
 
 	result, err := svc.GetPublicCourses(context.Background())
@@ -500,7 +500,7 @@ func TestGetCourseBoard_Success(t *testing.T) {
 	userID := uuid.New()
 	roleID := uuid.New()
 	courseID := uuid.New().String()
-	course := &models.Course{ID: uuid.MustParse(courseID), Name: "Go", Status: "created"}
+	course := &models.Course{ID: uuid.MustParse(courseID), Name: "Go", Status: "in_progress"}
 
 	cRepo.On("GetCourseByID", mock.Anything, courseID).Return(course, nil)
 	rRepo.On("GetRoleIDByUserAndCourse", mock.Anything, userID, course.ID).Return(roleID, nil)
@@ -641,7 +641,6 @@ func TestGetLeaderboard_Forbidden(t *testing.T) {
 }
 
 func TestIsValidCourseStatus(t *testing.T) {
-	assert.True(t, IsValidCourseStatus("created"))
 	assert.True(t, IsValidCourseStatus("finished"))
 	assert.False(t, IsValidCourseStatus("invalid"))
 }

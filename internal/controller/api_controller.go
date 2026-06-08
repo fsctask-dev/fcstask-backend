@@ -87,6 +87,7 @@ func (c *APIController) RegisterCourseRoutes(e *echo.Echo) {
 	e.GET("/api/courses/:courseId/board", c.courseHandler.GetCourseBoard)
 	e.GET("/api/courses/:courseId/scores", c.courseHandler.GetScores)
 	e.POST("/api/courses/:courseId/join", c.courseHandler.JoinCourse)
+	e.POST("/api/courses/:courseId/check-permissions", c.courseHandler.CheckPermissions)
 }
 
 func (c *APIController) RegisterHomeworkRoutes(e *echo.Echo) {
@@ -131,4 +132,6 @@ func (c *APIController) RegisterAdminRoutes(
 	e.DELETE("/admin/courses/:courseId/roles/:roleId/permissions/:permission", adminRoleHandler.RemovePermission)
 	e.GET("/admin/courses/:courseId/roles/:roleId/permissions", adminRoleHandler.ListPermissions)
 	e.POST("/admin/super-admins", adminRoleHandler.CreateSuperAdmin)
+	e.POST("/admin/users/:userId/grant-course-create", adminRoleHandler.GrantCourseCreatePermission)
+    e.DELETE("/admin/users/:userId/grant-course-create", adminRoleHandler.RevokeCourseCreatePermission)
 }

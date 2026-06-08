@@ -103,9 +103,11 @@ func New(cfg *config.Config) (*App, error) {
 		"/api/signout",
 		"/api/stats",
 		"/api/courses",
+		"/api/courses/:courseId",
 		"/api/courses/:courseId/scores",
 		"/api/courses/:courseId/board",
 		"/api/courses/:courseId/join",
+		"/api/courses/:courseId/check-permissions",
 		"/admin/courses/create",
 		"/admin/courses/:courseId/update",
 		"/admin/courses/:courseId/invite",
@@ -123,6 +125,7 @@ func New(cfg *config.Config) (*App, error) {
 		"/admin/courses/:courseId/roles/:roleId/permissions",
 		"/admin/courses/:courseId/roles/:roleId/permissions/:permission",
 		"/admin/super-admins",
+		"/admin/users/:userId/grant-course-create",
 		"/admin/homework/:hwId/deadline",
 	}))
 

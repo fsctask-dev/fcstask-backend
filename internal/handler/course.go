@@ -26,6 +26,10 @@ type JoinCourseRequest struct {
 	Code string `json:"code"`
 }
 
+type CheckPermissionsRequest struct {
+    Permissions []string `json:"permissions"`
+}
+
 type CourseHandler struct {
 	courseService *service.CourseService
 }
@@ -163,6 +167,28 @@ func (h *CourseHandler) GetScores(ctx echo.Context) error {
 		return serviceError(ctx, err)
 	}
 	return ctx.JSON(http.StatusOK, entries)
+}
+
+// POST /api/courses/:courseId/check-permissions
+func (h *CourseHandler) CheckPermissions(ctx echo.Context) error {
+    user, ok := ctx.Get(UserContextKey).(*model.User)
+    if !ok || user == nil {
+        return unauthorized(ctx, "User not found in context")
+    }
+
+    courseID := ctx.Param("courseId")
+
+    var req CheckPermissionsRequest
+    if err := ctx.Bind(&req); err != nil {
+        return badRequest(ctx, "Invalid request body")
+    }
+
+    result, err := h.courseService.CheckPermissions(ctx.Request().Context(), user.ID, courseID, req.Permissions)
+    if err != nil {
+        return serviceError(ctx, err)
+    }
+
+    return ctx.JSON(http.StatusOK, result)
 }
 
 // POST /admin/courses/:courseId/invite
