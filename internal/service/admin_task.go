@@ -32,11 +32,12 @@ func (s *AdminTaskService) WithMetrics(m *metrics.AdminMetrics) *AdminTaskServic
 }
 
 type CreateTaskInput struct {
-	HwID    uuid.UUID
-	Title   *string
-	RepoURL string
-	TaskURL string
-	Score   int
+	CourseID uuid.UUID
+	HwID     uuid.UUID
+	Title    *string
+	RepoURL  string
+	TaskURL  string
+	Score    int
 }
 
 type UpdateTaskInput struct {
@@ -47,18 +48,25 @@ type UpdateTaskInput struct {
 }
 
 type PublishTaskInput struct {
+	CourseID uuid.UUID
+	HwID     uuid.UUID
 	TaskID   uuid.UUID
 	IsPublic bool
 }
 
 type SetTaskScoreInput struct {
-	TaskID uuid.UUID
-	Score  int
+	CourseID uuid.UUID
+	HwID     uuid.UUID
+	TaskID   uuid.UUID
+	Score    int
 }
 
 func (s *AdminTaskService) CreateTask(ctx context.Context, userID uuid.UUID, input CreateTaskInput) (task *model.Task, err error) {
 	defer func() { s.adminMetrics.IncAction(metrics.AdminActionCreateTask, adminOutcome(err)) }()
 
+	if input.CourseID == uuid.Nil {
+		return nil, BadRequest("course_id is required")
+	}
 	if input.HwID == uuid.Nil {
 		return nil, BadRequest("homework_id is required")
 	}
@@ -66,9 +74,9 @@ func (s *AdminTaskService) CreateTask(ctx context.Context, userID uuid.UUID, inp
 		return nil, BadRequest("title is required")
 	}
 
-	hw, err := s.homeworkRepo.GetByID(ctx, input.HwID)
+	hw, err := requireHomeworkInCourse(ctx, s.homeworkRepo, input.HwID, input.CourseID)
 	if err != nil {
-		return nil, NotFound("Homework not found")
+		return nil, err
 	}
 	if err = RequireScopedPermission(ctx, s.roleRepo, userID, hw.CourseID, PermissionTaskCreate); err != nil {
 		return nil, err
@@ -97,18 +105,18 @@ func (s *AdminTaskService) CreateTask(ctx context.Context, userID uuid.UUID, inp
 	return task, nil
 }
 
-func (s *AdminTaskService) GetTask(ctx context.Context, userID, taskID uuid.UUID) (*model.Task, error) {
+func (s *AdminTaskService) GetTask(ctx context.Context, userID, courseID, hwID, taskID uuid.UUID) (*model.Task, error) {
 	if taskID == uuid.Nil {
 		return nil, BadRequest("task_id is required")
 	}
 
-	task, err := s.taskRepo.GetByID(ctx, taskID)
+	task, err := requireTaskInHomework(ctx, s.taskRepo, taskID, hwID)
 	if err != nil {
-		return nil, NotFound("Task not found")
+		return nil, err
 	}
-	hw, err := s.homeworkRepo.GetByID(ctx, task.HwID)
+	hw, err := requireHomeworkInCourse(ctx, s.homeworkRepo, hwID, courseID)
 	if err != nil {
-		return nil, NotFound("Homework not found")
+		return nil, err
 	}
 	if err := RequireScopedPermission(ctx, s.roleRepo, userID, hw.CourseID, PermissionTaskRead); err != nil {
 		return nil, err
@@ -117,14 +125,14 @@ func (s *AdminTaskService) GetTask(ctx context.Context, userID, taskID uuid.UUID
 	return task, nil
 }
 
-func (s *AdminTaskService) ListTasks(ctx context.Context, userID, hwID uuid.UUID) ([]model.Task, error) {
+func (s *AdminTaskService) ListTasks(ctx context.Context, userID, courseID, hwID uuid.UUID) ([]model.Task, error) {
 	if hwID == uuid.Nil {
 		return nil, BadRequest("homework_id is required")
 	}
 
-	hw, err := s.homeworkRepo.GetByID(ctx, hwID)
+	hw, err := requireHomeworkInCourse(ctx, s.homeworkRepo, hwID, courseID)
 	if err != nil {
-		return nil, NotFound("Homework not found")
+		return nil, err
 	}
 	if err := RequireScopedPermission(ctx, s.roleRepo, userID, hw.CourseID, PermissionTaskRead); err != nil {
 		return nil, err
@@ -138,10 +146,10 @@ func (s *AdminTaskService) ListTasks(ctx context.Context, userID, hwID uuid.UUID
 	return tasks, nil
 }
 
-func (s *AdminTaskService) UpdateTask(ctx context.Context, userID, taskID uuid.UUID, input UpdateTaskInput) (task *model.Task, err error) {
+func (s *AdminTaskService) UpdateTask(ctx context.Context, userID, courseID, hwID, taskID uuid.UUID, input UpdateTaskInput) (task *model.Task, err error) {
 	defer func() { s.adminMetrics.IncAction(metrics.AdminActionUpdateTask, adminOutcome(err)) }()
 
-	task, err = s.GetTask(ctx, userID, taskID)
+	task, err = s.GetTask(ctx, userID, courseID, hwID, taskID)
 	if err != nil {
 		return nil, err
 	}
@@ -181,8 +189,14 @@ func (s *AdminTaskService) PublishTask(ctx context.Context, userID uuid.UUID, in
 	if input.TaskID == uuid.Nil {
 		return nil, BadRequest("task_id is required")
 	}
+	if input.HwID == uuid.Nil {
+		return nil, BadRequest("homework_id is required")
+	}
+	if input.CourseID == uuid.Nil {
+		return nil, BadRequest("course_id is required")
+	}
 
-	task, err := s.GetTask(ctx, userID, input.TaskID)
+	task, err := s.GetTask(ctx, userID, input.CourseID, input.HwID, input.TaskID)
 	if err != nil {
 		return nil, err
 	}
@@ -205,14 +219,14 @@ func (s *AdminTaskService) PublishTask(ctx context.Context, userID uuid.UUID, in
 	return task, nil
 }
 
-func (s *AdminTaskService) DeleteTask(ctx context.Context, userID, taskID uuid.UUID) (err error) {
+func (s *AdminTaskService) DeleteTask(ctx context.Context, userID, courseID, hwID, taskID uuid.UUID) (err error) {
 	defer func() { s.adminMetrics.IncAction(metrics.AdminActionDeleteTask, adminOutcome(err)) }()
 
 	if taskID == uuid.Nil {
 		return BadRequest("task_id is required")
 	}
 
-	task, err := s.GetTask(ctx, userID, taskID)
+	task, err := s.GetTask(ctx, userID, courseID, hwID, taskID)
 	if err != nil {
 		return err
 	}
@@ -234,14 +248,20 @@ func (s *AdminTaskService) DeleteTask(ctx context.Context, userID, taskID uuid.U
 func (s *AdminTaskService) SetScore(ctx context.Context, userID uuid.UUID, input SetTaskScoreInput) (task *model.Task, err error) {
 	defer func() { s.adminMetrics.IncAction(metrics.AdminActionScoreTask, adminOutcome(err)) }()
 
+	if input.HwID == uuid.Nil {
+		return nil, BadRequest("homework_id is required")
+	}
 	if input.TaskID == uuid.Nil {
 		return nil, BadRequest("task_id is required")
+	}
+	if input.CourseID == uuid.Nil {
+		return nil, BadRequest("course_id is required")
 	}
 	if input.Score <= 0 {
 		return nil, BadRequest("score must be positive")
 	}
 
-	task, err = s.GetTask(ctx, userID, input.TaskID)
+	task, err = s.GetTask(ctx, userID, input.CourseID, input.HwID, input.TaskID)
 	if err != nil {
 		return nil, err
 	}
@@ -257,7 +277,7 @@ func (s *AdminTaskService) SetScore(ctx context.Context, userID uuid.UUID, input
 		return nil, Internal("Failed to set score", err)
 	}
 
-	task, err = s.GetTask(ctx, userID, input.TaskID)
+	task, err = s.GetTask(ctx, userID, input.CourseID, input.HwID, input.TaskID)
 	if err != nil {
 		return nil, err
 	}

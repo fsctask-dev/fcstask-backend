@@ -11,11 +11,11 @@ import (
 
 type IAdminHomeworkService interface {
 	CreateHomework(ctx context.Context, userID uuid.UUID, input service.CreateHomeworkInput) (*model.Homework, error)
-	GetHomework(ctx context.Context, userID, hwID uuid.UUID) (*model.Homework, error)
+	GetHomework(ctx context.Context, userID, courseID, hwID uuid.UUID) (*model.Homework, error)
 	ListHomework(ctx context.Context, userID, courseID uuid.UUID) ([]model.Homework, error)
-	UpdateHomework(ctx context.Context, userID, hwID uuid.UUID, input service.UpdateHomeworkInput) (*model.Homework, error)
-	DeleteHomework(ctx context.Context, userID, hwID uuid.UUID) error
-	PublishHomework(ctx context.Context, userID, hwID uuid.UUID, isPublic bool) (*model.Homework, error)
+	UpdateHomework(ctx context.Context, userID, courseID, hwID uuid.UUID, input service.UpdateHomeworkInput) (*model.Homework, error)
+	DeleteHomework(ctx context.Context, userID, courseID, hwID uuid.UUID) error
+	PublishHomework(ctx context.Context, userID, courseID, hwID uuid.UUID, isPublic bool) (*model.Homework, error)
 	SetDeadline(ctx context.Context, userID uuid.UUID, input service.SetDeadlineInput) (*model.Deadline, error)
 	UpdateDeadline(ctx context.Context, userID, deadlineID uuid.UUID, input service.UpdateDeadlineInput) (*model.Deadline, error)
 	DeleteDeadline(ctx context.Context, userID, deadlineID uuid.UUID) error
@@ -35,10 +35,10 @@ type IAdminRoleService interface {
 
 type IAdminTaskService interface {
 	CreateTask(ctx context.Context, userID uuid.UUID, input service.CreateTaskInput) (*model.Task, error)
-	GetTask(ctx context.Context, userID, taskID uuid.UUID) (*model.Task, error)
-	ListTasks(ctx context.Context, userID, hwID uuid.UUID) ([]model.Task, error)
-	UpdateTask(ctx context.Context, userID, taskID uuid.UUID, input service.UpdateTaskInput) (*model.Task, error)
+	GetTask(ctx context.Context, userID, courseID, hwID, taskID uuid.UUID) (*model.Task, error)
+	ListTasks(ctx context.Context, userID, courseID, hwID uuid.UUID) ([]model.Task, error)
+	UpdateTask(ctx context.Context, userID, courseID, hwID, taskID uuid.UUID, input service.UpdateTaskInput) (*model.Task, error)
 	PublishTask(ctx context.Context, userID uuid.UUID, input service.PublishTaskInput) (*model.Task, error)
-	DeleteTask(ctx context.Context, userID, taskID uuid.UUID) error
+	DeleteTask(ctx context.Context, userID, courseID, hwID, taskID uuid.UUID) error
 	SetScore(ctx context.Context, userID uuid.UUID, input service.SetTaskScoreInput) (*model.Task, error)
 }

@@ -102,11 +102,15 @@ func (h *AdminHomeworkHandler) GetHomework(c echo.Context) error {
 		return unauthorized(c, "User not found")
 	}
 
+	courseID, err := uuid.Parse(c.Param("courseId"))
+	if err != nil {
+		return badRequest(c, "Invalid course ID")
+	}
 	hwID, err := uuid.Parse(c.Param("hwId"))
 	if err != nil {
 		return badRequest(c, "Invalid homework ID")
 	}
-	hw, err := h.homeworkService.GetHomework(c.Request().Context(), user.ID, hwID)
+	hw, err := h.homeworkService.GetHomework(c.Request().Context(), user.ID, courseID, hwID)
 	if err != nil {
 		return serviceError(c, err)
 	}
@@ -140,6 +144,10 @@ func (h *AdminHomeworkHandler) UpdateHomework(c echo.Context) error {
 		return unauthorized(c, "User not found")
 	}
 
+	courseID, err := uuid.Parse(c.Param("courseId"))
+	if err != nil {
+		return badRequest(c, "Invalid course ID")
+	}
 	hwID, err := uuid.Parse(c.Param("hwId"))
 	if err != nil {
 		return badRequest(c, "Invalid homework ID")
@@ -161,7 +169,7 @@ func (h *AdminHomeworkHandler) UpdateHomework(c echo.Context) error {
 		input.EndDate = *req.EndDate
 	}
 
-	hw, err := h.homeworkService.UpdateHomework(c.Request().Context(), user.ID, hwID, input)
+	hw, err := h.homeworkService.UpdateHomework(c.Request().Context(), user.ID, courseID, hwID, input)
 	if err != nil {
 		return serviceError(c, err)
 	}
@@ -176,11 +184,15 @@ func (h *AdminHomeworkHandler) DeleteHomework(c echo.Context) error {
 		return unauthorized(c, "User not found")
 	}
 
+	courseID, err := uuid.Parse(c.Param("courseId"))
+	if err != nil {
+		return badRequest(c, "Invalid course ID")
+	}
 	hwID, err := uuid.Parse(c.Param("hwId"))
 	if err != nil {
 		return badRequest(c, "Invalid homework ID")
 	}
-	if err := h.homeworkService.DeleteHomework(c.Request().Context(), user.ID, hwID); err != nil {
+	if err := h.homeworkService.DeleteHomework(c.Request().Context(), user.ID, courseID, hwID); err != nil {
 		return serviceError(c, err)
 	}
 
@@ -194,6 +206,10 @@ func (h *AdminHomeworkHandler) PublishHomework(c echo.Context) error {
 		return unauthorized(c, "User not found")
 	}
 
+	courseID, err := uuid.Parse(c.Param("courseId"))
+	if err != nil {
+		return badRequest(c, "Invalid course ID")
+	}
 	hwID, err := uuid.Parse(c.Param("hwId"))
 	if err != nil {
 		return badRequest(c, "Invalid homework ID")
@@ -204,7 +220,7 @@ func (h *AdminHomeworkHandler) PublishHomework(c echo.Context) error {
 		return badRequest(c, "Invalid request body")
 	}
 
-	hw, err := h.homeworkService.PublishHomework(c.Request().Context(), user.ID, hwID, req.IsPublic)
+	hw, err := h.homeworkService.PublishHomework(c.Request().Context(), user.ID, courseID, hwID, req.IsPublic)
 	if err != nil {
 		return serviceError(c, err)
 	}

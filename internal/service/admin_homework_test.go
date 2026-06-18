@@ -254,12 +254,13 @@ func TestGetHomework_Success(t *testing.T) {
 	svc, hwRepo, _ := setupService()
 	ctx := context.Background()
 	userID := uuid.New()
+	courseID := uuid.New()
 	hwID := uuid.New()
 
-	expected := &model.Homework{HwID: hwID, CourseID: uuid.New()}
+	expected := &model.Homework{HwID: hwID, CourseID: courseID}
 	hwRepo.On("GetByID", ctx, hwID).Return(expected, nil)
 
-	result, err := svc.GetHomework(ctx, userID, hwID)
+	result, err := svc.GetHomework(ctx, userID, courseID, hwID)
 	assert.NoError(t, err)
 	assert.Equal(t, expected, result)
 	hwRepo.AssertExpectations(t)
@@ -269,7 +270,7 @@ func TestGetHomework_NilID(t *testing.T) {
 	svc, _, _ := setupService()
 	ctx := context.Background()
 
-	result, err := svc.GetHomework(ctx, uuid.New(), uuid.Nil)
+	result, err := svc.GetHomework(ctx, uuid.New(), uuid.New(), uuid.Nil)
 	assert.Error(t, err)
 	assert.Nil(t, result)
 	assert.Contains(t, err.Error(), "homework ID is required")
@@ -282,7 +283,22 @@ func TestGetHomework_NotFound(t *testing.T) {
 
 	hwRepo.On("GetByID", ctx, hwID).Return(nil, assert.AnError)
 
-	result, err := svc.GetHomework(ctx, uuid.New(), hwID)
+	result, err := svc.GetHomework(ctx, uuid.New(), uuid.New(), hwID)
+	assert.Error(t, err)
+	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), "Homework not found")
+	hwRepo.AssertExpectations(t)
+}
+
+func TestGetHomework_CourseIDMismatch(t *testing.T) {
+	svc, hwRepo, _ := setupService()
+	ctx := context.Background()
+	hwID := uuid.New()
+
+	existing := &model.Homework{HwID: hwID, CourseID: uuid.New()}
+	hwRepo.On("GetByID", ctx, hwID).Return(existing, nil)
+
+	result, err := svc.GetHomework(ctx, uuid.New(), uuid.New(), hwID)
 	assert.Error(t, err)
 	assert.Nil(t, result)
 	assert.Contains(t, err.Error(), "Homework not found")
@@ -308,9 +324,10 @@ func TestUpdateHomework_Success(t *testing.T) {
 	svc, hwRepo, _ := setupService()
 	ctx := context.Background()
 	userID := uuid.New()
+	courseID := uuid.New()
 	hwID := uuid.New()
 
-	existing := &model.Homework{HwID: hwID, CourseID: uuid.New()}
+	existing := &model.Homework{HwID: hwID, CourseID: courseID}
 	hwRepo.On("GetByID", ctx, hwID).Return(existing, nil)
 	hwRepo.On("Update", ctx, mock.MatchedBy(func(hw *model.Homework) bool {
 		return hw.EndDate != nil && hw.EndDate.Format("2006-01-02") == "2026-01-01"
@@ -320,7 +337,7 @@ func TestUpdateHomework_Success(t *testing.T) {
 		EndDate: "2026-01-01",
 	}
 
-	result, err := svc.UpdateHomework(ctx, userID, hwID, input)
+	result, err := svc.UpdateHomework(ctx, userID, courseID, hwID, input)
 	assert.NoError(t, err)
 	assert.NotNil(t, result)
 	hwRepo.AssertExpectations(t)
@@ -330,9 +347,10 @@ func TestUpdateHomework_WithPositionZero(t *testing.T) {
 	svc, hwRepo, _ := setupService()
 	ctx := context.Background()
 	userID := uuid.New()
+	courseID := uuid.New()
 	hwID := uuid.New()
 
-	existing := &model.Homework{HwID: hwID, CourseID: uuid.New()}
+	existing := &model.Homework{HwID: hwID, CourseID: courseID}
 	hwRepo.On("GetByID", ctx, hwID).Return(existing, nil)
 	hwRepo.On("Update", ctx, mock.MatchedBy(func(hw *model.Homework) bool {
 		return hw.Position == 0 && hw.Title == "First HW"
@@ -345,7 +363,7 @@ func TestUpdateHomework_WithPositionZero(t *testing.T) {
 		Position: &pos,
 	}
 
-	result, err := svc.UpdateHomework(ctx, userID, hwID, input)
+	result, err := svc.UpdateHomework(ctx, userID, courseID, hwID, input)
 	assert.NoError(t, err)
 	assert.NotNil(t, result)
 	assert.Equal(t, 0, result.Position)
@@ -356,10 +374,11 @@ func TestUpdateHomework_DescriptionNotChangedIfNil(t *testing.T) {
 	svc, hwRepo, _ := setupService()
 	ctx := context.Background()
 	userID := uuid.New()
+	courseID := uuid.New()
 	hwID := uuid.New()
 	desc := "Original description"
 
-	existing := &model.Homework{HwID: hwID, CourseID: uuid.New(), Description: &desc}
+	existing := &model.Homework{HwID: hwID, CourseID: courseID, Description: &desc}
 	hwRepo.On("GetByID", ctx, hwID).Return(existing, nil)
 	hwRepo.On("Update", ctx, mock.MatchedBy(func(hw *model.Homework) bool {
 		return hw.Description != nil && *hw.Description == "Original description"
@@ -370,7 +389,7 @@ func TestUpdateHomework_DescriptionNotChangedIfNil(t *testing.T) {
 		Title: &updatedTitle,
 	}
 
-	result, err := svc.UpdateHomework(ctx, userID, hwID, input)
+	result, err := svc.UpdateHomework(ctx, userID, courseID, hwID, input)
 	assert.NoError(t, err)
 	assert.NotNil(t, result)
 	assert.NotNil(t, result.Description)
@@ -382,11 +401,12 @@ func TestUpdateHomework_ClearDescription(t *testing.T) {
 	svc, hwRepo, _ := setupService()
 	ctx := context.Background()
 	userID := uuid.New()
+	courseID := uuid.New()
 	hwID := uuid.New()
 	desc := "Old description"
 	emptyDesc := ""
 
-	existing := &model.Homework{HwID: hwID, CourseID: uuid.New(), Description: &desc}
+	existing := &model.Homework{HwID: hwID, CourseID: courseID, Description: &desc}
 	hwRepo.On("GetByID", ctx, hwID).Return(existing, nil)
 	hwRepo.On("Update", ctx, mock.MatchedBy(func(hw *model.Homework) bool {
 		return hw.Description == nil
@@ -396,7 +416,7 @@ func TestUpdateHomework_ClearDescription(t *testing.T) {
 		Description: &emptyDesc,
 	}
 
-	result, err := svc.UpdateHomework(ctx, userID, hwID, input)
+	result, err := svc.UpdateHomework(ctx, userID, courseID, hwID, input)
 	assert.NoError(t, err)
 	assert.NotNil(t, result)
 	assert.Nil(t, result.Description)
@@ -407,17 +427,18 @@ func TestUpdateHomework_EmptyTitleError(t *testing.T) {
 	svc, hwRepo, _ := setupService()
 	ctx := context.Background()
 	userID := uuid.New()
+	courseID := uuid.New()
 	hwID := uuid.New()
 	emptyTitle := ""
 
-	existing := &model.Homework{HwID: hwID, CourseID: uuid.New()}
+	existing := &model.Homework{HwID: hwID, CourseID: courseID}
 	hwRepo.On("GetByID", ctx, hwID).Return(existing, nil)
 
 	input := service.UpdateHomeworkInput{
 		Title: &emptyTitle,
 	}
 
-	result, err := svc.UpdateHomework(ctx, userID, hwID, input)
+	result, err := svc.UpdateHomework(ctx, userID, courseID, hwID, input)
 	assert.Error(t, err)
 	assert.Nil(t, result)
 	assert.Contains(t, err.Error(), "title cannot be empty")
@@ -428,17 +449,18 @@ func TestUpdateHomework_EndBeforeStart(t *testing.T) {
 	svc, hwRepo, _ := setupService()
 	ctx := context.Background()
 	userID := uuid.New()
+	courseID := uuid.New()
 	hwID := uuid.New()
 
 	start := time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC)
-	existing := &model.Homework{HwID: hwID, CourseID: uuid.New(), StartDate: &start}
+	existing := &model.Homework{HwID: hwID, CourseID: courseID, StartDate: &start}
 	hwRepo.On("GetByID", ctx, hwID).Return(existing, nil)
 
 	input := service.UpdateHomeworkInput{
 		EndDate: "2025-01-01",
 	}
 
-	result, err := svc.UpdateHomework(ctx, userID, hwID, input)
+	result, err := svc.UpdateHomework(ctx, userID, courseID, hwID, input)
 	assert.Error(t, err)
 	assert.Nil(t, result)
 	assert.Contains(t, err.Error(), "end date must be after start_date")
@@ -449,13 +471,14 @@ func TestDeleteHomework_Success(t *testing.T) {
 	svc, hwRepo, _ := setupService()
 	ctx := context.Background()
 	userID := uuid.New()
+	courseID := uuid.New()
 	hwID := uuid.New()
 
-	existing := &model.Homework{HwID: hwID, CourseID: uuid.New()}
+	existing := &model.Homework{HwID: hwID, CourseID: courseID}
 	hwRepo.On("GetByID", ctx, hwID).Return(existing, nil)
 	hwRepo.On("Delete", ctx, hwID).Return(nil)
 
-	err := svc.DeleteHomework(ctx, userID, hwID)
+	err := svc.DeleteHomework(ctx, userID, courseID, hwID)
 	assert.NoError(t, err)
 	hwRepo.AssertExpectations(t)
 }
@@ -467,7 +490,7 @@ func TestDeleteHomework_NotFound(t *testing.T) {
 
 	hwRepo.On("GetByID", ctx, hwID).Return(nil, assert.AnError)
 
-	err := svc.DeleteHomework(ctx, uuid.New(), hwID)
+	err := svc.DeleteHomework(ctx, uuid.New(), uuid.New(), hwID)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "Homework not found")
 	hwRepo.AssertExpectations(t)
@@ -477,15 +500,16 @@ func TestPublishHomework_Success(t *testing.T) {
 	svc, hwRepo, _ := setupService()
 	ctx := context.Background()
 	userID := uuid.New()
+	courseID := uuid.New()
 	hwID := uuid.New()
 
-	existing := &model.Homework{HwID: hwID, CourseID: uuid.New()}
+	existing := &model.Homework{HwID: hwID, CourseID: courseID}
 	hwRepo.On("GetByID", ctx, hwID).Return(existing, nil)
 	hwRepo.On("Update", ctx, mock.MatchedBy(func(hw *model.Homework) bool {
 		return hw.IsPublic != nil && *hw.IsPublic == true
 	})).Return(nil)
 
-	result, err := svc.PublishHomework(ctx, userID, hwID, true)
+	result, err := svc.PublishHomework(ctx, userID, courseID, hwID, true)
 	assert.NoError(t, err)
 	assert.NotNil(t, result)
 	assert.NotNil(t, result.IsPublic)

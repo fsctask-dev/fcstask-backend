@@ -47,6 +47,10 @@ func (h *AdminTaskHandler) CreateTask(c echo.Context) error {
 		return unauthorized(c, "User not found")
 	}
 
+	courseID, err := uuid.Parse(c.Param("courseId"))
+	if err != nil {
+		return badRequest(c, "Invalid course ID")
+	}
 	hwID, err := uuid.Parse(c.Param("hwId"))
 	if err != nil {
 		return badRequest(c, "Invalid homework ID")
@@ -58,7 +62,8 @@ func (h *AdminTaskHandler) CreateTask(c echo.Context) error {
 	}
 
 	input := service.CreateTaskInput{
-		HwID: hwID,
+		CourseID: courseID,
+		HwID:     hwID,
 	}
 	if req.Title != nil {
 		input.Title = req.Title
@@ -89,11 +94,15 @@ func (h *AdminTaskHandler) ListTasks(c echo.Context) error {
 		return unauthorized(c, "User not found")
 	}
 
+	courseID, err := uuid.Parse(c.Param("courseId"))
+	if err != nil {
+		return badRequest(c, "Invalid course ID")
+	}
 	hwID, err := uuid.Parse(c.Param("hwId"))
 	if err != nil {
 		return badRequest(c, "Invalid homework ID")
 	}
-	tasks, err := h.taskService.ListTasks(c.Request().Context(), user.ID, hwID)
+	tasks, err := h.taskService.ListTasks(c.Request().Context(), user.ID, courseID, hwID)
 	if err != nil {
 		return serviceError(c, err)
 	}
@@ -108,11 +117,19 @@ func (h *AdminTaskHandler) GetTask(c echo.Context) error {
 		return unauthorized(c, "User not found")
 	}
 
+	courseID, err := uuid.Parse(c.Param("courseId"))
+	if err != nil {
+		return badRequest(c, "Invalid course ID")
+	}
+	hwID, err := uuid.Parse(c.Param("hwId"))
+	if err != nil {
+		return badRequest(c, "Invalid homework ID")
+	}
 	taskID, err := uuid.Parse(c.Param("taskId"))
 	if err != nil {
 		return badRequest(c, "Invalid task ID")
 	}
-	task, err := h.taskService.GetTask(c.Request().Context(), user.ID, taskID)
+	task, err := h.taskService.GetTask(c.Request().Context(), user.ID, courseID, hwID, taskID)
 	if err != nil {
 		return serviceError(c, err)
 	}
@@ -127,6 +144,14 @@ func (h *AdminTaskHandler) UpdateTask(c echo.Context) error {
 		return unauthorized(c, "User not found")
 	}
 
+	courseID, err := uuid.Parse(c.Param("courseId"))
+	if err != nil {
+		return badRequest(c, "Invalid course ID")
+	}
+	hwID, err := uuid.Parse(c.Param("hwId"))
+	if err != nil {
+		return badRequest(c, "Invalid homework ID")
+	}
 	taskID, err := uuid.Parse(c.Param("taskId"))
 	if err != nil {
 		return badRequest(c, "Invalid task ID")
@@ -141,7 +166,6 @@ func (h *AdminTaskHandler) UpdateTask(c echo.Context) error {
 	if req.Title != nil {
 		input.Title = req.Title
 	}
-
 	if req.RepoURL != nil {
 		input.RepoURL = *req.RepoURL
 	}
@@ -152,7 +176,7 @@ func (h *AdminTaskHandler) UpdateTask(c echo.Context) error {
 		input.Score = *req.Score
 	}
 
-	task, err := h.taskService.UpdateTask(c.Request().Context(), user.ID, taskID, input)
+	task, err := h.taskService.UpdateTask(c.Request().Context(), user.ID, courseID, hwID, taskID, input)
 	if err != nil {
 		return serviceError(c, err)
 	}
@@ -167,6 +191,14 @@ func (h *AdminTaskHandler) PublishTask(c echo.Context) error {
 		return unauthorized(c, "User not found")
 	}
 
+	courseID, err := uuid.Parse(c.Param("courseId"))
+	if err != nil {
+		return badRequest(c, "Invalid course ID")
+	}
+	hwID, err := uuid.Parse(c.Param("hwId"))
+	if err != nil {
+		return badRequest(c, "Invalid homework ID")
+	}
 	taskID, err := uuid.Parse(c.Param("taskId"))
 	if err != nil {
 		return badRequest(c, "Invalid task ID")
@@ -178,6 +210,8 @@ func (h *AdminTaskHandler) PublishTask(c echo.Context) error {
 	}
 
 	task, err := h.taskService.PublishTask(c.Request().Context(), user.ID, service.PublishTaskInput{
+		CourseID: courseID,
+		HwID:     hwID,
 		TaskID:   taskID,
 		IsPublic: req.IsPublic,
 	})
@@ -195,11 +229,19 @@ func (h *AdminTaskHandler) DeleteTask(c echo.Context) error {
 		return unauthorized(c, "User not found")
 	}
 
+	courseID, err := uuid.Parse(c.Param("courseId"))
+	if err != nil {
+		return badRequest(c, "Invalid course ID")
+	}
+	hwID, err := uuid.Parse(c.Param("hwId"))
+	if err != nil {
+		return badRequest(c, "Invalid homework ID")
+	}
 	taskID, err := uuid.Parse(c.Param("taskId"))
 	if err != nil {
 		return badRequest(c, "Invalid task ID")
 	}
-	if err := h.taskService.DeleteTask(c.Request().Context(), user.ID, taskID); err != nil {
+	if err := h.taskService.DeleteTask(c.Request().Context(), user.ID, courseID, hwID, taskID); err != nil {
 		return serviceError(c, err)
 	}
 
@@ -213,6 +255,14 @@ func (h *AdminTaskHandler) SetScore(c echo.Context) error {
 		return unauthorized(c, "User not found")
 	}
 
+	courseID, err := uuid.Parse(c.Param("courseId"))
+	if err != nil {
+		return badRequest(c, "Invalid course ID")
+	}
+	hwID, err := uuid.Parse(c.Param("hwId"))
+	if err != nil {
+		return badRequest(c, "Invalid homework ID")
+	}
 	taskID, err := uuid.Parse(c.Param("taskId"))
 	if err != nil {
 		return badRequest(c, "Invalid task ID")
@@ -224,8 +274,10 @@ func (h *AdminTaskHandler) SetScore(c echo.Context) error {
 	}
 
 	task, err := h.taskService.SetScore(c.Request().Context(), user.ID, service.SetTaskScoreInput{
-		TaskID: taskID,
-		Score:  req.Score,
+		CourseID: courseID,
+		HwID:     hwID,
+		TaskID:   taskID,
+		Score:    req.Score,
 	})
 	if err != nil {
 		return serviceError(c, err)
