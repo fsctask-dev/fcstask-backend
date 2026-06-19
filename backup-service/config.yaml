@@ -1,0 +1,73 @@
+source:
+  host: "localhost"
+  port: 6433
+  user: "postgres"
+  password: "postgres"
+  database: "fcstask"
+  ssl_mode: "disable"
+  connect_timeout_seconds: 10
+
+restore_target:
+  host: "localhost"
+  port: 6432
+  user: "postgres"
+  password: "postgres"
+  database: "fcstask_restored"
+  ssl_mode: "disable"
+  connect_timeout_seconds: 10
+
+backup:
+  output_dir: "/var/backups/postgres"
+  min_free_space_gb: 10
+  split_size_mb: 100          # 0 disables file splitting
+  retention_days: 30          # 0 disables cleanup; whole chains are kept/removed together
+  pg_dump_jobs: 4             # parallel jobs for pg_dump -Fd / pg_restore
+  full_backup_every: 7        # take a full base every N backups; incrementals in between
+  command_timeout_minutes: 120
+
+pitr:
+  enabled: true
+  schemas: ["public"]
+  created_at_columns: ["created_at"]
+  updated_at_columns: ["updated_at"]
+  deleted_at_columns: ["deleted_at"]
+
+wal:
+  enabled: false
+  base_backup_dir: "/var/backups/postgres-wal/base"
+  archive_dir: "/var/backups/postgres-wal/archive"
+  slot_name: "backup_service_slot"
+  fast_checkpoint: true
+  retention_days: 30
+  replication:
+    host: "localhost"
+    port: 6432
+    user: "replicator"
+    password: "replicatorpass"
+    database: ""
+    ssl_mode: "disable"
+    connect_timeout_seconds: 10
+  restore_data_dir: "/var/lib/postgresql/restored"
+  pg_ctl_path: ""
+  restore_port: 5433
+
+cron:
+  # standard 5-field cron: minute hour day-of-month month day-of-week
+  # every day at 02:00
+  schedule: "0 2 * * *"
+  run_initial_on_start: false
+
+restore:
+  jobs: 4
+  drop_database: true
+
+logging:
+  level: "info"               # debug | info | warn | error
+  file: "/var/log/backup-service.log"   # empty -> stdout only
+  max_size_mb: 100
+  max_backups: 10
+  max_age_days: 30
+  stdout: true
+
+health:
+  addr: ":8080"
