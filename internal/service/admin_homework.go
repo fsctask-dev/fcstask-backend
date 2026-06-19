@@ -116,14 +116,14 @@ func (s *AdminHomeworkService) CreateHomework(ctx context.Context, userID uuid.U
 	return hw, nil
 }
 
-func (s *AdminHomeworkService) GetHomework(ctx context.Context, userID, hwID uuid.UUID) (*model.Homework, error) {
+func (s *AdminHomeworkService) GetHomework(ctx context.Context, userID, courseID, hwID uuid.UUID) (*model.Homework, error) {
 	if hwID == uuid.Nil {
 		return nil, BadRequest("homework ID is required")
 	}
 
-	hw, err := s.homeworkRepo.GetByID(ctx, hwID)
+	hw, err := requireHomeworkInCourse(ctx, s.homeworkRepo, hwID, courseID)
 	if err != nil {
-		return nil, NotFound("Homework not found")
+		return nil, err
 	}
 	if err := RequireScopedPermission(ctx, s.roleRepo, userID, hw.CourseID, PermissionHomeworkRead); err != nil {
 		return nil, err
@@ -148,9 +148,9 @@ func (s *AdminHomeworkService) ListHomework(ctx context.Context, userID, courseI
 	return hws, nil
 }
 
-func (s *AdminHomeworkService) UpdateHomework(ctx context.Context, userID, hwID uuid.UUID, input UpdateHomeworkInput) (hw *model.Homework, err error) {
+func (s *AdminHomeworkService) UpdateHomework(ctx context.Context, userID, courseID, hwID uuid.UUID, input UpdateHomeworkInput) (hw *model.Homework, err error) {
 	defer func() { s.adminMetrics.IncAction(metrics.AdminActionUpdateHomework, adminOutcome(err)) }()
-	hw, err = s.GetHomework(ctx, userID, hwID)
+	hw, err = s.GetHomework(ctx, userID, courseID, hwID)
 	if err != nil {
 		return nil, err
 	}
@@ -205,14 +205,14 @@ func (s *AdminHomeworkService) UpdateHomework(ctx context.Context, userID, hwID 
 	return hw, nil
 }
 
-func (s *AdminHomeworkService) DeleteHomework(ctx context.Context, userID, hwID uuid.UUID) (err error) {
+func (s *AdminHomeworkService) DeleteHomework(ctx context.Context, userID, courseID, hwID uuid.UUID) (err error) {
 	defer func() { s.adminMetrics.IncAction(metrics.AdminActionDeleteHomework, adminOutcome(err)) }()
 
 	if hwID == uuid.Nil {
 		return BadRequest("homework ID is required")
 	}
 
-	hw, err := s.GetHomework(ctx, userID, hwID)
+	hw, err := s.GetHomework(ctx, userID, courseID, hwID)
 	if err != nil {
 		return err
 	}
@@ -227,9 +227,9 @@ func (s *AdminHomeworkService) DeleteHomework(ctx context.Context, userID, hwID 
 	return nil
 }
 
-func (s *AdminHomeworkService) PublishHomework(ctx context.Context, userID, hwID uuid.UUID, isPublic bool) (hw *model.Homework, err error) {
+func (s *AdminHomeworkService) PublishHomework(ctx context.Context, userID, courseID, hwID uuid.UUID, isPublic bool) (hw *model.Homework, err error) {
 	defer func() { s.adminMetrics.IncAction(metrics.AdminActionPublishHomework, adminOutcome(err)) }()
-	hw, err = s.GetHomework(ctx, userID, hwID)
+	hw, err = s.GetHomework(ctx, userID, courseID, hwID)
 	if err != nil {
 		return nil, err
 	}
@@ -266,12 +266,8 @@ func (s *AdminHomeworkService) SetDeadline(ctx context.Context, userID uuid.UUID
 		return nil, BadRequest("due date must be in RFC3339 format")
 	}
 
-	hw, err := s.homeworkRepo.GetByID(ctx, input.HomeworkID)
-	if err != nil {
-		return nil, NotFound("Homework not found")
-	}
-	if hw.CourseID != input.CourseID {
-		return nil, BadRequest("homework does not belong to this course")
+	if _, err := requireHomeworkInCourse(ctx, s.homeworkRepo, input.HomeworkID, input.CourseID); err != nil {
+		return nil, err
 	}
 
 	deadline = &model.Deadline{

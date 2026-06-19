@@ -26,24 +26,24 @@ func (m *MockAdminTaskService) CreateTask(ctx context.Context, userID uuid.UUID,
 	return args.Get(0).(*model.Task), args.Error(1)
 }
 
-func (m *MockAdminTaskService) GetTask(ctx context.Context, userID, taskID uuid.UUID) (*model.Task, error) {
-	args := m.Called(ctx, userID, taskID)
+func (m *MockAdminTaskService) GetTask(ctx context.Context, userID, courseID, hwID, taskID uuid.UUID) (*model.Task, error) {
+	args := m.Called(ctx, userID, courseID, hwID, taskID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(*model.Task), args.Error(1)
 }
 
-func (m *MockAdminTaskService) ListTasks(ctx context.Context, userID, hwID uuid.UUID) ([]model.Task, error) {
-	args := m.Called(ctx, userID, hwID)
+func (m *MockAdminTaskService) ListTasks(ctx context.Context, userID, courseID, hwID uuid.UUID) ([]model.Task, error) {
+	args := m.Called(ctx, userID, courseID, hwID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).([]model.Task), args.Error(1)
 }
 
-func (m *MockAdminTaskService) UpdateTask(ctx context.Context, userID, taskID uuid.UUID, input service.UpdateTaskInput) (*model.Task, error) {
-	args := m.Called(ctx, userID, taskID, input)
+func (m *MockAdminTaskService) UpdateTask(ctx context.Context, userID, courseID, hwID, taskID uuid.UUID, input service.UpdateTaskInput) (*model.Task, error) {
+	args := m.Called(ctx, userID, courseID, hwID, taskID, input)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -58,8 +58,8 @@ func (m *MockAdminTaskService) PublishTask(ctx context.Context, userID uuid.UUID
 	return args.Get(0).(*model.Task), args.Error(1)
 }
 
-func (m *MockAdminTaskService) DeleteTask(ctx context.Context, userID, taskID uuid.UUID) error {
-	args := m.Called(ctx, userID, taskID)
+func (m *MockAdminTaskService) DeleteTask(ctx context.Context, userID, courseID, hwID, taskID uuid.UUID) error {
+	args := m.Called(ctx, userID, courseID, hwID, taskID)
 	return args.Error(0)
 }
 
@@ -89,16 +89,18 @@ func TestHandlerCreateTask_Success(t *testing.T) {
 	}
 	expected := &model.Task{TaskID: uuid.New(), HwID: hwID, Title: title, RepoURL: &repoURL, TaskURL: &taskURL}
 
+	courseID := uuid.New()
 	c, rec := newEchoContextMultiParam(http.MethodPost, "/", body,
 		[]string{"courseId", "hwId"},
-		[]string{uuid.New().String(), hwID.String()},
+		[]string{courseID.String(), hwID.String()},
 	)
 	svc.On("CreateTask", mock.Anything, mock.Anything, service.CreateTaskInput{
-		HwID:    hwID,
-		Title:   &title,
-		RepoURL: repoURL,
-		TaskURL: taskURL,
-		Score:   Score,
+		CourseID: courseID,
+		HwID:     hwID,
+		Title:    &title,
+		RepoURL:  repoURL,
+		TaskURL:  taskURL,
+		Score:    Score,
 	}).Return(expected, nil)
 
 	err := h.CreateTask(c)
@@ -111,7 +113,10 @@ func TestHandlerCreateTask_InvalidHwID(t *testing.T) {
 	svc := new(MockAdminTaskService)
 	h := handler.NewAdminTaskHandler(svc)
 
-	c, rec := newEchoContext(http.MethodPost, "/", nil, map[string]string{"hwId": "bad"})
+	c, rec := newEchoContextMultiParam(http.MethodPost, "/", nil,
+		[]string{"courseId", "hwId"},
+		[]string{uuid.New().String(), "bad"},
+	)
 
 	err := h.CreateTask(c)
 	assert.NoError(t, err)
@@ -150,7 +155,7 @@ func TestHandlerCreateTask_NilURLs(t *testing.T) {
 		[]string{"courseId", "hwId"},
 		[]string{courseID.String(), hwID.String()},
 	)
-	svc.On("CreateTask", mock.Anything, mock.Anything, service.CreateTaskInput{HwID: hwID}).Return(expected, nil)
+	svc.On("CreateTask", mock.Anything, mock.Anything, service.CreateTaskInput{CourseID: courseID, HwID: hwID}).Return(expected, nil)
 
 	err := h.CreateTask(c)
 	assert.NoError(t, err)
@@ -162,11 +167,16 @@ func TestHandlerGetTask_Success(t *testing.T) {
 	svc := new(MockAdminTaskService)
 	h := handler.NewAdminTaskHandler(svc)
 
+	courseID := uuid.New()
+	hwID := uuid.New()
 	taskID := uuid.New()
 	expected := &model.Task{TaskID: taskID}
 
-	c, rec := newEchoContext(http.MethodGet, "/", nil, map[string]string{"taskId": taskID.String()})
-	svc.On("GetTask", mock.Anything, mock.Anything, taskID).Return(expected, nil)
+	c, rec := newEchoContextMultiParam(http.MethodGet, "/", nil,
+		[]string{"courseId", "hwId", "taskId"},
+		[]string{courseID.String(), hwID.String(), taskID.String()},
+	)
+	svc.On("GetTask", mock.Anything, mock.Anything, courseID, hwID, taskID).Return(expected, nil)
 
 	err := h.GetTask(c)
 	assert.NoError(t, err)
@@ -178,7 +188,10 @@ func TestHandlerGetTask_InvalidID(t *testing.T) {
 	svc := new(MockAdminTaskService)
 	h := handler.NewAdminTaskHandler(svc)
 
-	c, rec := newEchoContext(http.MethodGet, "/", nil, map[string]string{"taskId": "bad"})
+	c, rec := newEchoContextMultiParam(http.MethodGet, "/", nil,
+		[]string{"courseId", "hwId", "taskId"},
+		[]string{uuid.New().String(), uuid.New().String(), "bad"},
+	)
 
 	err := h.GetTask(c)
 	assert.NoError(t, err)
@@ -189,9 +202,14 @@ func TestHandlerGetTask_NotFound(t *testing.T) {
 	svc := new(MockAdminTaskService)
 	h := handler.NewAdminTaskHandler(svc)
 
+	courseID := uuid.New()
+	hwID := uuid.New()
 	taskID := uuid.New()
-	c, rec := newEchoContext(http.MethodGet, "/", nil, map[string]string{"taskId": taskID.String()})
-	svc.On("GetTask", mock.Anything, mock.Anything, taskID).Return(nil, service.NotFound("Task not found"))
+	c, rec := newEchoContextMultiParam(http.MethodGet, "/", nil,
+		[]string{"courseId", "hwId", "taskId"},
+		[]string{courseID.String(), hwID.String(), taskID.String()},
+	)
+	svc.On("GetTask", mock.Anything, mock.Anything, courseID, hwID, taskID).Return(nil, service.NotFound("Task not found"))
 
 	err := h.GetTask(c)
 	assert.NoError(t, err)
@@ -214,7 +232,7 @@ func TestHandlerListTasks_Success(t *testing.T) {
 		[]string{"courseId", "hwId"},
 		[]string{courseID.String(), hwID.String()},
 	)
-	svc.On("ListTasks", mock.Anything, mock.Anything, hwID).Return(expected, nil)
+	svc.On("ListTasks", mock.Anything, mock.Anything, courseID, hwID).Return(expected, nil)
 
 	err := h.ListTasks(c)
 	assert.NoError(t, err)
@@ -226,7 +244,10 @@ func TestHandlerListTasks_InvalidHwID(t *testing.T) {
 	svc := new(MockAdminTaskService)
 	h := handler.NewAdminTaskHandler(svc)
 
-	c, rec := newEchoContext(http.MethodGet, "/", nil, map[string]string{"hwId": "bad"})
+	c, rec := newEchoContextMultiParam(http.MethodGet, "/", nil,
+		[]string{"courseId", "hwId"},
+		[]string{uuid.New().String(), "bad"},
+	)
 
 	err := h.ListTasks(c)
 	assert.NoError(t, err)
@@ -243,7 +264,7 @@ func TestHandlerListTasks_HomeworkNotFound(t *testing.T) {
 		[]string{"courseId", "hwId"},
 		[]string{courseID.String(), hwID.String()},
 	)
-	svc.On("ListTasks", mock.Anything, mock.Anything, hwID).Return(nil, service.NotFound("Homework not found"))
+	svc.On("ListTasks", mock.Anything, mock.Anything, courseID, hwID).Return(nil, service.NotFound("Homework not found"))
 
 	err := h.ListTasks(c)
 	assert.NoError(t, err)
@@ -261,7 +282,7 @@ func TestHandlerListTasks_ServiceError(t *testing.T) {
 		[]string{"courseId", "hwId"},
 		[]string{courseID.String(), hwID.String()},
 	)
-	svc.On("ListTasks", mock.Anything, mock.Anything, hwID).Return(nil, service.Internal("Failed to fetch tasks", nil))
+	svc.On("ListTasks", mock.Anything, mock.Anything, courseID, hwID).Return(nil, service.Internal("Failed to fetch tasks", nil))
 
 	err := h.ListTasks(c)
 	assert.NoError(t, err)
@@ -273,6 +294,8 @@ func TestHandlerUpdateTask_Success(t *testing.T) {
 	svc := new(MockAdminTaskService)
 	h := handler.NewAdminTaskHandler(svc)
 
+	courseID := uuid.New()
+	hwID := uuid.New()
 	taskID := uuid.New()
 	newTitle := "Updated Task"
 	newRepo := "https://github.com/test/new-repo"
@@ -286,8 +309,11 @@ func TestHandlerUpdateTask_Success(t *testing.T) {
 	}
 	expected := &model.Task{TaskID: taskID, Title: newTitle, RepoURL: &newRepo, TaskURL: &newTask}
 
-	c, rec := newEchoContext(http.MethodPatch, "/", body, map[string]string{"taskId": taskID.String()})
-	svc.On("UpdateTask", mock.Anything, mock.Anything, taskID, service.UpdateTaskInput{
+	c, rec := newEchoContextMultiParam(http.MethodPatch, "/", body,
+		[]string{"courseId", "hwId", "taskId"},
+		[]string{courseID.String(), hwID.String(), taskID.String()},
+	)
+	svc.On("UpdateTask", mock.Anything, mock.Anything, courseID, hwID, taskID, service.UpdateTaskInput{
 		Title:   &newTitle,
 		RepoURL: newRepo,
 		TaskURL: newTask,
@@ -304,7 +330,10 @@ func TestHandlerUpdateTask_InvalidID(t *testing.T) {
 	svc := new(MockAdminTaskService)
 	h := handler.NewAdminTaskHandler(svc)
 
-	c, rec := newEchoContext(http.MethodPatch, "/", nil, map[string]string{"taskId": "bad"})
+	c, rec := newEchoContextMultiParam(http.MethodPatch, "/", nil,
+		[]string{"courseId", "hwId", "taskId"},
+		[]string{uuid.New().String(), uuid.New().String(), "bad"},
+	)
 
 	err := h.UpdateTask(c)
 	assert.NoError(t, err)
@@ -315,11 +344,16 @@ func TestHandlerUpdateTask_NotFound(t *testing.T) {
 	svc := new(MockAdminTaskService)
 	h := handler.NewAdminTaskHandler(svc)
 
+	courseID := uuid.New()
+	hwID := uuid.New()
 	taskID := uuid.New()
 	body := map[string]interface{}{"title": "Test", "repo_url": "https://github.com/test/repo"}
 
-	c, rec := newEchoContext(http.MethodPatch, "/", body, map[string]string{"taskId": taskID.String()})
-	svc.On("UpdateTask", mock.Anything, mock.Anything, taskID, mock.Anything).Return(nil, service.NotFound("Task not found"))
+	c, rec := newEchoContextMultiParam(http.MethodPatch, "/", body,
+		[]string{"courseId", "hwId", "taskId"},
+		[]string{courseID.String(), hwID.String(), taskID.String()},
+	)
+	svc.On("UpdateTask", mock.Anything, mock.Anything, courseID, hwID, taskID, mock.Anything).Return(nil, service.NotFound("Task not found"))
 
 	err := h.UpdateTask(c)
 	assert.NoError(t, err)
@@ -331,13 +365,18 @@ func TestHandlerUpdateTask_PartialUpdate(t *testing.T) {
 	svc := new(MockAdminTaskService)
 	h := handler.NewAdminTaskHandler(svc)
 
+	courseID := uuid.New()
+	hwID := uuid.New()
 	taskID := uuid.New()
 	newRepo := "https://github.com/test/new-repo"
 	body := map[string]interface{}{"repo_url": newRepo}
 	expected := &model.Task{TaskID: taskID, RepoURL: &newRepo}
 
-	c, rec := newEchoContext(http.MethodPatch, "/", body, map[string]string{"taskId": taskID.String()})
-	svc.On("UpdateTask", mock.Anything, mock.Anything, taskID, service.UpdateTaskInput{RepoURL: newRepo}).Return(expected, nil)
+	c, rec := newEchoContextMultiParam(http.MethodPatch, "/", body,
+		[]string{"courseId", "hwId", "taskId"},
+		[]string{courseID.String(), hwID.String(), taskID.String()},
+	)
+	svc.On("UpdateTask", mock.Anything, mock.Anything, courseID, hwID, taskID, service.UpdateTaskInput{RepoURL: newRepo}).Return(expected, nil)
 
 	err := h.UpdateTask(c)
 	assert.NoError(t, err)
@@ -349,12 +388,19 @@ func TestHandlerPublishTask_Success(t *testing.T) {
 	svc := new(MockAdminTaskService)
 	h := handler.NewAdminTaskHandler(svc)
 
+	courseID := uuid.New()
+	hwID := uuid.New()
 	taskID := uuid.New()
 	body := map[string]interface{}{"is_public": true}
 	expected := &model.Task{TaskID: taskID, IsPublic: boolPtr(true)}
 
-	c, rec := newEchoContext(http.MethodPatch, "/", body, map[string]string{"taskId": taskID.String()})
+	c, rec := newEchoContextMultiParam(http.MethodPatch, "/", body,
+		[]string{"courseId", "hwId", "taskId"},
+		[]string{courseID.String(), hwID.String(), taskID.String()},
+	)
 	svc.On("PublishTask", mock.Anything, mock.Anything, service.PublishTaskInput{
+		CourseID: courseID,
+		HwID:     hwID,
 		TaskID:   taskID,
 		IsPublic: true,
 	}).Return(expected, nil)
@@ -369,12 +415,19 @@ func TestHandlerPublishTask_Unpublish(t *testing.T) {
 	svc := new(MockAdminTaskService)
 	h := handler.NewAdminTaskHandler(svc)
 
+	courseID := uuid.New()
+	hwID := uuid.New()
 	taskID := uuid.New()
 	body := map[string]interface{}{"is_public": false}
 	expected := &model.Task{TaskID: taskID, IsPublic: boolPtr(false)}
 
-	c, rec := newEchoContext(http.MethodPatch, "/", body, map[string]string{"taskId": taskID.String()})
+	c, rec := newEchoContextMultiParam(http.MethodPatch, "/", body,
+		[]string{"courseId", "hwId", "taskId"},
+		[]string{courseID.String(), hwID.String(), taskID.String()},
+	)
 	svc.On("PublishTask", mock.Anything, mock.Anything, service.PublishTaskInput{
+		CourseID: courseID,
+		HwID:     hwID,
 		TaskID:   taskID,
 		IsPublic: false,
 	}).Return(expected, nil)
@@ -389,7 +442,10 @@ func TestHandlerPublishTask_InvalidID(t *testing.T) {
 	svc := new(MockAdminTaskService)
 	h := handler.NewAdminTaskHandler(svc)
 
-	c, rec := newEchoContext(http.MethodPatch, "/", map[string]interface{}{"is_public": true}, map[string]string{"taskId": "bad"})
+	c, rec := newEchoContextMultiParam(http.MethodPatch, "/", map[string]interface{}{"is_public": true},
+		[]string{"courseId", "hwId", "taskId"},
+		[]string{uuid.New().String(), uuid.New().String(), "bad"},
+	)
 
 	err := h.PublishTask(c)
 	assert.NoError(t, err)
@@ -400,10 +456,15 @@ func TestHandlerPublishTask_NotFound(t *testing.T) {
 	svc := new(MockAdminTaskService)
 	h := handler.NewAdminTaskHandler(svc)
 
+	courseID := uuid.New()
+	hwID := uuid.New()
 	taskID := uuid.New()
 	body := map[string]interface{}{"is_public": true}
 
-	c, rec := newEchoContext(http.MethodPatch, "/", body, map[string]string{"taskId": taskID.String()})
+	c, rec := newEchoContextMultiParam(http.MethodPatch, "/", body,
+		[]string{"courseId", "hwId", "taskId"},
+		[]string{courseID.String(), hwID.String(), taskID.String()},
+	)
 	svc.On("PublishTask", mock.Anything, mock.Anything, mock.Anything).
 		Return(nil, service.NotFound("Task not found"))
 
@@ -417,9 +478,14 @@ func TestHandlerDeleteTask_Success(t *testing.T) {
 	svc := new(MockAdminTaskService)
 	h := handler.NewAdminTaskHandler(svc)
 
+	courseID := uuid.New()
+	hwID := uuid.New()
 	taskID := uuid.New()
-	c, rec := newEchoContext(http.MethodDelete, "/", nil, map[string]string{"taskId": taskID.String()})
-	svc.On("DeleteTask", mock.Anything, mock.Anything, taskID).Return(nil)
+	c, rec := newEchoContextMultiParam(http.MethodDelete, "/", nil,
+		[]string{"courseId", "hwId", "taskId"},
+		[]string{courseID.String(), hwID.String(), taskID.String()},
+	)
+	svc.On("DeleteTask", mock.Anything, mock.Anything, courseID, hwID, taskID).Return(nil)
 
 	err := h.DeleteTask(c)
 	assert.NoError(t, err)
@@ -431,7 +497,10 @@ func TestHandlerDeleteTask_InvalidID(t *testing.T) {
 	svc := new(MockAdminTaskService)
 	h := handler.NewAdminTaskHandler(svc)
 
-	c, rec := newEchoContext(http.MethodDelete, "/", nil, map[string]string{"taskId": "bad"})
+	c, rec := newEchoContextMultiParam(http.MethodDelete, "/", nil,
+		[]string{"courseId", "hwId", "taskId"},
+		[]string{uuid.New().String(), uuid.New().String(), "bad"},
+	)
 
 	err := h.DeleteTask(c)
 	assert.NoError(t, err)
@@ -442,9 +511,14 @@ func TestHandlerDeleteTask_NotFound(t *testing.T) {
 	svc := new(MockAdminTaskService)
 	h := handler.NewAdminTaskHandler(svc)
 
+	courseID := uuid.New()
+	hwID := uuid.New()
 	taskID := uuid.New()
-	c, rec := newEchoContext(http.MethodDelete, "/", nil, map[string]string{"taskId": taskID.String()})
-	svc.On("DeleteTask", mock.Anything, mock.Anything, taskID).Return(service.NotFound("Task not found"))
+	c, rec := newEchoContextMultiParam(http.MethodDelete, "/", nil,
+		[]string{"courseId", "hwId", "taskId"},
+		[]string{courseID.String(), hwID.String(), taskID.String()},
+	)
+	svc.On("DeleteTask", mock.Anything, mock.Anything, courseID, hwID, taskID).Return(service.NotFound("Task not found"))
 
 	err := h.DeleteTask(c)
 	assert.NoError(t, err)
@@ -456,9 +530,14 @@ func TestHandlerDeleteTask_DeleteError(t *testing.T) {
 	svc := new(MockAdminTaskService)
 	h := handler.NewAdminTaskHandler(svc)
 
+	courseID := uuid.New()
+	hwID := uuid.New()
 	taskID := uuid.New()
-	c, rec := newEchoContext(http.MethodDelete, "/", nil, map[string]string{"taskId": taskID.String()})
-	svc.On("DeleteTask", mock.Anything, mock.Anything, taskID).Return(service.Internal("Failed to delete task", nil))
+	c, rec := newEchoContextMultiParam(http.MethodDelete, "/", nil,
+		[]string{"courseId", "hwId", "taskId"},
+		[]string{courseID.String(), hwID.String(), taskID.String()},
+	)
+	svc.On("DeleteTask", mock.Anything, mock.Anything, courseID, hwID, taskID).Return(service.Internal("Failed to delete task", nil))
 
 	err := h.DeleteTask(c)
 	assert.NoError(t, err)
@@ -470,15 +549,22 @@ func TestHandlerSetScore_Success(t *testing.T) {
 	svc := new(MockAdminTaskService)
 	h := handler.NewAdminTaskHandler(svc)
 
+	courseID := uuid.New()
+	hwID := uuid.New()
 	taskID := uuid.New()
 	score := 250
 	body := map[string]interface{}{"score": score}
 	expected := &model.Task{TaskID: taskID}
 
-	c, rec := newEchoContext(http.MethodPatch, "/", body, map[string]string{"taskId": taskID.String()})
+	c, rec := newEchoContextMultiParam(http.MethodPatch, "/", body,
+		[]string{"courseId", "hwId", "taskId"},
+		[]string{courseID.String(), hwID.String(), taskID.String()},
+	)
 	svc.On("SetScore", mock.Anything, mock.Anything, service.SetTaskScoreInput{
-		TaskID: taskID,
-		Score:  score,
+		CourseID: courseID,
+		HwID:     hwID,
+		TaskID:   taskID,
+		Score:    score,
 	}).Return(expected, nil)
 
 	err := h.SetScore(c)
@@ -491,7 +577,10 @@ func TestHandlerSetScore_InvalidTaskID(t *testing.T) {
 	svc := new(MockAdminTaskService)
 	h := handler.NewAdminTaskHandler(svc)
 
-	c, rec := newEchoContext(http.MethodPatch, "/", nil, map[string]string{"taskId": "bad"})
+	c, rec := newEchoContextMultiParam(http.MethodPatch, "/", nil,
+		[]string{"courseId", "hwId", "taskId"},
+		[]string{uuid.New().String(), uuid.New().String(), "bad"},
+	)
 
 	err := h.SetScore(c)
 	assert.NoError(t, err)
@@ -502,11 +591,16 @@ func TestHandlerSetScore_NegativeScore(t *testing.T) {
 	svc := new(MockAdminTaskService)
 	h := handler.NewAdminTaskHandler(svc)
 
+	courseID := uuid.New()
+	hwID := uuid.New()
 	taskID := uuid.New()
 	body := map[string]interface{}{"score": -10}
 
-	c, rec := newEchoContext(http.MethodPatch, "/", body, map[string]string{"taskId": taskID.String()})
-	svc.On("SetScore", mock.Anything, mock.Anything, service.SetTaskScoreInput{TaskID: taskID, Score: -10}).
+	c, rec := newEchoContextMultiParam(http.MethodPatch, "/", body,
+		[]string{"courseId", "hwId", "taskId"},
+		[]string{courseID.String(), hwID.String(), taskID.String()},
+	)
+	svc.On("SetScore", mock.Anything, mock.Anything, service.SetTaskScoreInput{CourseID: courseID, HwID: hwID, TaskID: taskID, Score: -10}).
 		Return(nil, service.BadRequest("score must be positive"))
 
 	err := h.SetScore(c)
@@ -519,11 +613,16 @@ func TestHandlerSetScore_TaskNotFound(t *testing.T) {
 	svc := new(MockAdminTaskService)
 	h := handler.NewAdminTaskHandler(svc)
 
+	courseID := uuid.New()
+	hwID := uuid.New()
 	taskID := uuid.New()
 	body := map[string]interface{}{"score": 100}
 
-	c, rec := newEchoContext(http.MethodPatch, "/", body, map[string]string{"taskId": taskID.String()})
-	svc.On("SetScore", mock.Anything, mock.Anything, service.SetTaskScoreInput{TaskID: taskID, Score: 100}).
+	c, rec := newEchoContextMultiParam(http.MethodPatch, "/", body,
+		[]string{"courseId", "hwId", "taskId"},
+		[]string{courseID.String(), hwID.String(), taskID.String()},
+	)
+	svc.On("SetScore", mock.Anything, mock.Anything, service.SetTaskScoreInput{CourseID: courseID, HwID: hwID, TaskID: taskID, Score: 100}).
 		Return(nil, service.NotFound("Task not found"))
 
 	err := h.SetScore(c)
@@ -536,11 +635,16 @@ func TestHandlerSetScore_ServiceError(t *testing.T) {
 	svc := new(MockAdminTaskService)
 	h := handler.NewAdminTaskHandler(svc)
 
+	courseID := uuid.New()
+	hwID := uuid.New()
 	taskID := uuid.New()
 	body := map[string]interface{}{"score": 100}
 
-	c, rec := newEchoContext(http.MethodPatch, "/", body, map[string]string{"taskId": taskID.String()})
-	svc.On("SetScore", mock.Anything, mock.Anything, service.SetTaskScoreInput{TaskID: taskID, Score: 100}).
+	c, rec := newEchoContextMultiParam(http.MethodPatch, "/", body,
+		[]string{"courseId", "hwId", "taskId"},
+		[]string{courseID.String(), hwID.String(), taskID.String()},
+	)
+	svc.On("SetScore", mock.Anything, mock.Anything, service.SetTaskScoreInput{CourseID: courseID, HwID: hwID, TaskID: taskID, Score: 100}).
 		Return(nil, service.Internal("Failed to set score", nil))
 
 	err := h.SetScore(c)

@@ -30,8 +30,8 @@ func (m *MockAdminHomeworkService) CreateHomework(ctx context.Context, userID uu
 	return args.Get(0).(*model.Homework), args.Error(1)
 }
 
-func (m *MockAdminHomeworkService) GetHomework(ctx context.Context, userID, hwID uuid.UUID) (*model.Homework, error) {
-	args := m.Called(ctx, userID, hwID)
+func (m *MockAdminHomeworkService) GetHomework(ctx context.Context, userID, courseID, hwID uuid.UUID) (*model.Homework, error) {
+	args := m.Called(ctx, userID, courseID, hwID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -46,21 +46,21 @@ func (m *MockAdminHomeworkService) ListHomework(ctx context.Context, userID, cou
 	return args.Get(0).([]model.Homework), args.Error(1)
 }
 
-func (m *MockAdminHomeworkService) UpdateHomework(ctx context.Context, userID, hwID uuid.UUID, input service.UpdateHomeworkInput) (*model.Homework, error) {
-	args := m.Called(ctx, userID, hwID, input)
+func (m *MockAdminHomeworkService) UpdateHomework(ctx context.Context, userID, courseID, hwID uuid.UUID, input service.UpdateHomeworkInput) (*model.Homework, error) {
+	args := m.Called(ctx, userID, courseID, hwID, input)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(*model.Homework), args.Error(1)
 }
 
-func (m *MockAdminHomeworkService) DeleteHomework(ctx context.Context, userID, hwID uuid.UUID) error {
-	args := m.Called(ctx, userID, hwID)
+func (m *MockAdminHomeworkService) DeleteHomework(ctx context.Context, userID, courseID, hwID uuid.UUID) error {
+	args := m.Called(ctx, userID, courseID, hwID)
 	return args.Error(0)
 }
 
-func (m *MockAdminHomeworkService) PublishHomework(ctx context.Context, userID, hwID uuid.UUID, isPublic bool) (*model.Homework, error) {
-	args := m.Called(ctx, userID, hwID, isPublic)
+func (m *MockAdminHomeworkService) PublishHomework(ctx context.Context, userID, courseID, hwID uuid.UUID, isPublic bool) (*model.Homework, error) {
+	args := m.Called(ctx, userID, courseID, hwID, isPublic)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -206,14 +206,15 @@ func TestHandlerGetHomework_Success(t *testing.T) {
 	svc := new(MockAdminHomeworkService)
 	h := handler.NewAdminHomeworkHandler(svc)
 
+	courseID := uuid.New()
 	hwID := uuid.New()
 	expected := &model.Homework{HwID: hwID}
 
 	c, rec := newEchoContextMultiParam(http.MethodGet, "/", nil,
 		[]string{"courseId", "hwId"},
-		[]string{uuid.New().String(), hwID.String()},
+		[]string{courseID.String(), hwID.String()},
 	)
-	svc.On("GetHomework", mock.Anything, mock.Anything, hwID).Return(expected, nil)
+	svc.On("GetHomework", mock.Anything, mock.Anything, courseID, hwID).Return(expected, nil)
 
 	err := h.GetHomework(c)
 	assert.NoError(t, err)
@@ -225,7 +226,10 @@ func TestHandlerGetHomework_InvalidID(t *testing.T) {
 	svc := new(MockAdminHomeworkService)
 	h := handler.NewAdminHomeworkHandler(svc)
 
-	c, rec := newEchoContext(http.MethodGet, "/", nil, map[string]string{"hwId": "invalid"})
+	c, rec := newEchoContextMultiParam(http.MethodGet, "/", nil,
+		[]string{"courseId", "hwId"},
+		[]string{uuid.New().String(), "invalid"},
+	)
 
 	err := h.GetHomework(c)
 	assert.NoError(t, err)
@@ -236,9 +240,13 @@ func TestHandlerGetHomework_NotFound(t *testing.T) {
 	svc := new(MockAdminHomeworkService)
 	h := handler.NewAdminHomeworkHandler(svc)
 
+	courseID := uuid.New()
 	hwID := uuid.New()
-	c, rec := newEchoContext(http.MethodGet, "/", nil, map[string]string{"hwId": hwID.String()})
-	svc.On("GetHomework", mock.Anything, mock.Anything, hwID).Return(nil, service.NotFound("Homework not found"))
+	c, rec := newEchoContextMultiParam(http.MethodGet, "/", nil,
+		[]string{"courseId", "hwId"},
+		[]string{courseID.String(), hwID.String()},
+	)
+	svc.On("GetHomework", mock.Anything, mock.Anything, courseID, hwID).Return(nil, service.NotFound("Homework not found"))
 
 	err := h.GetHomework(c)
 	assert.NoError(t, err)
@@ -277,6 +285,7 @@ func TestHandlerUpdateHomework_Success(t *testing.T) {
 	svc := new(MockAdminHomeworkService)
 	h := handler.NewAdminHomeworkHandler(svc)
 
+	courseID := uuid.New()
 	hwID := uuid.New()
 	newEnd := "2026-01-01"
 	body := map[string]interface{}{"end_date": newEnd}
@@ -284,9 +293,9 @@ func TestHandlerUpdateHomework_Success(t *testing.T) {
 
 	c, rec := newEchoContextMultiParam(http.MethodPatch, "/", body,
 		[]string{"courseId", "hwId"},
-		[]string{uuid.New().String(), hwID.String()},
+		[]string{courseID.String(), hwID.String()},
 	)
-	svc.On("UpdateHomework", mock.Anything, mock.Anything, hwID, service.UpdateHomeworkInput{EndDate: newEnd}).Return(expected, nil)
+	svc.On("UpdateHomework", mock.Anything, mock.Anything, courseID, hwID, service.UpdateHomeworkInput{EndDate: newEnd}).Return(expected, nil)
 
 	err := h.UpdateHomework(c)
 	assert.NoError(t, err)
@@ -298,6 +307,7 @@ func TestHandlerUpdateHomework_WithPositionZero(t *testing.T) {
 	svc := new(MockAdminHomeworkService)
 	h := handler.NewAdminHomeworkHandler(svc)
 
+	courseID := uuid.New()
 	hwID := uuid.New()
 	pos := 0
 	newTitle := "Week 0"
@@ -306,10 +316,10 @@ func TestHandlerUpdateHomework_WithPositionZero(t *testing.T) {
 
 	c, rec := newEchoContextMultiParam(http.MethodPatch, "/", body,
 		[]string{"courseId", "hwId"},
-		[]string{uuid.New().String(), hwID.String()},
+		[]string{courseID.String(), hwID.String()},
 	)
 	zeroPos := 0
-	svc.On("UpdateHomework", mock.Anything, mock.Anything, hwID, service.UpdateHomeworkInput{
+	svc.On("UpdateHomework", mock.Anything, mock.Anything, courseID, hwID, service.UpdateHomeworkInput{
 		Title:    &newTitle,
 		Position: &zeroPos,
 	}).Return(expected, nil)
@@ -324,7 +334,10 @@ func TestHandlerUpdateHomework_InvalidID(t *testing.T) {
 	svc := new(MockAdminHomeworkService)
 	h := handler.NewAdminHomeworkHandler(svc)
 
-	c, rec := newEchoContext(http.MethodPatch, "/", nil, map[string]string{"hwId": "bad"})
+	c, rec := newEchoContextMultiParam(http.MethodPatch, "/", nil,
+		[]string{"courseId", "hwId"},
+		[]string{uuid.New().String(), "bad"},
+	)
 
 	err := h.UpdateHomework(c)
 	assert.NoError(t, err)
@@ -335,11 +348,15 @@ func TestHandlerUpdateHomework_ServiceError(t *testing.T) {
 	svc := new(MockAdminHomeworkService)
 	h := handler.NewAdminHomeworkHandler(svc)
 
+	courseID := uuid.New()
 	hwID := uuid.New()
 	body := map[string]interface{}{"end_date": "2025-01-01"}
 
-	c, rec := newEchoContext(http.MethodPatch, "/", body, map[string]string{"hwId": hwID.String()})
-	svc.On("UpdateHomework", mock.Anything, mock.Anything, hwID, mock.Anything).Return(nil, service.NotFound("Homework not found"))
+	c, rec := newEchoContextMultiParam(http.MethodPatch, "/", body,
+		[]string{"courseId", "hwId"},
+		[]string{courseID.String(), hwID.String()},
+	)
+	svc.On("UpdateHomework", mock.Anything, mock.Anything, courseID, hwID, mock.Anything).Return(nil, service.NotFound("Homework not found"))
 
 	err := h.UpdateHomework(c)
 	assert.NoError(t, err)
@@ -351,9 +368,13 @@ func TestHandlerDeleteHomework_Success(t *testing.T) {
 	svc := new(MockAdminHomeworkService)
 	h := handler.NewAdminHomeworkHandler(svc)
 
+	courseID := uuid.New()
 	hwID := uuid.New()
-	c, rec := newEchoContext(http.MethodDelete, "/", nil, map[string]string{"hwId": hwID.String()})
-	svc.On("DeleteHomework", mock.Anything, mock.Anything, hwID).Return(nil)
+	c, rec := newEchoContextMultiParam(http.MethodDelete, "/", nil,
+		[]string{"courseId", "hwId"},
+		[]string{courseID.String(), hwID.String()},
+	)
+	svc.On("DeleteHomework", mock.Anything, mock.Anything, courseID, hwID).Return(nil)
 
 	err := h.DeleteHomework(c)
 	assert.NoError(t, err)
@@ -365,7 +386,10 @@ func TestHandlerDeleteHomework_InvalidID(t *testing.T) {
 	svc := new(MockAdminHomeworkService)
 	h := handler.NewAdminHomeworkHandler(svc)
 
-	c, rec := newEchoContext(http.MethodDelete, "/", nil, map[string]string{"hwId": "bad"})
+	c, rec := newEchoContextMultiParam(http.MethodDelete, "/", nil,
+		[]string{"courseId", "hwId"},
+		[]string{uuid.New().String(), "bad"},
+	)
 
 	err := h.DeleteHomework(c)
 	assert.NoError(t, err)
@@ -376,9 +400,13 @@ func TestHandlerDeleteHomework_NotFound(t *testing.T) {
 	svc := new(MockAdminHomeworkService)
 	h := handler.NewAdminHomeworkHandler(svc)
 
+	courseID := uuid.New()
 	hwID := uuid.New()
-	c, rec := newEchoContext(http.MethodDelete, "/", nil, map[string]string{"hwId": hwID.String()})
-	svc.On("DeleteHomework", mock.Anything, mock.Anything, hwID).Return(service.NotFound("Homework not found"))
+	c, rec := newEchoContextMultiParam(http.MethodDelete, "/", nil,
+		[]string{"courseId", "hwId"},
+		[]string{courseID.String(), hwID.String()},
+	)
+	svc.On("DeleteHomework", mock.Anything, mock.Anything, courseID, hwID).Return(service.NotFound("Homework not found"))
 
 	err := h.DeleteHomework(c)
 	assert.NoError(t, err)
@@ -390,13 +418,17 @@ func TestHandlerPublishHomework_Success(t *testing.T) {
 	svc := new(MockAdminHomeworkService)
 	h := handler.NewAdminHomeworkHandler(svc)
 
+	courseID := uuid.New()
 	hwID := uuid.New()
 	isPublic := true
 	body := map[string]interface{}{"is_public": isPublic}
 	expected := &model.Homework{HwID: hwID, IsPublic: &isPublic}
 
-	c, rec := newEchoContext(http.MethodPatch, "/", body, map[string]string{"hwId": hwID.String()})
-	svc.On("PublishHomework", mock.Anything, mock.Anything, hwID, isPublic).Return(expected, nil)
+	c, rec := newEchoContextMultiParam(http.MethodPatch, "/", body,
+		[]string{"courseId", "hwId"},
+		[]string{courseID.String(), hwID.String()},
+	)
+	svc.On("PublishHomework", mock.Anything, mock.Anything, courseID, hwID, isPublic).Return(expected, nil)
 
 	err := h.PublishHomework(c)
 	assert.NoError(t, err)
@@ -408,7 +440,10 @@ func TestHandlerPublishHomework_InvalidID(t *testing.T) {
 	svc := new(MockAdminHomeworkService)
 	h := handler.NewAdminHomeworkHandler(svc)
 
-	c, rec := newEchoContext(http.MethodPatch, "/", nil, map[string]string{"hwId": "bad"})
+	c, rec := newEchoContextMultiParam(http.MethodPatch, "/", nil,
+		[]string{"courseId", "hwId"},
+		[]string{uuid.New().String(), "bad"},
+	)
 
 	err := h.PublishHomework(c)
 	assert.NoError(t, err)
