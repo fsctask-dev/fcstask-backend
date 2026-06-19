@@ -109,6 +109,7 @@ func New(cfg *config.Config) (*App, error) {
 		"/admin/courses/create",
 		"/admin/courses/:courseId/update",
 		"/admin/courses/:courseId/invite",
+		"/admin/courses/:courseId/scores/export",
 		"/admin/courses/:courseId/homework",
 		"/admin/courses/:courseId/homework/:hwId",
 		"/admin/courses/:courseId/homework/:hwId/publish",
