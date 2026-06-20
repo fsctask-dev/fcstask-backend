@@ -667,3 +667,77 @@ func parseDate(s string) *time.Time {
 	t, _ := time.Parse("2006-01-02", s)
 	return &t
 }
+
+func TestExportScores_Success(t *testing.T) {
+	svc, cRepo, rRepo := setupService()
+	userID := uuid.New()
+	roleID := uuid.New()
+	courseID := uuid.New()
+	course := &models.Course{ID: courseID, Type: models.CourseTypePrivate}
+
+	hw1 := uuid.New()
+	hw2 := uuid.New()
+	entries := []models.LeaderboardEntry{
+		{
+			Username:   "alice",
+			TotalScore: 50,
+			Homeworks: []models.HomeworkScore{
+				{HomeworkID: hw1, HomeworkTitle: "HW 1", TotalScore: 30},
+				{HomeworkID: hw2, HomeworkTitle: "HW 2", TotalScore: 20},
+			},
+		},
+		{
+			Username:   "bob",
+			TotalScore: 15,
+			Homeworks: []models.HomeworkScore{
+				{HomeworkID: hw1, HomeworkTitle: "HW 1", TotalScore: 15},
+			},
+		},
+	}
+
+	cRepo.On("GetCourseByID", mock.Anything, courseID.String()).Return(course, nil)
+	rRepo.On("GetRoleIDByUserAndCourse", mock.Anything, userID, courseID).Return(roleID, nil)
+	rRepo.On("HasPermission", mock.Anything, roleID, PermissionCourseRead).Return(true, nil)
+	rRepo.On("HasPermission", mock.Anything, roleID, PermissionScoreExport).Return(true, nil)
+	cRepo.On("GetLeaderboard", mock.Anything, courseID.String()).Return(entries, nil)
+
+	data, err := svc.ExportScores(context.Background(), userID, courseID.String())
+
+	assert.NoError(t, err)
+	assert.NotEmpty(t, data)
+}
+
+func TestExportScores_Empty(t *testing.T) {
+	svc, cRepo, rRepo := setupService()
+	userID := uuid.New()
+	roleID := uuid.New()
+	courseID := uuid.New()
+	course := &models.Course{ID: courseID, Type: models.CourseTypePrivate}
+
+	cRepo.On("GetCourseByID", mock.Anything, courseID.String()).Return(course, nil)
+	rRepo.On("GetRoleIDByUserAndCourse", mock.Anything, userID, courseID).Return(roleID, nil)
+	rRepo.On("HasPermission", mock.Anything, roleID, PermissionCourseRead).Return(true, nil)
+	rRepo.On("HasPermission", mock.Anything, roleID, PermissionScoreExport).Return(true, nil)
+	cRepo.On("GetLeaderboard", mock.Anything, courseID.String()).Return([]models.LeaderboardEntry{}, nil)
+
+	data, err := svc.ExportScores(context.Background(), userID, courseID.String())
+
+	assert.NoError(t, err)
+	assert.NotEmpty(t, data)
+}
+
+func TestExportScores_Forbidden(t *testing.T) {
+	svc, cRepo, rRepo := setupService()
+	userID := uuid.New()
+	courseID := uuid.New()
+	course := &models.Course{ID: courseID, Type: models.CourseTypePrivate}
+
+	cRepo.On("GetCourseByID", mock.Anything, courseID.String()).Return(course, nil)
+	rRepo.On("GetRoleIDByUserAndCourse", mock.Anything, userID, courseID).Return(uuid.Nil, gorm.ErrRecordNotFound)
+	rRepo.On("GetRoleIDByUserAndCourse", mock.Anything, userID, uuid.Nil).Return(uuid.Nil, gorm.ErrRecordNotFound)
+
+	_, err := svc.ExportScores(context.Background(), userID, courseID.String())
+
+	assert.Error(t, err)
+	assert.Equal(t, "forbidden", err.(*Error).Code)
+}

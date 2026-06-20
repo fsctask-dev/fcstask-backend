@@ -2,6 +2,7 @@ package handler
 
 import (
 	"fcstask-backend/internal/db/model"
+	"fmt"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -163,6 +164,22 @@ func (h *CourseHandler) GetScores(ctx echo.Context) error {
 		return serviceError(ctx, err)
 	}
 	return ctx.JSON(http.StatusOK, entries)
+}
+
+// GET /admin/courses/:courseId/scores/export
+func (h *CourseHandler) ExportScores(ctx echo.Context) error {
+	user, ok := ctx.Get(UserContextKey).(*model.User)
+	if !ok || user == nil {
+		return unauthorized(ctx, "User not found in context")
+	}
+	courseID := ctx.Param("courseId")
+	data, err := h.courseService.ExportScores(ctx.Request().Context(), user.ID, courseID)
+	if err != nil {
+		return serviceError(ctx, err)
+	}
+	filename := fmt.Sprintf("scores_%s.xlsx", courseID)
+	ctx.Response().Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+	return ctx.Blob(http.StatusOK, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", data)
 }
 
 // POST /admin/courses/:courseId/invite

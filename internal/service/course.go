@@ -5,9 +5,11 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"sort"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/xuri/excelize/v2"
 
 	models "fcstask-backend/internal/db/model"
 	"fcstask-backend/internal/db/repo"
@@ -320,25 +322,96 @@ func (s *CourseService) GetLeaderboard(ctx context.Context, userID uuid.UUID, co
 	return entries, nil
 }
 
+func (s *CourseService) ExportScores(ctx context.Context, userID uuid.UUID, courseID string) ([]byte, error) {
+	course, err := s.GetCourse(ctx, userID, courseID)
+	if err != nil {
+		return nil, err
+	}
+	if err := RequireScopedPermission(ctx, s.RoleRepo, userID, course.ID, PermissionScoreExport); err != nil {
+		return nil, err
+	}
+
+	entries, err := s.CourseRepo.GetLeaderboard(ctx, courseID)
+	if err != nil {
+		return nil, Internal("Failed to get leaderboard", err)
+	}
+
+	type hwMeta struct {
+		id    uuid.UUID
+		title string
+	}
+	seen := make(map[uuid.UUID]bool)
+	var hwList []hwMeta
+	for _, entry := range entries {
+		for _, hw := range entry.Homeworks {
+			if !seen[hw.HomeworkID] {
+				seen[hw.HomeworkID] = true
+				hwList = append(hwList, hwMeta{id: hw.HomeworkID, title: hw.HomeworkTitle})
+			}
+		}
+	}
+	sort.Slice(hwList, func(i, j int) bool { return hwList[i].title < hwList[j].title })
+
+	f := excelize.NewFile()
+	defer f.Close()
+	const sheet = "Sheet1"
+
+	headers := make([]string, 0, len(hwList)+2)
+	headers = append(headers, "Username")
+	for _, hw := range hwList {
+		headers = append(headers, hw.title)
+	}
+	headers = append(headers, "Total")
+	for col, h := range headers {
+		cell, _ := excelize.CoordinatesToCellName(col+1, 1)
+		_ = f.SetCellValue(sheet, cell, h)
+	}
+
+	hwColIndex := make(map[uuid.UUID]int, len(hwList))
+	for i, hw := range hwList {
+		hwColIndex[hw.id] = i + 2
+	}
+	totalCol := len(hwList) + 2
+
+	for rowIdx, entry := range entries {
+		row := rowIdx + 2
+		userCell, _ := excelize.CoordinatesToCellName(1, row)
+		_ = f.SetCellValue(sheet, userCell, entry.Username)
+		for _, hw := range entry.Homeworks {
+			col := hwColIndex[hw.HomeworkID]
+			cell, _ := excelize.CoordinatesToCellName(col, row)
+			_ = f.SetCellValue(sheet, cell, hw.TotalScore)
+		}
+		totalCell, _ := excelize.CoordinatesToCellName(totalCol, row)
+		_ = f.SetCellValue(sheet, totalCell, entry.TotalScore)
+	}
+
+	buf, err := f.WriteToBuffer()
+	if err != nil {
+		return nil, Internal("Failed to write XLSX", err)
+	}
+	return buf.Bytes(), nil
+}
+
 func (s *CourseService) RegenerateInviteCode(ctx context.Context, userID uuid.UUID, courseID string) (*string, error) {
-    if courseID == "" {
-        return nil, BadRequest("course_id is required")
-    }
-    course, err := s.GetCourse(ctx, userID, courseID)
-    if err != nil {
-        return nil, err
-    }
-    if err := RequireScopedPermission(ctx, s.RoleRepo, userID, course.ID, PermissionCourseInviteRegenerate); err != nil {
-        return nil, err
-    }
-    if course.Type != models.CourseTypePrivate {
-        return nil, BadRequest("course is not private")
-    }
-    code := generateInviteCode()
-    if err := s.CourseRepo.UpdateInviteCode(ctx, course.ID, &code); err != nil {
-        return nil, Internal("Failed to regenerate invite code", err)
-    }
-    return &code, nil
+	if courseID == "" {
+		return nil, BadRequest("course_id is required")
+	}
+	course, err := s.GetCourse(ctx, userID, courseID)
+	if err != nil {
+		return nil, err
+	}
+	if err := RequireScopedPermission(ctx, s.RoleRepo, userID, course.ID, PermissionCourseInviteRegenerate); err != nil {
+		return nil, err
+	}
+	if course.Type != models.CourseTypePrivate {
+		return nil, BadRequest("course is not private")
+	}
+	code := generateInviteCode()
+	if err := s.CourseRepo.UpdateInviteCode(ctx, course.ID, &code); err != nil {
+		return nil, Internal("Failed to regenerate invite code", err)
+	}
+	return &code, nil
 }
 
 func generateInviteCode() string {

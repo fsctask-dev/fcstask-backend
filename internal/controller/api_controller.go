@@ -105,6 +105,7 @@ func (c *APIController) RegisterAdminRoutes(
 	e.POST("/admin/courses/create", c.courseHandler.CreateCourse)
 	e.PUT("/admin/courses/:courseId/update", c.courseHandler.UpdateCourse)
 	e.POST("/admin/courses/:courseId/invite", c.courseHandler.RegenerateInviteCode)
+	e.GET("/admin/courses/:courseId/scores/export", c.courseHandler.ExportScores)
 	e.POST("/admin/courses/:courseId/homework", adminHomeworkHandler.CreateHomework)
 	e.GET("/admin/courses/:courseId/homework/:hwId", adminHomeworkHandler.GetHomework)
 	e.GET("/admin/courses/:courseId/homework", adminHomeworkHandler.ListHomework)
